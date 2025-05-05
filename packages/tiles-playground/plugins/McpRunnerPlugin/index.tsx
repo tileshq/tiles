@@ -2,7 +2,7 @@
 
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { useEffect, useRef, useState } from 'react';
-import { $getSelection, $isRangeSelection, $isTextNode, COMMAND_PRIORITY_EDITOR, LexicalCommand, $createTextNode, $createParagraphNode, TextNode, $insertNodes } from 'lexical';
+import { $getSelection, $isRangeSelection, $isTextNode, COMMAND_PRIORITY_EDITOR, LexicalCommand, $createTextNode, $createParagraphNode, TextNode, $insertNodes, LexicalNode } from 'lexical';
 import { $createHorizontalRuleNode } from '@lexical/react/LexicalHorizontalRuleNode';
 import { useMcpContext } from '@/contexts/McpContext';
 import { CSSProperties } from 'react';
@@ -361,8 +361,8 @@ export default function McpRunnerPlugin(): JSX.Element {
     let userPrompt = '';
     let hasFoundMcpNode = false;
     
-    // Convert nodes to array if needed
-    const nodesArray = Array.isArray(nodes) ? nodes : Array.from(nodes);
+    // Convert nodes to array if needed and ensure type safety
+    const nodesArray: LexicalNode[] = Array.isArray(nodes) ? nodes : Array.from(nodes);
     
     for (const node of nodesArray) {
       if ($isTextNode(node) && node.getType() === 'mcpserver') {
