@@ -694,15 +694,15 @@ const Home: NextPage = () => {
   return (
     <div className="container">
       <Head>
-        <title>Tilekit</title>
-        <meta name="description" content="Personal software framework that powers the tiles.run notebook interface." />
+        <title>Tiles</title>
+        <meta name="description" content="WebAssembly powered notebook interface for running serverlets locally." />
         <link rel="icon" href="/icons/favicon.ico" />
       </Head>
 
       <main>
         <div className="title-container">
-          <img src="/icons/tilekit.svg" alt="tilekit.dev logo" className="title-icon" />
-          <h1>Tilekit</h1>
+          <img src="/icons/tiles.svg" alt="tiles.run logo" className="title-icon" />
+          <h1>Tiles</h1>
         </div>
         
         <p className="subtitle">The present demo shows WebAssembly packaged MCP serverlets running locally.</p>
@@ -1195,7 +1195,7 @@ const Home: NextPage = () => {
       </main>
 
       <footer className="footer">
-      Tilekit is the underlying personal software framework that powers the <a href="https://tiles.run/" className="builder-link">tiles.run</a> notebook interface. Github: <a href="https://github.com/Agent54/tilekit/tree/dev/packages/wasm-runner" className="builder-link">Agent54/tilekit</a>
+      Tiles is a WebAssembly powered notebook interface for running serverlets locally. Github: <a href="https://github.com/Agent54/tiles/tree/dev/packages/wasm-runner" className="builder-link">Agent54/tiles</a>
       <br /> Designed and built by <a href="https://ankeshbharti.com" className="builder-link">@feynon</a> and <a href="https://aswinc.blog" className="builder-link">@chandanaveli</a>.
       </footer>
 

@@ -216,18 +216,7 @@ function SharedEditorContent({ documentId, initialContent }: SharedEditorProps) 
           textAlign: 'center',
         }}>
         <p>A new kind of notebook for making personal software.</p>
-        <p>Technically it's a local-first, multiplayer enabled MCP client with notebook interface.</p>
-        <p>
-          Check out{' '}
-          <a
-            href="https://tilekit.dev"
-            target="_blank"
-            rel="noreferrer"
-            style={{color: '#007bff', textDecoration: 'none'}}>
-            Tilekit
-          </a>{' '}
-          for the underlying personal software framework.
-        </p>
+        <p>It's a local-first, multiplayer enabled MCP client with notebook interface.</p>
       </footer>
     </>
   );

@@ -232,8 +232,8 @@ function App(): JSX.Element {
           textAlign: 'center',
         }}>
         <p>A new kind of notebook for making personal software.</p>
-        <p>Technically it's a local-first, multiplayer enabled MCP client with notebook interface.</p>
-        <p>View <a
+        <p>It's a local-first, multiplayer enabled MCP client with notebook interface.</p>
+        <p><a
           href="https://www.tiles.run/shared/Aa2sK9GLwHFkCZOPevge-"
           target="_blank"
           rel="noreferrer"
@@ -241,6 +241,7 @@ function App(): JSX.Element {
         >
           Live Changelog
         </a>.</p>
+        <p> © 2025 Tiles Software.</p>
       </footer>
     </LexicalComposer>
   );
