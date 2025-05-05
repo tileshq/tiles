@@ -241,7 +241,7 @@ function App(): JSX.Element {
         >
           Live Changelog
         </a>.</p>
-        <p> © 2025 Tiles Software.</p>
+        <p> © 2025 Tiles HQ.</p>
       </footer>
     </LexicalComposer>
   );
