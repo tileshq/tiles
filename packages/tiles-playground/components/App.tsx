@@ -241,7 +241,7 @@ function App(): JSX.Element {
           style={{color: '#007bff', textDecoration: 'none'}}
         >
           Live Changelog.
-        </a> © 2025 Tiles HQ.</p>
+        </a> © 2025 Tiles HQ. All rights reserved.</p>
       </footer>
     </LexicalComposer>
   );
