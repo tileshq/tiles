@@ -245,6 +245,14 @@ function App(): JSX.Element {
     Live Changelog.
   </a>&nbsp;
   <a
+    href="https://github.com/tileshq/tiles"
+    target="_blank"
+    rel="noreferrer"
+    style={{ color: '#007bff', textDecoration: 'none' }}
+  >
+    Github.
+  </a>&nbsp;
+  <a
     href="https://x.com/tilesnotebook"
     target="_blank"
     rel="noreferrer"
