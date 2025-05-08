@@ -231,11 +231,11 @@ function App(): JSX.Element {
           padding: '20px',
           textAlign: 'center',
         }}>
-        <p>A new kind of notebook for making personal software.</p>
-        <p>It's a local-first, multiplayer enabled MCP client with notebook interface.</p>
+        <p>A new kind of notebook for making personal software. A local-first, multiplayer enabled MCP client with notebook interface.</p>
         <p>If you or your team are interested in building personal software quickly and influencing the future of Tiles, <a href="mailto:hello@tiles.run" style={{color: '#007bff', textDecoration: 'none'}}>reach out</a>!</p>
         
-        <p>© 2025 Tiles HQ. All rights reserved.&nbsp;  
+        <p>© 2025 Tiles HQ. All rights reserved. </p>
+        <p> 
   <a
     href="https://www.tiles.run/shared/Aa2sK9GLwHFkCZOPevge-"
     target="_blank"
