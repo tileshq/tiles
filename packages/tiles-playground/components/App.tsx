@@ -234,14 +234,25 @@ function App(): JSX.Element {
         <p>A new kind of notebook for making personal software.</p>
         <p>It's a local-first, multiplayer enabled MCP client with notebook interface.</p>
         <p>If you or your team are interested in building personal software quickly and influencing the future of Tiles, <a href="mailto:hello@tiles.run" style={{color: '#007bff', textDecoration: 'none'}}>reach out</a>!</p>
-        <p><a
-          href="https://www.tiles.run/shared/Aa2sK9GLwHFkCZOPevge-"
-          target="_blank"
-          rel="noreferrer"
-          style={{color: '#007bff', textDecoration: 'none'}}
-        >
-          Live Changelog.
-        </a> © 2025 Tiles HQ. All rights reserved.</p>
+        
+        <p>© 2025 Tiles HQ. All rights reserved.&nbsp;  
+  <a
+    href="https://www.tiles.run/shared/Aa2sK9GLwHFkCZOPevge-"
+    target="_blank"
+    rel="noreferrer"
+    style={{ color: '#007bff', textDecoration: 'none' }}
+  >
+    Live Changelog.
+  </a>&nbsp;
+  <a
+    href="https://tiles.run/shared/RYcEAFb16btn8a7SKx3bV"
+    target="_blank"
+    rel="noreferrer"
+    style={{ color: '#007bff', textDecoration: 'none' }}
+  >
+    Terms.
+  </a>
+</p>
       </footer>
     </LexicalComposer>
   );
