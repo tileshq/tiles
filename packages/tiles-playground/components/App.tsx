@@ -251,7 +251,7 @@ function App(): JSX.Element {
     style={{ color: '#007bff', textDecoration: 'none' }}
   >
     X/Twitter.
-  </a>
+  </a>&nbsp;
   <a
     href="https://tiles.run/shared/RYcEAFb16btn8a7SKx3bV"
     target="_blank"
