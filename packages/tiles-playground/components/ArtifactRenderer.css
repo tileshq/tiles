@@ -1,0 +1,457 @@
+/**
+ * ArtifactRenderer - Modern UI/UX Styles
+ * Consistent with the tiles-playground design system
+ */
+
+.artifact-container {
+  /* Card-style container following Modal/Button design patterns */
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin: 16px 0;
+  overflow: hidden;
+  position: relative;
+  transition: all 0.2s ease;
+  border: 1px solid #e9ecef;
+}
+
+.artifact-container:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+
+/* Header with type badge and controls */
+.artifact-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  min-height: 32px;
+}
+
+.artifact-type-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.artifact-type-icon {
+  font-size: 14px;
+}
+
+.artifact-type-label {
+  font-size: 11px;
+}
+
+/* Control buttons */
+.artifact-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.artifact-control-button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  transition: all 0.2s ease;
+  color: #666;
+}
+
+.artifact-control-button:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #333;
+  transform: translateY(-1px);
+}
+
+.artifact-control-button:active {
+  transform: translateY(0);
+}
+
+.artifact-control-button.active {
+  background: rgba(60, 132, 244, 0.1);
+  color: rgb(60, 132, 244);
+}
+
+.artifact-control-button:focus-visible {
+  outline: 2px solid rgb(60, 132, 244);
+  outline-offset: 2px;
+}
+
+/* Content area */
+.artifact-content {
+  padding: 0;
+  position: relative;
+}
+
+/* Code view styling */
+.artifact-code-container {
+  background: #f8f9fa;
+}
+
+.artifact-code-block {
+  margin: 0;
+  padding: 20px;
+  background: rgb(240, 242, 245);
+  font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #333;
+  border: none;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.artifact-code-block::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.artifact-code-block::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.artifact-code-block::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 4px;
+}
+
+.artifact-code-block::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}
+
+/* HTML iframe styling */
+.artifact-html-container {
+  background: #fff;
+  position: relative;
+  min-height: 200px;
+}
+
+.artifact-iframe {
+  width: 100%;
+  border: none;
+  display: block;
+  transition: height 0.3s ease;
+}
+
+.artifact-invalid-html {
+  padding: 20px;
+  background: #fff3cd;
+  border-left: 4px solid #ffc107;
+}
+
+.artifact-invalid-html p {
+  margin: 0 0 12px 0;
+  color: #856404;
+  font-weight: 500;
+}
+
+/* Markdown styling */
+.artifact-markdown-container {
+  padding: 20px;
+  background: #fff;
+  color: #333;
+  line-height: 1.7;
+}
+
+.artifact-markdown-container h1,
+.artifact-markdown-container h2,
+.artifact-markdown-container h3,
+.artifact-markdown-container h4,
+.artifact-markdown-container h5,
+.artifact-markdown-container h6 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.artifact-markdown-container h1 { font-size: 2em; }
+.artifact-markdown-container h2 { font-size: 1.5em; }
+.artifact-markdown-container h3 { font-size: 1.25em; }
+
+.artifact-markdown-container p {
+  margin-bottom: 16px;
+}
+
+.artifact-markdown-container code {
+  background: rgb(240, 242, 245);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
+  font-size: 0.9em;
+}
+
+.artifact-markdown-container pre {
+  background: rgb(240, 242, 245);
+  padding: 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.artifact-markdown-container pre code {
+  background: none;
+  padding: 0;
+}
+
+.artifact-markdown-container blockquote {
+  border-left: 4px solid #e9ecef;
+  padding-left: 16px;
+  margin: 16px 0;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.artifact-markdown-container ul,
+.artifact-markdown-container ol {
+  padding-left: 20px;
+  margin: 16px 0;
+}
+
+.artifact-markdown-container li {
+  margin: 4px 0;
+}
+
+/* Mermaid diagram styling */
+.artifact-mermaid-container {
+  padding: 20px;
+  background: #fff;
+  text-align: center;
+  min-height: 100px;
+}
+
+.artifact-mermaid-content {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.artifact-mermaid-content svg {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+/* Loading state */
+.artifact-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: #fff;
+  color: #666;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+}
+
+.artifact-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid rgb(60, 132, 244);
+  border-radius: 50%;
+  animation: artifact-spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes artifact-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.artifact-loading p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Error state */
+.artifact-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px;
+  background: #fff;
+  border-left: 4px solid #dc3545;
+}
+
+.artifact-error-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.artifact-error-content {
+  flex: 1;
+}
+
+.artifact-error-content h4 {
+  margin: 0 0 8px 0;
+  color: #dc3545;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.artifact-error-content p {
+  margin: 0 0 12px 0;
+  color: #6c757d;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.artifact-retry-button {
+  padding: 6px 12px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.artifact-retry-button:hover {
+  background: #c82333;
+}
+
+.artifact-retry-button:focus-visible {
+  outline: 2px solid #dc3545;
+  outline-offset: 2px;
+}
+
+/* Unsupported content type */
+.artifact-unsupported {
+  padding: 20px;
+  background: #f8f9fa;
+  text-align: center;
+  color: #6c757d;
+}
+
+.artifact-unsupported p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.artifact-unsupported code {
+  background: #e9ecef;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .artifact-header {
+    padding: 4px 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .artifact-controls {
+    gap: 2px;
+  }
+  
+  .artifact-control-button {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+  
+  .artifact-code-block {
+    padding: 12px;
+    font-size: 12px;
+  }
+  
+  .artifact-markdown-container,
+  .artifact-mermaid-container {
+    padding: 12px;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .artifact-container {
+    border: 2px solid #000;
+  }
+  
+  .artifact-control-button {
+    border: 1px solid #666;
+  }
+  
+  .artifact-control-button:hover {
+    border-color: #000;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .artifact-container,
+  .artifact-control-button,
+  .artifact-iframe {
+    transition: none;
+  }
+  
+  .artifact-loading-spinner {
+    animation: none;
+    border-top-color: transparent;
+  }
+}
+
+/* Dark mode support (if implemented) */
+@media (prefers-color-scheme: dark) {
+  .artifact-container {
+    background: #2d3748;
+    border-color: #4a5568;
+    color: #e2e8f0;
+  }
+  
+  .artifact-header {
+    background: #1a202c;
+    border-bottom-color: #4a5568;
+  }
+  
+  .artifact-code-block {
+    background: #1a202c;
+    color: #e2e8f0;
+  }
+  
+  .artifact-markdown-container,
+  .artifact-mermaid-container,
+  .artifact-html-container {
+    background: #2d3748;
+    color: #e2e8f0;
+  }
+  
+  .artifact-control-button {
+    background: rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+  }
+  
+  .artifact-control-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+}

@@ -4,8 +4,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import mermaid from 'mermaid';
 import ReactMarkdown from 'react-markdown';
 import type { NodeKey } from 'lexical';
-import type { ArtifactContentType } from '../nodes/ArtifactNode'; // Assuming ArtifactNode is in ../nodes
+import type { ArtifactContentType } from '../nodes/ArtifactNode';
 import DOMPurify from 'dompurify';
+import './ArtifactRenderer.css';
 
 // Function to check if content is valid HTML
 const isValidHTML = (content: string): boolean => {
@@ -46,54 +47,11 @@ interface ArtifactRendererProps {
   nodeKey: NodeKey;
 }
 
-// Basic styling for the container and toggle button
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    border: '1px solid #eee',
-    borderRadius: '4px',
-    padding: '10px',
-    margin: '10px 0',
-    position: 'relative',
-    backgroundColor: '#f9f9f9',
-  },
-  toggleButton: {
-    position: 'absolute',
-    top: '5px',
-    right: '5px',
-    padding: '2px 6px',
-    fontSize: '10px',
-    cursor: 'pointer',
-    backgroundColor: '#ddd',
-    border: '1px solid #ccc',
-    borderRadius: '3px',
-    zIndex: 10, // Ensure button is clickable over content
-  },
-  codeBlock: {
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-all',
-    backgroundColor: '#eee',
-    padding: '8px',
-    borderRadius: '4px',
-    maxHeight: '400px',
-    overflowY: 'auto',
-    fontFamily: 'monospace',
-    fontSize: '12px',
-  },
-  mermaidContainer: {
-    // Mermaid might need specific styling or container properties
-  },
-  htmlContainer: {
-    // Improved styling for HTML container
-    border: '1px solid #ddd',
-    borderRadius: '4px',
-    padding: '10px',
-    backgroundColor: '#fff',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    overflow: 'hidden',
-  },
-  markdownContainer: {
-    // Standard block element, styling can be applied via Tailwind/CSS
-  },
+// Content type configuration
+const CONTENT_TYPE_CONFIG: Record<ArtifactContentType, { label: string; icon: string; color: string }> = {
+  'application/vnd.ant.html': { label: 'HTML', icon: '🌐', color: '#e34c26' },
+  'text/markdown': { label: 'Markdown', icon: '📝', color: '#083fa1' },
+  'application/vnd.ant.mermaid': { label: 'Mermaid', icon: '📊', color: '#ff3670' },
 };
 
 // Initialize Mermaid
@@ -105,12 +63,32 @@ mermaid.initialize({
 
 const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ contentType, content, nodeKey }) => {
   const [showCode, setShowCode] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const mermaidRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [mermaidRendered, setMermaidRendered] = useState(false);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
   const [uniqueMermaidId] = useState(`mermaid-${nodeKey}-${Date.now()}`);
+  const [iframeHeight, setIframeHeight] = useState(400);
+
+  const typeConfig = CONTENT_TYPE_CONFIG[contentType];
+
+  const handleCopyToClipboard = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+    }
+  }, [content]);
 
   const renderMermaid = useCallback(async () => {
     if (mermaidRef.current && !mermaidRendered) {
+      setIsLoading(true);
+      setError(null);
       try {
         // Ensure the container is clean before rendering
         mermaidRef.current.innerHTML = ''; 
@@ -120,12 +98,40 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ contentType, conten
           setMermaidRendered(true);
         }
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        setError(`Failed to render Mermaid diagram: ${errorMessage}`);
         if (mermaidRef.current) {
-          mermaidRef.current.innerHTML = `<pre>Error rendering Mermaid diagram: ${error instanceof Error ? error.message : String(error)}</pre>`;
+          mermaidRef.current.innerHTML = '';
         }
+      } finally {
+        setIsLoading(false);
       }
     }
   }, [content, uniqueMermaidId, mermaidRendered]);
+
+  // Auto-adjust iframe height based on content
+  const adjustIframeHeight = useCallback(() => {
+    if (iframeRef.current) {
+      try {
+        const iframeDocument = iframeRef.current.contentDocument;
+        if (iframeDocument) {
+          const height = Math.min(
+            Math.max(iframeDocument.documentElement.scrollHeight + 20, 200),
+            800
+          );
+          setIframeHeight(height);
+        }
+      } catch (err) {
+        // Cross-origin restrictions might prevent access
+        console.warn('Could not adjust iframe height:', err);
+      }
+    }
+  }, []);
+
+  const handleIframeLoad = useCallback(() => {
+    setIframeLoaded(true);
+    adjustIframeHeight();
+  }, [adjustIframeHeight]);
 
   useEffect(() => {
     if (contentType === 'application/vnd.ant.mermaid' && !showCode) {
@@ -135,29 +141,78 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ contentType, conten
     return () => setMermaidRendered(false);
   }, [contentType, content, showCode, renderMermaid]);
 
+  useEffect(() => {
+    // Reset iframe loaded state when content changes
+    if (contentType === 'application/vnd.ant.html') {
+      setIframeLoaded(false);
+    }
+  }, [contentType, content]);
+
   const toggleView = () => setShowCode(!showCode);
 
+  const renderErrorState = () => (
+    <div className="artifact-error">
+      <div className="artifact-error-icon">⚠️</div>
+      <div className="artifact-error-content">
+        <h4>Error Rendering Content</h4>
+        <p>{error}</p>
+        <button 
+          className="artifact-retry-button"
+          onClick={() => {
+            setError(null);
+            if (contentType === 'application/vnd.ant.mermaid') {
+              setMermaidRendered(false);
+              renderMermaid();
+            }
+          }}
+        >
+          Try Again
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderLoadingState = () => (
+    <div className="artifact-loading">
+      <div className="artifact-loading-spinner"></div>
+      <p>Rendering {typeConfig.label}...</p>
+    </div>
+  );
+
   const renderContent = () => {
+    if (error) {
+      return renderErrorState();
+    }
+
+    if (isLoading) {
+      return renderLoadingState();
+    }
+
     if (showCode) {
-      return <pre style={styles.codeBlock}><code>{content}</code></pre>;
+      return (
+        <div className="artifact-code-container">
+          <pre className="artifact-code-block">
+            <code>{content}</code>
+          </pre>
+        </div>
+      );
     }
 
     switch (contentType) {
       case 'application/vnd.ant.html':
-        // Fix any issues with the HTML content
         const fixedContent = fixHTMLContent(content);
         
-        // Check if content is valid HTML
         if (!isValidHTML(fixedContent)) {
           return (
-            <div style={styles.htmlContainer}>
-              <p>Invalid HTML content. Showing as code:</p>
-              <pre style={styles.codeBlock}><code>{fixedContent}</code></pre>
+            <div className="artifact-html-container">
+              <div className="artifact-invalid-html">
+                <p>⚠️ Invalid HTML content. Showing as code:</p>
+                <pre className="artifact-code-block"><code>{fixedContent}</code></pre>
+              </div>
             </div>
           );
         }
         
-        // Use DOMPurify to sanitize the HTML
         const sanitizedHTML = DOMPurify.sanitize(fixedContent, {
           ADD_TAGS: ['style', 'script'],
           ADD_ATTR: ['onclick', 'onload', 'onerror'],
@@ -165,38 +220,88 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ contentType, conten
           FORBID_ATTR: []
         });
         
-        // Create a sandboxed iframe for safer HTML rendering
         return (
-          <div style={styles.htmlContainer}>
+          <div className="artifact-html-container">
+            {!iframeLoaded && (
+              <div className="artifact-loading">
+                <div className="artifact-loading-spinner"></div>
+                <p>Loading HTML content...</p>
+              </div>
+            )}
             <iframe
+              ref={iframeRef}
               srcDoc={sanitizedHTML}
-              style={{ width: '100%', height: '400px', border: '1px solid #ccc' }}
+              className="artifact-iframe"
+              style={{ 
+                height: `${iframeHeight}px`,
+                opacity: iframeLoaded ? 1 : 0,
+                transition: 'opacity 0.3s ease'
+              }}
               sandbox="allow-same-origin allow-scripts"
               title="HTML Content"
+              onLoad={handleIframeLoad}
             />
           </div>
         );
+
       case 'text/markdown':
         return (
-          <div style={styles.markdownContainer}>
+          <div className="artifact-markdown-container">
             <ReactMarkdown>{content}</ReactMarkdown>
           </div>
         );
+
       case 'application/vnd.ant.mermaid':
         return (
-          <div ref={mermaidRef} style={styles.mermaidContainer} />
+          <div className="artifact-mermaid-container">
+            <div ref={mermaidRef} className="artifact-mermaid-content" />
+          </div>
         );
+
       default:
-        return <pre>Unsupported artifact type: {contentType}</pre>;
+        return (
+          <div className="artifact-unsupported">
+            <p>⚠️ Unsupported artifact type: <code>{contentType}</code></p>
+          </div>
+        );
     }
   };
 
   return (
-    <div style={styles.container}>
-      <button style={styles.toggleButton} onClick={toggleView} title={showCode ? 'Show Rendered' : 'Show Code'}>
-        {showCode ? '👁️' : '</>'}
-      </button>
-      {renderContent()}
+    <div className="artifact-container">
+      {/* Header with type badge and controls */}
+      <div className="artifact-header">
+        <div className="artifact-type-badge" style={{ backgroundColor: typeConfig.color }}>
+          <span className="artifact-type-icon">{typeConfig.icon}</span>
+          <span className="artifact-type-label">{typeConfig.label}</span>
+        </div>
+        
+        <div className="artifact-controls">
+          <button
+            className="artifact-control-button"
+            onClick={handleCopyToClipboard}
+            title="Copy to clipboard"
+            aria-label="Copy content to clipboard"
+          >
+            {copied ? '✓' : '📋'}
+          </button>
+          
+          <button
+            className={`artifact-control-button ${showCode ? 'active' : ''}`}
+            onClick={toggleView}
+            title={showCode ? 'Show rendered view' : 'Show source code'}
+            aria-label={showCode ? 'Show rendered view' : 'Show source code'}
+          >
+            {showCode ? '👁️' : '</>'}
+          </button>
+          
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div className="artifact-content">
+        {renderContent()}
+      </div>
     </div>
   );
 };

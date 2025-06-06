@@ -20,7 +20,7 @@ export function $prepopulatedRichText() {
     // Add first paragraph
     const paragraph1 = $createParagraphNode();
     paragraph1.append(
-      $createTextNode('Tiles is a notebook interface that makes working with AI agents easier. It\'s a multiplayer, offline-first expereince based on MCP with support for generating widgets/artifacts.')
+      $createTextNode('Tiles is a notebook interface that makes working with AI agents easier. It\'s a multiplayer, offline-first experience based on MCP with support for generating widgets/artifacts.')
     );
     root.append(paragraph1);
 
@@ -54,7 +54,7 @@ export function $prepopulatedRichText() {
     const paragraph4 = $createParagraphNode();
     const mentionNode = $createMentionNode('dylibso/eval-py');
     paragraph4.append(mentionNode);
-    paragraph4.append($createTextNode(' My current left balance and financial analysis: Balance As of 5th April Bank: 87150 Credit debt (ICICI+HDFC+AXIS): 47504 + 35000 + 25732 ,  Splitwise debt: -261295. Draw a diagram to show how my money was spent and how much is left.'));
+    paragraph4.append($createTextNode(' As of 5th April, my current financial analysis: Bank balance: 87,150. Credit debt - AMEX: 47,504, HDFC: 35,000, AXIS: 25,732. Splitwise debt: -261,295. So, I want to analyze my numbers with a diagram to show how my money was spent and how much is left.'));
     root.append(paragraph4);
 
     // Add a horizontal line
@@ -64,7 +64,7 @@ export function $prepopulatedRichText() {
     // Add a paragraph with text
     const paragraph5 = $createParagraphNode();
     paragraph5.append(
-      $createTextNode('Then, place the cursor on the line above, and click the \`Run Tiles\` button to have the agent process it. '),
+      $createTextNode('Then, select the above text, and click the \`Run Tiles\` button to have the agent take it up. '),
       $createTextNode('To share this document, use the airplane icon in the top-right corner.'),
     );
     root.append(paragraph5);
