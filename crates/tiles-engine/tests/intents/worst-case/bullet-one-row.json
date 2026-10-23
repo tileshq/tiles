@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "form": "bullet",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "target",
+    "tone": "neutral"
+  },
+  "fields": {
+    "x": "name",
+    "y": "booked",
+    "target": "quota"
+  },
+  "unit": "usd",
+  "data": {
+    "rows": [
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "booked": 12345678.9,
+        "quota": 10000000
+      }
+    ]
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "v": 1,
+  "form": "scatter",
+  "title": "Larger accounts adopt more features, Globex is the outlier",
+  "claim": {
+    "kind": "relation",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "seats",
+    "y": "features",
+    "label": "account"
+  },
+  "subtitle": "Features adopted by seat count",
+  "highlight": [
+    "Globex"
+  ],
+  "data": {
+    "rows": [
+      {
+        "account": "Acme",
+        "seats": 120,
+        "features": 14
+      },
+      {
+        "account": "Northwind",
+        "seats": 340,
+        "features": 22
+      },
+      {
+        "account": "Globex",
+        "seats": 410,
+        "features": 6
+      },
+      {
+        "account": "Initech",
+        "seats": 60,
+        "features": 9
+      },
+      {
+        "account": "Umbrella",
+        "seats": 210,
+        "features": 17
+      },
+      {
+        "account": "Hooli",
+        "seats": 90,
+        "features": 11
+      },
+      {
+        "account": "Stark",
+        "seats": 280,
+        "features": 20
+      },
+      {
+        "account": "Wayne",
+        "seats": 160,
+        "features": 15
+      },
+      {
+        "account": "Wonka",
+        "seats": 45,
+        "features": 7
+      },
+      {
+        "account": "Tyrell",
+        "seats": 380,
+        "features": 24
+      }
+    ]
+  }
+}

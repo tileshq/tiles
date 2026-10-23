@@ -1,0 +1,7 @@
+[
+  { "orders.region": "Pacific Northwest", "orders.revenue": 184230.5 },
+  { "orders.region": "Northeast", "orders.revenue": 162004 },
+  { "orders.region": "California", "orders.revenue": 151870.25 },
+  { "orders.region": "Mountain", "orders.revenue": 88412 },
+  { "orders.region": "Southeast", "orders.revenue": 71960.75 }
+]

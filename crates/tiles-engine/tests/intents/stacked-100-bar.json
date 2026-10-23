@@ -1,0 +1,122 @@
+{
+  "v": 1,
+  "form": "stacked-100-bar",
+  "title": "Chat carries the most support in the Nordics and Benelux",
+  "subtitle": "Share of support tickets by channel, Q3",
+  "claim": {
+    "kind": "share",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "region",
+    "y": "tickets",
+    "series": "channel"
+  },
+  "highlight": [
+    "Chat"
+  ],
+  "data": {
+    "rows": [
+      {
+        "region": "Nordics",
+        "channel": "Chat",
+        "tickets": 2080
+      },
+      {
+        "region": "Nordics",
+        "channel": "Email",
+        "tickets": 960
+      },
+      {
+        "region": "Nordics",
+        "channel": "Phone",
+        "tickets": 640
+      },
+      {
+        "region": "Nordics",
+        "channel": "Other",
+        "tickets": 320
+      },
+      {
+        "region": "Benelux",
+        "channel": "Chat",
+        "tickets": 1520
+      },
+      {
+        "region": "Benelux",
+        "channel": "Email",
+        "tickets": 1200
+      },
+      {
+        "region": "Benelux",
+        "channel": "Phone",
+        "tickets": 880
+      },
+      {
+        "region": "Benelux",
+        "channel": "Other",
+        "tickets": 400
+      },
+      {
+        "region": "DACH",
+        "channel": "Chat",
+        "tickets": 1240
+      },
+      {
+        "region": "DACH",
+        "channel": "Email",
+        "tickets": 1360
+      },
+      {
+        "region": "DACH",
+        "channel": "Phone",
+        "tickets": 1000
+      },
+      {
+        "region": "DACH",
+        "channel": "Other",
+        "tickets": 400
+      },
+      {
+        "region": "Iberia",
+        "channel": "Chat",
+        "tickets": 1080
+      },
+      {
+        "region": "Iberia",
+        "channel": "Email",
+        "tickets": 880
+      },
+      {
+        "region": "Iberia",
+        "channel": "Phone",
+        "tickets": 1640
+      },
+      {
+        "region": "Iberia",
+        "channel": "Other",
+        "tickets": 400
+      },
+      {
+        "region": "Italy",
+        "channel": "Chat",
+        "tickets": 760
+      },
+      {
+        "region": "Italy",
+        "channel": "Email",
+        "tickets": 1120
+      },
+      {
+        "region": "Italy",
+        "channel": "Phone",
+        "tickets": 1760
+      },
+      {
+        "region": "Italy",
+        "channel": "Other",
+        "tickets": 360
+      }
+    ]
+  }
+}

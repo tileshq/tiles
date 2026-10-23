@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "form": "scatter",
+  "title": "Senior Product Design Engineer, Platform Infrastructure, leads every team on hires in 2026",
+  "claim": {
+    "kind": "relation",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "seats",
+    "y": "features",
+    "label": "name"
+  },
+  "highlight": [
+    "👩🏽 Priya"
+  ],
+  "data": {
+    "rows": [
+      {
+        "name": "Benachrichtigungseinstellungen",
+        "seats": 1284000.5,
+        "features": -42.5
+      },
+      {
+        "name": "王秀英",
+        "seats": 0,
+        "features": 0
+      },
+      {
+        "name": "نور الهدى عبد الرحمن",
+        "seats": 1,
+        "features": 1
+      },
+      {
+        "name": "🦊 Fox",
+        "seats": 1284,
+        "features": 1000000
+      },
+      {
+        "name": "👩🏽 Priya",
+        "seats": 1000000,
+        "features": 1284
+      },
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "seats": -42.5,
+        "features": 12345678.9
+      }
+    ]
+  }
+}

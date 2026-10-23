@@ -1,0 +1,26 @@
+{
+  "name": "scatter",
+  "summary": "Two measures per item as points; highlighted items are labelled.",
+  "layout": "scatter",
+  "width": { "min": 56, "max": 72, "per_point": 0.5 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "number",
+      "required": true,
+      "doc": "the horizontal measure"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the vertical measure"
+    },
+    {
+      "name": "label",
+      "kind": "category",
+      "required": false,
+      "doc": "the item's name, used for highlight and labels"
+    }
+  ]
+}

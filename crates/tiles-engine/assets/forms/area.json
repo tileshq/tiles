@@ -1,0 +1,23 @@
+{
+  "name": "area",
+  "summary": "One filled line from a zero baseline across ordered periods.",
+  "layout": "line",
+  "width": { "min": 48, "max": 72, "per_point": 2 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the ordered period on the horizontal axis"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the value"
+    }
+  ],
+  "options": {
+    "area": true
+  }
+}

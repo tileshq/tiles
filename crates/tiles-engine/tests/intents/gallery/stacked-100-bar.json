@@ -1,0 +1,122 @@
+{
+  "v": 1,
+  "form": "stacked-100-bar",
+  "title": "Search is the top channel only in France and Spain",
+  "subtitle": "Made-up data \u00b7 share of sign-ups by channel, percent, by country",
+  "claim": {
+    "kind": "compare",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "country",
+    "y": "share",
+    "series": "channel"
+  },
+  "data": {
+    "rows": [
+      {
+        "country": "France",
+        "channel": "Search",
+        "share": 56
+      },
+      {
+        "country": "France",
+        "channel": "Referral",
+        "share": 18
+      },
+      {
+        "country": "France",
+        "channel": "Social",
+        "share": 21
+      },
+      {
+        "country": "France",
+        "channel": "Other",
+        "share": 5
+      },
+      {
+        "country": "Germany",
+        "channel": "Search",
+        "share": 31
+      },
+      {
+        "country": "Germany",
+        "channel": "Referral",
+        "share": 41
+      },
+      {
+        "country": "Germany",
+        "channel": "Social",
+        "share": 22
+      },
+      {
+        "country": "Germany",
+        "channel": "Other",
+        "share": 6
+      },
+      {
+        "country": "Netherlands",
+        "channel": "Search",
+        "share": 12
+      },
+      {
+        "country": "Netherlands",
+        "channel": "Referral",
+        "share": 63
+      },
+      {
+        "country": "Netherlands",
+        "channel": "Social",
+        "share": 21
+      },
+      {
+        "country": "Netherlands",
+        "channel": "Other",
+        "share": 4
+      },
+      {
+        "country": "Belgium",
+        "channel": "Search",
+        "share": 33
+      },
+      {
+        "country": "Belgium",
+        "channel": "Referral",
+        "share": 40
+      },
+      {
+        "country": "Belgium",
+        "channel": "Social",
+        "share": 23
+      },
+      {
+        "country": "Belgium",
+        "channel": "Other",
+        "share": 4
+      },
+      {
+        "country": "Spain",
+        "channel": "Search",
+        "share": 47
+      },
+      {
+        "country": "Spain",
+        "channel": "Referral",
+        "share": 14
+      },
+      {
+        "country": "Spain",
+        "channel": "Social",
+        "share": 33
+      },
+      {
+        "country": "Spain",
+        "channel": "Other",
+        "share": 6
+      }
+    ]
+  },
+  "highlight": [
+    "Search"
+  ]
+}

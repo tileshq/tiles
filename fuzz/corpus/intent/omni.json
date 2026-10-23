@@ -1,0 +1,1 @@
+{"v":1,"form":"column","title":"Orders","claim":{"kind":"trend"},"fields":{"x":"orders.created_at[week]","y":"orders.count"},"data":{"omni":{"topic":"orders","fields":["orders.created_at[week]","orders.count"]}}}

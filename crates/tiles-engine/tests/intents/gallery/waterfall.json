@@ -1,0 +1,39 @@
+{
+  "v": 1,
+  "form": "waterfall",
+  "title": "We added \u20ac1.7M of ARR this quarter; churn and contraction took back \u20ac0.7M",
+  "subtitle": "Made-up data \u00b7 ARR bridge, June to September 2026, \u20ac millions, axis from zero",
+  "claim": {
+    "kind": "compare",
+    "tone": "neutral"
+  },
+  "fields": {
+    "x": "step",
+    "y": "change"
+  },
+  "data": {
+    "rows": [
+      {
+        "step": "Jun ARR",
+        "change": 8200000
+      },
+      {
+        "step": "New",
+        "change": 1100000
+      },
+      {
+        "step": "Expansion",
+        "change": 600000
+      },
+      {
+        "step": "Contraction",
+        "change": -200000
+      },
+      {
+        "step": "Churn",
+        "change": -500000
+      }
+    ]
+  },
+  "unit": "eur"
+}

@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "form": "bar",
+  "title": "Northwind leads new revenue by a wide margin",
+  "claim": {
+    "kind": "rank",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "account",
+    "y": "revenue"
+  },
+  "highlight": [
+    "Northwind"
+  ],
+  "data": {
+    "rows": [
+      {
+        "account": "Acme",
+        "revenue": 184000
+      },
+      {
+        "account": "Northwind",
+        "revenue": 412500
+      },
+      {
+        "account": "Globex",
+        "revenue": 226300
+      },
+      {
+        "account": "Initech",
+        "revenue": 97400
+      },
+      {
+        "account": "Umbrella",
+        "revenue": 151900
+      },
+      {
+        "account": "Hooli",
+        "revenue": 73200
+      }
+    ]
+  }
+}

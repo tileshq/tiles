@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "form": "lollipop",
+  "title": "Billing sync fails most often on retries",
+  "claim": {
+    "kind": "rank",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "step",
+    "y": "failures"
+  },
+  "highlight": [
+    "Retry"
+  ],
+  "data": {
+    "rows": [
+      {
+        "step": "Auth",
+        "failures": 41
+      },
+      {
+        "step": "Fetch",
+        "failures": 77
+      },
+      {
+        "step": "Retry",
+        "failures": 132
+      },
+      {
+        "step": "Parse",
+        "failures": 58
+      },
+      {
+        "step": "Write",
+        "failures": 23
+      },
+      {
+        "step": "Notify",
+        "failures": 12
+      }
+    ]
+  }
+}

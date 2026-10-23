@@ -1,0 +1,20 @@
+{
+  "name": "column",
+  "summary": "Vertical bars in data order, one per period or category, each carrying its value.",
+  "layout": "columns",
+  "width": { "min": 40, "max": 72, "per_point": 3.5 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the period or category under each bar"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the bar's value"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "v": 1,
+  "form": "dumbbell",
+  "title": "Routing got faster in every queue, most in Billing",
+  "claim": {
+    "kind": "change",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "queue",
+    "lo": "before",
+    "hi": "after"
+  },
+  "subtitle": "Minutes to first assignment, before and after",
+  "highlight": [
+    "Billing"
+  ],
+  "data": {
+    "rows": [
+      {
+        "queue": "Billing",
+        "before": 46,
+        "after": 18
+      },
+      {
+        "queue": "Tech",
+        "before": 38,
+        "after": 25
+      },
+      {
+        "queue": "Sales",
+        "before": 22,
+        "after": 17
+      },
+      {
+        "queue": "Account",
+        "before": 31,
+        "after": 20
+      },
+      {
+        "queue": "Security",
+        "before": 27,
+        "after": 23
+      }
+    ]
+  }
+}

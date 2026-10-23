@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "form": "big-number",
+  "title": "Annual recurring revenue reached $4.82M",
+  "claim": {
+    "kind": "target",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "quarter",
+    "y": "arr",
+    "target": "goal"
+  },
+  "subtitle": "ARR in dollars, quarter end",
+  "data": {
+    "rows": [
+      {
+        "quarter": "Q1 25",
+        "arr": 3120000,
+        "goal": 5000000
+      },
+      {
+        "quarter": "Q2 25",
+        "arr": 3380000,
+        "goal": 5000000
+      },
+      {
+        "quarter": "Q3 25",
+        "arr": 3610000,
+        "goal": 5000000
+      },
+      {
+        "quarter": "Q4 25",
+        "arr": 3905000,
+        "goal": 5000000
+      },
+      {
+        "quarter": "Q1 26",
+        "arr": 4180000,
+        "goal": 5000000
+      },
+      {
+        "quarter": "Q2 26",
+        "arr": 4460000,
+        "goal": 5000000
+      },
+      {
+        "quarter": "Q3 26",
+        "arr": 4820000,
+        "goal": 5000000
+      }
+    ]
+  }
+}

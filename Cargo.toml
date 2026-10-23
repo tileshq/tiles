@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "LicenseRef-FSL-1.1-ALv2"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
+tiles-engine = { path = "crates/tiles-engine" }
+tiles-intent = { path = "crates/tiles-intent" }
+tiles-mcp = { path = "crates/tiles-mcp" }
+tiles-net = { path = "crates/tiles-net" }
+tiles-omni = { path = "crates/tiles-omni" }
+tiles-term = { path = "crates/tiles-term" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
+[profile.release]
+# No debug info and no symbols; the release job also remaps every source
+# path out of the binary (ADR-022, scripts/release-rustflags.sh).
+debug = false
+lto = "thin"
+codegen-units = 1
+strip = true

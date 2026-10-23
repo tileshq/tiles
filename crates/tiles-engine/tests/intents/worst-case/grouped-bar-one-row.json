@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "form": "grouped-bar",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "compare",
+    "tone": "neutral"
+  },
+  "fields": {
+    "x": "name",
+    "y": "value",
+    "series": "who"
+  },
+  "unit": "usd",
+  "data": {
+    "rows": [
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "who": "👩🏽 Priya",
+        "value": 12345678.9
+      }
+    ]
+  }
+}

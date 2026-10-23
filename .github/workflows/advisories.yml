@@ -1,0 +1,31 @@
+# Weekly advisory check (ADR-024, ADR-056): the policy job's cargo deny check
+# and cargo audit, with the same pinned tools and deny.toml, every Monday and
+# on demand, so an advisory published between pull requests fails a run
+# within a week instead of waiting for the next PR or push to main.
+name: Advisories
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-deny@0.20.2,cargo-audit@0.22.2
+      - name: Licences, advisories, bans and sources
+        run: cargo deny check
+      - name: Known vulnerabilities (cargo-audit)
+        run: cargo audit

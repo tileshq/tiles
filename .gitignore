@@ -1,0 +1,13 @@
+/target
+# cargo-fuzz output; the seed corpus in fuzz/corpus is committed.
+/fuzz/target
+/fuzz/artifacts
+/fuzz/coverage
+# Agent scratch, plans and research notes never ship (definition of done, point 25).
+/scratch/
+/notes/
+*.scratch.md
+.DS_Store
+# A harness's per-machine settings hold local paths and hooks.
+.claude/settings.local.json
+__pycache__/

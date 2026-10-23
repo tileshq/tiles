@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "form": "dumbbell",
+  "title": "Round-robin routing cut lead waits by over half an hour, except in APAC",
+  "subtitle": "Made-up data \u00b7 median minutes from inbound lead to first touch, Q2 manual routing (grey) vs Q3 round-robin (blue)",
+  "claim": {
+    "kind": "compare",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "region",
+    "lo": "Q2",
+    "hi": "Q3"
+  },
+  "data": {
+    "rows": [
+      {
+        "region": "APAC",
+        "Q2": 61,
+        "Q3": 52
+      },
+      {
+        "region": "EMEA North",
+        "Q2": 55,
+        "Q3": 9
+      },
+      {
+        "region": "EMEA South",
+        "Q2": 47,
+        "Q3": 8
+      },
+      {
+        "region": "NA West",
+        "Q2": 42,
+        "Q3": 6
+      },
+      {
+        "region": "NA East",
+        "Q2": 38,
+        "Q3": 5
+      }
+    ]
+  },
+  "highlight": [
+    "APAC"
+  ],
+  "note": "Still 52 min"
+}

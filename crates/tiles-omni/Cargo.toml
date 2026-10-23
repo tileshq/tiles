@@ -1,0 +1,30 @@
+[package]
+name = "tiles-omni"
+description = "The Omni data source: lists topics and fields and runs topic queries over Omni's REST API."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# The loopback replay server and an `http://127.0.0.1` base URL, for tests only.
+replay = []
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde_path_to_error = "0.1"
+tiles-intent.workspace = true
+tiles-net.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+
+[dev-dependencies]
+# The TLS tests run a rustls server of their own.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tiles-omni = { path = ".", features = ["replay"] }
+
+[lints]
+workspace = true

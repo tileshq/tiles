@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "form": "scatter",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "relation",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "seats",
+    "y": "features",
+    "label": "name"
+  },
+  "data": {
+    "rows": [
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "seats": 1284000.5,
+        "features": 12345678.9
+      }
+    ]
+  }
+}

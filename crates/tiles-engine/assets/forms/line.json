@@ -1,0 +1,20 @@
+{
+  "name": "line",
+  "summary": "One line across ordered periods, with a point on each value.",
+  "layout": "line",
+  "width": { "min": 48, "max": 72, "per_point": 2 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the ordered period on the horizontal axis"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the value"
+    }
+  ]
+}

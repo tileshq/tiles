@@ -1,0 +1,26 @@
+{
+  "name": "big-number",
+  "summary": "One headline number: the last row's value over a sparkline of the rows, which names where it starts, with an optional target.",
+  "layout": "kpi",
+  "width": { "min": 35, "max": 48, "per_point": 0.5 },
+  "roles": [
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the measure; the last row is the headline"
+    },
+    {
+      "name": "x",
+      "kind": "category",
+      "required": false,
+      "doc": "the period of each row, for the sparkline; monthly YYYY-MM periods name its start as \"12 months ago\""
+    },
+    {
+      "name": "target",
+      "kind": "number",
+      "required": false,
+      "doc": "the goal for the headline value"
+    }
+  ]
+}

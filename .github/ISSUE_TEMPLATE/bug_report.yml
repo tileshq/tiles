@@ -1,0 +1,43 @@
+name: Bug report
+description: Tiles drew something wrong, drew nothing, or failed.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A security problem goes to the private channel in SECURITY.md, not here. Leave out company data: no rows, titles or field names you would not post publicly.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Tiles did instead. A screenshot of the card helps.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The command or prompt, and the chart intent if you have it (`tiles render` takes the same JSON).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: tiles --version
+      placeholder: tiles 0.2.0 (intent schema 1)
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: tiles check output
+      description: Run `tiles check` in the terminal where it went wrong and paste every line. It names the terminal, route and harnesses, never a card's title or values.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Terminal and harness
+      description: With their versions, if `tiles check` does not show them.
+      placeholder: Warp, with Claude Code inside it

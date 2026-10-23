@@ -1,0 +1,1 @@
+WITH p AS (SELECT * FROM {{ ref('fct_payments') }}) SELECT month, SUM(amount) AS amount FROM p JOIN {{- ref("acme", "stg_organizations", v=2) -}} USING (organization_id) GROUP BY 1

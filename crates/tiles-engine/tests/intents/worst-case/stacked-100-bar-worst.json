@@ -1,0 +1,78 @@
+{
+  "v": 1,
+  "form": "stacked-100-bar",
+  "title": "Senior Product Design Engineer, Platform Infrastructure, leads every team on hires in 2026",
+  "claim": {
+    "kind": "share",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "name",
+    "y": "value",
+    "series": "who"
+  },
+  "data": {
+    "rows": [
+      {
+        "name": "Benachrichtigungseinstellungen",
+        "who": "🦊 Fox",
+        "value": 1284000.5
+      },
+      {
+        "name": "Benachrichtigungseinstellungen",
+        "who": "王秀英",
+        "value": 42.5
+      },
+      {
+        "name": "王秀英",
+        "who": "🦊 Fox",
+        "value": 1000000
+      },
+      {
+        "name": "王秀英",
+        "who": "王秀英",
+        "value": 1284
+      },
+      {
+        "name": "نور الهدى عبد الرحمن",
+        "who": "🦊 Fox",
+        "value": 0
+      },
+      {
+        "name": "نور الهدى عبد الرحمن",
+        "who": "王秀英",
+        "value": 1
+      },
+      {
+        "name": "🦊 Fox",
+        "who": "🦊 Fox",
+        "value": 12345678.9
+      },
+      {
+        "name": "🦊 Fox",
+        "who": "王秀英",
+        "value": 1284000.5
+      },
+      {
+        "name": "👩🏽 Priya",
+        "who": "🦊 Fox",
+        "value": 1
+      },
+      {
+        "name": "👩🏽 Priya",
+        "who": "王秀英",
+        "value": 0
+      },
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "who": "🦊 Fox",
+        "value": 1284
+      },
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "who": "王秀英",
+        "value": 1000000
+      }
+    ]
+  }
+}

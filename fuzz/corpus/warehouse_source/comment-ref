@@ -1,0 +1,1 @@
+SELECT month FROM `acme-prod.dbt_marts.fct_monthly` -- {{ ref('x', version='3') }}

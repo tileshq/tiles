@@ -1,0 +1,28 @@
+name: Chart form request
+description: Ask for a chart Tiles cannot draw yet.
+labels: [chart form]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: The question the chart answers
+      description: What the reader should see at a glance, such as "which region grew fastest this quarter".
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: The data's shape
+      description: The fields and their types, and roughly how many rows. Made-up values are fine; leave out company data.
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: An example
+      description: A link to or picture of the chart you have in mind.
+  - type: input
+    id: closest
+    attributes:
+      label: The closest form today
+      description: The form in `tiles forms` that comes nearest, and what it gets wrong for this.

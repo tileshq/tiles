@@ -1,0 +1,323 @@
+{
+  "v": 1,
+  "form": "multi-line",
+  "title": "Germany is the only market where stickiness keeps climbing",
+  "subtitle": "Made-up data \u00b7 DAU/WAU ratio by market, last 12 months",
+  "claim": {
+    "kind": "compare",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "month",
+    "y": "v",
+    "series": "market"
+  },
+  "data": {
+    "rows": [
+      {
+        "month": "2025-10",
+        "market": "Germany",
+        "v": 31
+      },
+      {
+        "month": "2025-11",
+        "market": "Germany",
+        "v": 32
+      },
+      {
+        "month": "2025-12",
+        "market": "Germany",
+        "v": 33
+      },
+      {
+        "month": "2026-01",
+        "market": "Germany",
+        "v": 34
+      },
+      {
+        "month": "2026-02",
+        "market": "Germany",
+        "v": 35.5
+      },
+      {
+        "month": "2026-03",
+        "market": "Germany",
+        "v": 36
+      },
+      {
+        "month": "2026-04",
+        "market": "Germany",
+        "v": 37.5
+      },
+      {
+        "month": "2026-05",
+        "market": "Germany",
+        "v": 38.5
+      },
+      {
+        "month": "2026-06",
+        "market": "Germany",
+        "v": 40
+      },
+      {
+        "month": "2026-07",
+        "market": "Germany",
+        "v": 41
+      },
+      {
+        "month": "2026-08",
+        "market": "Germany",
+        "v": 42.5
+      },
+      {
+        "month": "2026-09",
+        "market": "Germany",
+        "v": 44
+      },
+      {
+        "month": "2025-10",
+        "market": "Netherlands",
+        "v": 38
+      },
+      {
+        "month": "2025-11",
+        "market": "Netherlands",
+        "v": 38
+      },
+      {
+        "month": "2025-12",
+        "market": "Netherlands",
+        "v": 37.5
+      },
+      {
+        "month": "2026-01",
+        "market": "Netherlands",
+        "v": 38
+      },
+      {
+        "month": "2026-02",
+        "market": "Netherlands",
+        "v": 37
+      },
+      {
+        "month": "2026-03",
+        "market": "Netherlands",
+        "v": 37.5
+      },
+      {
+        "month": "2026-04",
+        "market": "Netherlands",
+        "v": 37
+      },
+      {
+        "month": "2026-05",
+        "market": "Netherlands",
+        "v": 36.5
+      },
+      {
+        "month": "2026-06",
+        "market": "Netherlands",
+        "v": 37
+      },
+      {
+        "month": "2026-07",
+        "market": "Netherlands",
+        "v": 36.5
+      },
+      {
+        "month": "2026-08",
+        "market": "Netherlands",
+        "v": 36
+      },
+      {
+        "month": "2026-09",
+        "market": "Netherlands",
+        "v": 36.5
+      },
+      {
+        "month": "2025-10",
+        "market": "France",
+        "v": 29
+      },
+      {
+        "month": "2025-11",
+        "market": "France",
+        "v": 29.5
+      },
+      {
+        "month": "2025-12",
+        "market": "France",
+        "v": 29
+      },
+      {
+        "month": "2026-01",
+        "market": "France",
+        "v": 28.5
+      },
+      {
+        "month": "2026-02",
+        "market": "France",
+        "v": 29
+      },
+      {
+        "month": "2026-03",
+        "market": "France",
+        "v": 28
+      },
+      {
+        "month": "2026-04",
+        "market": "France",
+        "v": 28.5
+      },
+      {
+        "month": "2026-05",
+        "market": "France",
+        "v": 28
+      },
+      {
+        "month": "2026-06",
+        "market": "France",
+        "v": 28.5
+      },
+      {
+        "month": "2026-07",
+        "market": "France",
+        "v": 28
+      },
+      {
+        "month": "2026-08",
+        "market": "France",
+        "v": 27.5
+      },
+      {
+        "month": "2026-09",
+        "market": "France",
+        "v": 28
+      },
+      {
+        "month": "2025-10",
+        "market": "Spain",
+        "v": 25
+      },
+      {
+        "month": "2025-11",
+        "market": "Spain",
+        "v": 25.5
+      },
+      {
+        "month": "2025-12",
+        "market": "Spain",
+        "v": 25
+      },
+      {
+        "month": "2026-01",
+        "market": "Spain",
+        "v": 25
+      },
+      {
+        "month": "2026-02",
+        "market": "Spain",
+        "v": 24.5
+      },
+      {
+        "month": "2026-03",
+        "market": "Spain",
+        "v": 25
+      },
+      {
+        "month": "2026-04",
+        "market": "Spain",
+        "v": 25.5
+      },
+      {
+        "month": "2026-05",
+        "market": "Spain",
+        "v": 25
+      },
+      {
+        "month": "2026-06",
+        "market": "Spain",
+        "v": 24.5
+      },
+      {
+        "month": "2026-07",
+        "market": "Spain",
+        "v": 24
+      },
+      {
+        "month": "2026-08",
+        "market": "Spain",
+        "v": 24.5
+      },
+      {
+        "month": "2026-09",
+        "market": "Spain",
+        "v": 24
+      },
+      {
+        "month": "2025-10",
+        "market": "Belgium",
+        "v": 33
+      },
+      {
+        "month": "2025-11",
+        "market": "Belgium",
+        "v": 33
+      },
+      {
+        "month": "2025-12",
+        "market": "Belgium",
+        "v": 32.5
+      },
+      {
+        "month": "2026-01",
+        "market": "Belgium",
+        "v": 32
+      },
+      {
+        "month": "2026-02",
+        "market": "Belgium",
+        "v": 32.5
+      },
+      {
+        "month": "2026-03",
+        "market": "Belgium",
+        "v": 32
+      },
+      {
+        "month": "2026-04",
+        "market": "Belgium",
+        "v": 31.5
+      },
+      {
+        "month": "2026-05",
+        "market": "Belgium",
+        "v": 31.5
+      },
+      {
+        "month": "2026-06",
+        "market": "Belgium",
+        "v": 31
+      },
+      {
+        "month": "2026-07",
+        "market": "Belgium",
+        "v": 31.5
+      },
+      {
+        "month": "2026-08",
+        "market": "Belgium",
+        "v": 31
+      },
+      {
+        "month": "2026-09",
+        "market": "Belgium",
+        "v": 30.5
+      }
+    ]
+  },
+  "highlight": [
+    "Germany"
+  ],
+  "unit": "percent"
+}

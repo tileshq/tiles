@@ -1,0 +1,65 @@
+{
+  "v": 1,
+  "form": "line",
+  "title": "Weekly active teams climbed all year",
+  "claim": {
+    "kind": "trend",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "month",
+    "y": "teams"
+  },
+  "data": {
+    "rows": [
+      {
+        "month": "Jan",
+        "teams": 1180
+      },
+      {
+        "month": "Feb",
+        "teams": 1214
+      },
+      {
+        "month": "Mar",
+        "teams": 1262
+      },
+      {
+        "month": "Apr",
+        "teams": 1240
+      },
+      {
+        "month": "May",
+        "teams": 1318
+      },
+      {
+        "month": "Jun",
+        "teams": 1377
+      },
+      {
+        "month": "Jul",
+        "teams": 1402
+      },
+      {
+        "month": "Aug",
+        "teams": 1455
+      },
+      {
+        "month": "Sep",
+        "teams": 1521
+      },
+      {
+        "month": "Oct",
+        "teams": 1586
+      },
+      {
+        "month": "Nov",
+        "teams": 1610
+      },
+      {
+        "month": "Dec",
+        "teams": 1698
+      }
+    ]
+  }
+}

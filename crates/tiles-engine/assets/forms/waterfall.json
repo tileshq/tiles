@@ -1,0 +1,20 @@
+{
+  "name": "waterfall",
+  "summary": "Signed steps from zero to a total: rises in the accent, falls in red.",
+  "layout": "waterfall",
+  "width": { "min": 48, "max": 72, "per_point": 4 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the name of each step"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the signed change"
+    }
+  ]
+}

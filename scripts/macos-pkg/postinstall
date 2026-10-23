@@ -1,0 +1,20 @@
+#!/bin/sh
+# Runs as root after the Tiles package puts tiles in /usr/local/bin
+# (ADR-035). Opens Terminal as the person signed in at the screen and runs
+# tiles setup there, which lists what it will change and asks before changing
+# anything. When it cannot, it writes the next step to the install log and
+# the installer's last page tells the person to run tiles setup. It always
+# exits 0: tiles is installed either way.
+#
+# Installer passes the package path, the install location and the target
+# volume; COMMAND_LINE_INSTALL is set when `installer` runs it from a shell.
+target="${3:-/}"
+setup=/usr/local/share/tiles/tiles-setup.command
+next() { echo "tiles: $1; open Terminal and run tiles setup"; exit 0; }
+[ "$target" = / ] || next "installed on $target, not the startup disk"
+[ -z "${COMMAND_LINE_INSTALL:-}" ] || next "installed from the command line"
+user="$(stat -f %Su /dev/console 2>/dev/null)"
+case "$user" in "" | root | loginwindow) next "no one is signed in at the screen" ;; esac
+uid="$(id -u "$user" 2>/dev/null)" || next "cannot find $user's user id"
+launchctl asuser "$uid" sudo -u "$user" open -a Terminal "$setup" || next "could not open Terminal"
+exit 0

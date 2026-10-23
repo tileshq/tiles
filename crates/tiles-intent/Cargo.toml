@@ -1,0 +1,15 @@
+[package]
+name = "tiles-intent"
+description = "The chart intent language a model fills in to ask Tiles for a chart."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

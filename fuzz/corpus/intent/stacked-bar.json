@@ -1,0 +1,81 @@
+{
+  "v": 1,
+  "form": "stacked-bar",
+  "title": "Enterprise accounts nearly doubled over the year",
+  "claim": {
+    "kind": "share",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "quarter",
+    "y": "accounts",
+    "series": "plan"
+  },
+  "highlight": [
+    "Enterprise"
+  ],
+  "data": {
+    "rows": [
+      {
+        "quarter": "Q1",
+        "plan": "Starter",
+        "accounts": 120
+      },
+      {
+        "quarter": "Q1",
+        "plan": "Growth",
+        "accounts": 64
+      },
+      {
+        "quarter": "Q1",
+        "plan": "Enterprise",
+        "accounts": 22
+      },
+      {
+        "quarter": "Q2",
+        "plan": "Starter",
+        "accounts": 138
+      },
+      {
+        "quarter": "Q2",
+        "plan": "Growth",
+        "accounts": 71
+      },
+      {
+        "quarter": "Q2",
+        "plan": "Enterprise",
+        "accounts": 25
+      },
+      {
+        "quarter": "Q3",
+        "plan": "Starter",
+        "accounts": 151
+      },
+      {
+        "quarter": "Q3",
+        "plan": "Growth",
+        "accounts": 83
+      },
+      {
+        "quarter": "Q3",
+        "plan": "Enterprise",
+        "accounts": 31
+      },
+      {
+        "quarter": "Q4",
+        "plan": "Starter",
+        "accounts": 170
+      },
+      {
+        "quarter": "Q4",
+        "plan": "Growth",
+        "accounts": 90
+      },
+      {
+        "quarter": "Q4",
+        "plan": "Enterprise",
+        "accounts": 42
+      }
+    ]
+  }
+}

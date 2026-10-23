@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/tileshq/tiles/security/advisories/new
+    about: Report it privately through GitHub's form, or by the email in SECURITY.md. Never in a public issue.

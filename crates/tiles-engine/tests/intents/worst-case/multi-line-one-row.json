@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "form": "multi-line",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "compare",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "period",
+    "y": "value",
+    "series": "who"
+  },
+  "unit": "usd",
+  "data": {
+    "rows": [
+      {
+        "period": "2026",
+        "who": "👩🏽 Priya",
+        "value": 12345678.9
+      }
+    ]
+  }
+}

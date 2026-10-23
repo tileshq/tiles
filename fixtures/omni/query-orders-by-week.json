@@ -1,0 +1,6 @@
+[
+  { "orders.created_at[week]": "2026-08-03", "orders.count": 412 },
+  { "orders.created_at[week]": "2026-08-10", "orders.count": 431 },
+  { "orders.created_at[week]": "2026-08-17", "orders.count": 298 },
+  { "orders.created_at[week]": "2026-08-24", "orders.count": 455 }
+]

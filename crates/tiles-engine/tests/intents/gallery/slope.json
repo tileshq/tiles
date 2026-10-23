@@ -1,0 +1,63 @@
+{
+  "v": 1,
+  "form": "slope",
+  "title": "Outbound is the only lead source whose win rate fell",
+  "subtitle": "Made-up data \u00b7 win rate by lead source, first vs second half of 2026",
+  "claim": {
+    "kind": "compare",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "half",
+    "y": "win",
+    "series": "source"
+  },
+  "data": {
+    "rows": [
+      {
+        "source": "Inbound",
+        "half": "H1 2026",
+        "win": 24
+      },
+      {
+        "source": "Inbound",
+        "half": "H2 2026",
+        "win": 27
+      },
+      {
+        "source": "Partner",
+        "half": "H1 2026",
+        "win": 31
+      },
+      {
+        "source": "Partner",
+        "half": "H2 2026",
+        "win": 34
+      },
+      {
+        "source": "Events",
+        "half": "H1 2026",
+        "win": 19
+      },
+      {
+        "source": "Events",
+        "half": "H2 2026",
+        "win": 21
+      },
+      {
+        "source": "Outbound",
+        "half": "H1 2026",
+        "win": 22
+      },
+      {
+        "source": "Outbound",
+        "half": "H2 2026",
+        "win": 13
+      }
+    ]
+  },
+  "highlight": [
+    "Outbound"
+  ],
+  "unit": "percent"
+}

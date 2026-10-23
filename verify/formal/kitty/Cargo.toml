@@ -1,0 +1,21 @@
+# Kani proofs for the kitty encoder's payload (crates/tiles-term/src/b64.rs)
+# and the checker for its framing (kitty.rs): nothing from a chart reaches
+# the terminal except base64 inside the fixed framing. Its own workspace, so
+# the main build never compiles it; see README.md and
+# .agents/skills/verify-kitty-encoder/.
+
+[package]
+name = "tiles-formal-kitty"
+version = "0.0.0"
+edition = "2024"
+license = "LicenseRef-FSL-1.1-ALv2"
+publish = false
+
+[workspace]
+members = ["."]
+
+[dependencies]
+tiles-term = { path = "../../../crates/tiles-term" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

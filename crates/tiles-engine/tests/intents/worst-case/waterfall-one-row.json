@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "form": "waterfall",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "change",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "name",
+    "y": "value"
+  },
+  "unit": "usd",
+  "data": {
+    "rows": [
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 12345678.9
+      }
+    ]
+  }
+}

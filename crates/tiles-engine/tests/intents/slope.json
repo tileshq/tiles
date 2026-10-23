@@ -1,0 +1,72 @@
+{
+  "v": 1,
+  "form": "slope",
+  "title": "Search overtook paid social as the top source",
+  "claim": {
+    "kind": "change",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "period",
+    "y": "share",
+    "series": "source"
+  },
+  "subtitle": "Share of new leads (%)",
+  "highlight": [
+    "Search"
+  ],
+  "data": {
+    "rows": [
+      {
+        "period": "2025",
+        "source": "Search",
+        "share": 18
+      },
+      {
+        "period": "2026",
+        "source": "Search",
+        "share": 27
+      },
+      {
+        "period": "2025",
+        "source": "Referral",
+        "share": 22
+      },
+      {
+        "period": "2026",
+        "source": "Referral",
+        "share": 24
+      },
+      {
+        "period": "2025",
+        "source": "Paid social",
+        "share": 31
+      },
+      {
+        "period": "2026",
+        "source": "Paid social",
+        "share": 19
+      },
+      {
+        "period": "2025",
+        "source": "Email",
+        "share": 12
+      },
+      {
+        "period": "2026",
+        "source": "Email",
+        "share": 15
+      },
+      {
+        "period": "2025",
+        "source": "Events",
+        "share": 9
+      },
+      {
+        "period": "2026",
+        "source": "Events",
+        "share": 11
+      }
+    ]
+  }
+}

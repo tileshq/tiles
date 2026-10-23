@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "form": "waterfall",
+  "title": "Expansion more than covered churn this quarter",
+  "claim": {
+    "kind": "change",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "movement",
+    "y": "arr"
+  },
+  "subtitle": "Net new ARR by movement, $K",
+  "data": {
+    "rows": [
+      {
+        "movement": "New",
+        "arr": 412
+      },
+      {
+        "movement": "Expansion",
+        "arr": 286
+      },
+      {
+        "movement": "Contraction",
+        "arr": -94
+      },
+      {
+        "movement": "Churn",
+        "arr": -187
+      }
+    ]
+  }
+}

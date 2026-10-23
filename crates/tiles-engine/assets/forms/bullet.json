@@ -1,0 +1,26 @@
+{
+  "name": "bullet",
+  "summary": "A value against its target per row: a bar on a track with a target tick.",
+  "layout": "bullet",
+  "width": { "min": 44, "max": 64, "per_label_char": 1.2 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the name of each measure"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the actual value"
+    },
+    {
+      "name": "target",
+      "kind": "number",
+      "required": true,
+      "doc": "the goal"
+    }
+  ]
+}

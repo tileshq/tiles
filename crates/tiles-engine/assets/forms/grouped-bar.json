@@ -1,0 +1,26 @@
+{
+  "name": "grouped-bar",
+  "summary": "Columns side by side for each category, one per series.",
+  "layout": "grouped",
+  "width": { "min": 48, "max": 72, "per_point": 5 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the category of each group"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the bar's value"
+    },
+    {
+      "name": "series",
+      "kind": "category",
+      "required": true,
+      "doc": "which bar in the group"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"v":1,"form":"column","title":"Paid volume rose","claim":{"kind":"change","tone":"good"},"fields":{"x":"month","y":"amount"},"data":{"warehouse":{"sql":"SELECT month, SUM(amount_eur) AS amount FROM {{ ref('fct_payments') }} GROUP BY 1","target":"dev","limit":500}}}

@@ -1,0 +1,39 @@
+{
+  "v": 1,
+  "form": "multi-line",
+  "title": "Long names are cut at the end they read to",
+  "claim": {
+    "kind": "compare",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "period",
+    "y": "value",
+    "series": "who"
+  },
+  "unit": "percent",
+  "data": {
+    "rows": [
+      {
+        "period": "2025",
+        "who": "عبد الرحمن بن نور الهدى الإسكندراني",
+        "value": 12
+      },
+      {
+        "period": "2026",
+        "who": "عبد الرحمن بن نور الهدى الإسكندراني",
+        "value": 87
+      },
+      {
+        "period": "2025",
+        "who": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 64
+      },
+      {
+        "period": "2026",
+        "who": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 31
+      }
+    ]
+  }
+}

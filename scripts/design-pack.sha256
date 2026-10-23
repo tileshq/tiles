@@ -1,0 +1,5 @@
+# The design packs a build may take with TILES_DESIGN_PACK=<file> (ADR-036):
+# the SHA-256 of each pack file and its name, as `shasum -a 256` prints them.
+# crates/tiles-engine/build.rs refuses a pack whose name is not listed here
+# or whose hash differs.
+e221c94dd5a0016d40ba396f092fd346a094c9c8c746cf520ca17fb190a63e01  tiles-design-1.pack

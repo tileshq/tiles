@@ -1,0 +1,18 @@
+# Secret scanning (ADR-024). CI's `secrets` job runs gitleaks with its
+# default rules over the tree and every commit, and fails on any finding.
+# An allowance names one file, one rule and the exact value, with the reason;
+# never widen one to a directory or a whole rule.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Build output and cargo-fuzz output are never committed."
+paths = ['''^target/''', '''^fuzz/(target|artifacts|coverage)/''']
+
+[[allowlists]]
+description = "A throwaway P-256 key the Omni replay tests serve over local TLS to prove an untrusted certificate is refused. It signs nothing real."
+condition = "AND"
+targetRules = ["private-key"]
+paths = ['''^crates/tiles-omni/tests/replay\.rs$''']
+regexes = ['''MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgPd1wK2AxQk9UUGOZ''']

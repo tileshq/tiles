@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "form": "bullet",
+  "title": "Three of four teams are on track for quota",
+  "claim": {
+    "kind": "target",
+    "tone": "neutral"
+  },
+  "fields": {
+    "x": "team",
+    "y": "booked",
+    "target": "quota"
+  },
+  "highlight": [
+    "SMB"
+  ],
+  "data": {
+    "rows": [
+      {
+        "team": "Enterprise",
+        "booked": 1840,
+        "quota": 2000
+      },
+      {
+        "team": "Mid-market",
+        "booked": 1320,
+        "quota": 1200
+      },
+      {
+        "team": "SMB",
+        "booked": 760,
+        "quota": 900
+      },
+      {
+        "team": "Partners",
+        "booked": 410,
+        "quota": 380
+      }
+    ]
+  }
+}

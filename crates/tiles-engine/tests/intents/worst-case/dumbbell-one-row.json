@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "form": "dumbbell",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "change",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "name",
+    "lo": "before",
+    "hi": "after"
+  },
+  "unit": "usd",
+  "data": {
+    "rows": [
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "before": 1284000.5,
+        "after": 12345678.9
+      }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "tiles-term"
+description = "Everything Tiles writes to a terminal: detection, the one graphics encoder and the text fallback."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tiles-intent.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

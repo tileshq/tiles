@@ -1,0 +1,67 @@
+# Fuzz targets for every parser of untrusted input (ADR-009, ADR-024):
+# the harness's terminal stream through the wrapper's painter, the
+# terminal's replies, chart intents, placeholder blocks on screen, and
+# warehouse sources with their dbt model references.
+# CI runs each for 60 s with `cargo +nightly fuzz run <target>`; see
+# fuzz/README.md. Its own workspace, so the main build never compiles it.
+
+[package]
+name = "tiles-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "LicenseRef-FSL-1.1-ALv2"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+tiles-intent = { path = "../crates/tiles-intent" }
+tiles-term = { path = "../crates/tiles-term" }
+# The wrapper's screen model, at the version tiles-cli locks.
+vt100 = "=0.16.2"
+
+[[bin]]
+name = "terminal_stream"
+path = "fuzz_targets/terminal_stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "terminal_replies"
+path = "fuzz_targets/terminal_replies.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "intent"
+path = "fuzz_targets/intent.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "block"
+path = "fuzz_targets/block.rs"
+test = false
+doc = false
+bench = false
+
+
+[[bin]]
+name = "warehouse_source"
+path = "fuzz_targets/warehouse_source.rs"
+test = false
+doc = false
+bench = false
+
+
+
+[profile.release]
+debug = 1

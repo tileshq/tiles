@@ -1,0 +1,39 @@
+[
+  { "method": "GET", "path": "/v1/models?modelKind=SHARED&pageSize=100", "file": "models.json" },
+  { "method": "GET", "path": "/v1/models/4f8c2a1e-0b7d-4c55-9a3e-2d1f6b8e9c01/topic", "file": "topics.json" },
+  { "method": "GET", "path": "/v1/models/4f8c2a1e-0b7d-4c55-9a3e-2d1f6b8e9c01/topic/orders", "file": "topic-orders.json" },
+  {
+    "method": "POST",
+    "path": "/v1/query/run",
+    "request": {
+      "query": {
+        "modelId": "4f8c2a1e-0b7d-4c55-9a3e-2d1f6b8e9c01",
+        "table": "orders",
+        "join_paths_from_topic_name": "orders",
+        "fields": ["orders.region", "orders.revenue"],
+        "sorts": [{ "column_name": "orders.revenue", "sort_descending": true }],
+        "limit": 5
+      },
+      "resultType": "json",
+      "formatResults": false
+    },
+    "file": "query-revenue-by-region.json"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/query/run",
+    "request": {
+      "query": {
+        "modelId": "4f8c2a1e-0b7d-4c55-9a3e-2d1f6b8e9c01",
+        "table": "orders",
+        "join_paths_from_topic_name": "orders",
+        "fields": ["orders.created_at[week]", "orders.count"],
+        "sorts": [{ "column_name": "orders.created_at[week]", "sort_descending": false }],
+        "limit": 12
+      },
+      "resultType": "json",
+      "formatResults": false
+    },
+    "file": "query-orders-by-week.json"
+  }
+]

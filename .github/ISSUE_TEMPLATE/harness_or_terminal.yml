@@ -1,0 +1,33 @@
+name: Harness or terminal request
+description: Ask Tiles to draw in a harness or terminal it does not support yet.
+labels: [surface]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What to support
+      options:
+        - A harness (an AI coding tool)
+        - A terminal
+    validations:
+      required: true
+  - type: input
+    id: name
+    attributes:
+      label: Name and version
+      placeholder: The name, and the version you use
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How it could show a card
+      description: For a terminal, which image protocols it speaks (kitty graphics, sixel, iTerm2, none). For a harness, how it loads extensions or MCP servers, with a link to its docs.
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: tiles check output
+      description: If you can run Tiles in it today, paste what `tiles check` prints there.
+      render: text

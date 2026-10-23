@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "form": "column",
+  "title": "Signups dipped in W3",
+  "claim": {
+    "kind": "change",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "week",
+    "y": "signups"
+  },
+  "highlight": [
+    "W3"
+  ],
+  "data": {
+    "rows": [
+      {
+        "week": "W1",
+        "signups": 412
+      },
+      {
+        "week": "W2",
+        "signups": 431
+      },
+      {
+        "week": "W3",
+        "signups": 298
+      },
+      {
+        "week": "W4",
+        "signups": 447
+      },
+      {
+        "week": "W5",
+        "signups": 463
+      },
+      {
+        "week": "W6",
+        "signups": 489
+      }
+    ]
+  }
+}

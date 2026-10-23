@@ -1,0 +1,50 @@
+# Tiles Design Licence, version 1
+
+Copyright 2026 Saiem Amer. All rights reserved except as granted below.
+
+## What this covers
+
+The "Design Pack" is the Tiles house design: its design tokens (colours,
+sizes, spacing, type, motion and themes), the sealed design pack file that
+carries them, and the cards and images drawn with them. An "Official Release"
+is a Tiles binary or installer package published by Saiem Amer, as it was
+published.
+
+This licence does not cover the Tiles source code, which is licensed under
+LICENSE, or the plain theme a build from source draws, which is part of that
+source code.
+
+## What you may do
+
+You may install and run an Official Release, with the Design Pack it carries,
+for any purpose the Tiles source code licence permits. The cards and images an
+Official Release draws for you are yours to keep, use and share anywhere.
+
+You may redistribute an Official Release unmodified and whole, with this
+licence.
+
+## What you may not do
+
+You may not:
+
+1. extract, decrypt or copy the Design Pack, or any of its tokens, out of an
+   Official Release;
+2. modify the Design Pack, or run it in a binary other than an unmodified
+   Official Release;
+3. redistribute the Design Pack, or any of its tokens, on its own or inside
+   any other software, including a build of Tiles from source; or
+4. reproduce the Design Pack's tokens in another product or theme.
+
+These limits do not apply to the cards and images an Official Release draws
+for you. They apply except to the extent applicable law expressly permits an
+act notwithstanding them.
+
+## Ending
+
+If you break this licence, your rights under it end at once.
+
+## No warranty
+
+THE DESIGN PACK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. IN NO EVENT
+WILL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING
+FROM THE DESIGN PACK OR ITS USE.

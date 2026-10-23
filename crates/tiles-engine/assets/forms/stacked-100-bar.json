@@ -1,0 +1,25 @@
+{
+  "name": "stacked-100-bar",
+  "summary": "Each category's mix as a horizontal bar stacked to 100%, one segment per series with its share written inside; naming a series ranks the bars by its share.",
+  "layout": "shares",
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the category of each bar"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the segment's value; each bar's values are drawn as shares of their sum"
+    },
+    {
+      "name": "series",
+      "kind": "category",
+      "required": true,
+      "doc": "which segment"
+    }
+  ]
+}

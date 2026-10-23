@@ -1,0 +1,23 @@
+{
+  "name": "dot-plot",
+  "summary": "Ranked dots on faint tracks, for values that need no zero baseline.",
+  "layout": "dots",
+  "width": { "min": 44, "max": 72, "per_label_char": 1.2 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the category beside each dot"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the value"
+    }
+  ],
+  "options": {
+    "sort": "value_desc"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "v": 1,
+  "form": "grouped-bar",
+  "title": "Every region but South closed more deals in 2026",
+  "claim": {
+    "kind": "compare",
+    "tone": "neutral"
+  },
+  "fields": {
+    "x": "region",
+    "y": "deals",
+    "series": "year"
+  },
+  "data": {
+    "rows": [
+      {
+        "region": "North",
+        "year": "2025",
+        "deals": 118
+      },
+      {
+        "region": "North",
+        "year": "2026",
+        "deals": 134
+      },
+      {
+        "region": "South",
+        "year": "2025",
+        "deals": 96
+      },
+      {
+        "region": "South",
+        "year": "2026",
+        "deals": 88
+      },
+      {
+        "region": "East",
+        "year": "2025",
+        "deals": 142
+      },
+      {
+        "region": "East",
+        "year": "2026",
+        "deals": 151
+      },
+      {
+        "region": "West",
+        "year": "2025",
+        "deals": 87
+      },
+      {
+        "region": "West",
+        "year": "2026",
+        "deals": 103
+      }
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "topics": [
+    {
+      "name": "orders",
+      "label": "Orders",
+      "description": "Every café and web order, one row per order line.",
+      "hidden": false,
+      "is_composite": false,
+      "base_view_name": "orders",
+      "group_label": "Sales"
+    },
+    {
+      "name": "subscriptions",
+      "label": "Subscriptions",
+      "description": "Bean subscriptions by plan and status.",
+      "hidden": false,
+      "base_view_name": "subscriptions",
+      "group_label": "Sales"
+    },
+    {
+      "name": "roastery_internal",
+      "label": "Roastery (internal)",
+      "description": "Hidden from the topic picker.",
+      "hidden": true,
+      "base_view_name": "roasts"
+    }
+  ]
+}

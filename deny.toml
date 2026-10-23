@@ -1,0 +1,44 @@
+# cargo-deny policy (ADR-007, ADR-009). CI runs `cargo deny check` in the policy job.
+
+[graph]
+all-features = true
+# The platforms Tiles builds for (ADR-002, ADR-007). Dependencies that exist only
+# for other targets (wasm32's webpki-root-certs under rustls-platform-verifier,
+# Windows' schannel) never reach a Tiles binary.
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
+
+[advisories]
+# Every RustSec advisory, unmaintained and unsound notices included, fails the build.
+# An ignore needs an entry here with the advisory id and a reason, approved in review.
+ignore = []
+unmaintained = "all"
+yanked = "deny"
+
+[licenses]
+# Permissive licences only. GPL, AGPL and LGPL are refused: the official binary
+# links a proprietary design pack and the paid build links closed crates
+# (ADR-038). Add a licence only by PR, with the crate that needs it named in the
+# comment.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.93
+# Our own crates are never published to a registry, so their licence is not checked here.
+private = { ignore = true }
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -1,0 +1,26 @@
+{
+  "name": "stacked-bar",
+  "summary": "Columns stacked from zero, one segment per series, with the total on top.",
+  "layout": "stacked",
+  "width": { "min": 44, "max": 72, "per_point": 4 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the category of each stack"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the segment's value"
+    },
+    {
+      "name": "series",
+      "kind": "category",
+      "required": true,
+      "doc": "which segment"
+    }
+  ]
+}

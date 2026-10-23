@@ -1,0 +1,112 @@
+{
+  "v": 1,
+  "form": "multi-line",
+  "title": "Self-serve win rate rose while sales-led held flat",
+  "claim": {
+    "kind": "compare",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "month",
+    "y": "win_rate",
+    "series": "channel"
+  },
+  "subtitle": "Win rate (%) by month and channel",
+  "highlight": [
+    "Self-serve"
+  ],
+  "data": {
+    "rows": [
+      {
+        "month": "Jan",
+        "channel": "Self-serve",
+        "win_rate": 22
+      },
+      {
+        "month": "Feb",
+        "channel": "Self-serve",
+        "win_rate": 24
+      },
+      {
+        "month": "Mar",
+        "channel": "Self-serve",
+        "win_rate": 23
+      },
+      {
+        "month": "Apr",
+        "channel": "Self-serve",
+        "win_rate": 27
+      },
+      {
+        "month": "May",
+        "channel": "Self-serve",
+        "win_rate": 29
+      },
+      {
+        "month": "Jun",
+        "channel": "Self-serve",
+        "win_rate": 31
+      },
+      {
+        "month": "Jan",
+        "channel": "Sales-led",
+        "win_rate": 31
+      },
+      {
+        "month": "Feb",
+        "channel": "Sales-led",
+        "win_rate": 30
+      },
+      {
+        "month": "Mar",
+        "channel": "Sales-led",
+        "win_rate": 32
+      },
+      {
+        "month": "Apr",
+        "channel": "Sales-led",
+        "win_rate": 31
+      },
+      {
+        "month": "May",
+        "channel": "Sales-led",
+        "win_rate": 33
+      },
+      {
+        "month": "Jun",
+        "channel": "Sales-led",
+        "win_rate": 32
+      },
+      {
+        "month": "Jan",
+        "channel": "Partner",
+        "win_rate": 12
+      },
+      {
+        "month": "Feb",
+        "channel": "Partner",
+        "win_rate": 14
+      },
+      {
+        "month": "Mar",
+        "channel": "Partner",
+        "win_rate": 13
+      },
+      {
+        "month": "Apr",
+        "channel": "Partner",
+        "win_rate": 15
+      },
+      {
+        "month": "May",
+        "channel": "Partner",
+        "win_rate": 14
+      },
+      {
+        "month": "Jun",
+        "channel": "Partner",
+        "win_rate": 16
+      }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "tiles-mcp"
+description = "The Tiles MCP server: the chart tool AI coding harnesses call."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+tiles-engine.workspace = true
+tiles-intent.workspace = true
+tiles-term.workspace = true
+
+[lints]
+workspace = true

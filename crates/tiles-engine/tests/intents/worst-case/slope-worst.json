@@ -1,0 +1,81 @@
+{
+  "v": 1,
+  "form": "slope",
+  "title": "Senior Product Design Engineer, Platform Infrastructure, leads every team on hires in 2026",
+  "claim": {
+    "kind": "change",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "period",
+    "y": "value",
+    "series": "who"
+  },
+  "highlight": [
+    "王秀英"
+  ],
+  "data": {
+    "rows": [
+      {
+        "period": "2025",
+        "who": "Benachrichtigungseinstellungen",
+        "value": 1284000.5
+      },
+      {
+        "period": "2026",
+        "who": "Benachrichtigungseinstellungen",
+        "value": 1000000
+      },
+      {
+        "period": "2025",
+        "who": "王秀英",
+        "value": 1
+      },
+      {
+        "period": "2026",
+        "who": "王秀英",
+        "value": 1284
+      },
+      {
+        "period": "2025",
+        "who": "نور الهدى عبد الرحمن",
+        "value": 0
+      },
+      {
+        "period": "2026",
+        "who": "نور الهدى عبد الرحمن",
+        "value": 12345678.9
+      },
+      {
+        "period": "2025",
+        "who": "🦊 Fox",
+        "value": -42.5
+      },
+      {
+        "period": "2026",
+        "who": "🦊 Fox",
+        "value": 1284000.5
+      },
+      {
+        "period": "2025",
+        "who": "👩🏽 Priya",
+        "value": 1000000
+      },
+      {
+        "period": "2026",
+        "who": "👩🏽 Priya",
+        "value": 0
+      },
+      {
+        "period": "2025",
+        "who": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 1284
+      },
+      {
+        "period": "2026",
+        "who": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -42.5
+      }
+    ]
+  }
+}

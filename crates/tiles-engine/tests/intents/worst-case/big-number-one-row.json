@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "form": "big-number",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "target",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "quarter",
+    "y": "arr",
+    "target": "goal"
+  },
+  "unit": "usd",
+  "data": {
+    "rows": [
+      {
+        "quarter": "Aleksandra Wiśniewska-Kowalczyk",
+        "arr": 1284000.5,
+        "goal": 12345678.9
+      }
+    ]
+  }
+}

@@ -1,0 +1,298 @@
+# The merge gates (ADR-007). Every job must pass before a PR merges.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  # On a push to main, decides whether the heavy jobs may skip: they do only
+  # when the pushed commit is a pull request's squash merge with the tree that
+  # pull request's CI passed on (ADR-055). Any doubt runs everything, and a
+  # pull request skips this job and runs everything. `policy` runs on main
+  # either way, since new RustSec advisories can fail it on an unchanged tree.
+  main-gate:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci-main-gate.py
+          sparse-checkout-cone-mode: false
+      - id: decide
+        name: Skip the heavy jobs only on a tree a pull request's CI passed on
+        # Neither a crash nor a hung API call fails the job; either leaves no
+        # output, and the jobs below run.
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci-main-gate.py
+
+  rust:
+    name: rust (${{ matrix.os }})
+    needs: main-gate
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS minutes cost ten times Linux minutes on a private repository,
+        # so macOS runs only this job.
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - name: Install Skia's system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libfontconfig1-dev libfreetype-dev
+      # Caches the registry, build output and the downloaded Skia archive.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy, warnings as errors
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: tests
+        run: cargo test --workspace --locked
+      - name: installer (macOS only; skips on Linux)
+        run: sh scripts/test_install.sh
+      - name: installer package (macOS only; skips on Linux)
+        run: sh scripts/test_package.sh
+
+  # The release job's build and binary check (ADR-022), on Linux so every PR
+  # proves the forms and tokens stay sealed and no source path leaks.
+  release-binary:
+    needs: main-gate
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - name: Install Skia's system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libfontconfig1-dev libfreetype-dev
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: release-binary
+      # A release stamps its tag's version; any version but 0.0.0 turns on
+      # the daily update check (ADR-032), which the no-network job needs live.
+      - name: Build as the release job does
+        run: TILES_VERSION=0.0.1 RUSTFLAGS="$(sh scripts/release-rustflags.sh)" cargo build --release --locked -p tiles-cli
+      - name: The binary carries no source path and no readable form, token or colour
+        run: python3 scripts/check-release-binary.py target/release/tiles --forbid "$GITHUB_WORKSPACE" --forbid "$HOME" ${TILES_DESIGN_PACK:+--pack "$TILES_DESIGN_PACK"}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tiles-linux
+          path: target/release/tiles
+          retention-days: 1
+          if-no-files-found: error
+
+
+  adapters:
+    needs: main-gate
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Node 22.18 runs TypeScript test files directly (type stripping), so
+      # the add-ons need no npm install and no lockfile.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.22.0
+      - name: Harness add-on tests
+        run: node --test adapters/pi/index.test.ts adapters/claude/card.test.ts
+
+  # The add-ons' tests and the release-binary job's tiles drawing the repo's
+  # own intents, with no network: a network namespace that drops every
+  # packet, and strace failing the job on any connect, addressed send or DNS
+  # lookup, failed ones included (ADR-058).
+  no-network:
+    needs: [main-gate, release-binary]
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' && needs.release-binary.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.22.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tiles-linux
+          path: ${{ runner.temp }}/bin
+      - name: Install strace and let the runner user make a network namespace
+        # Ubuntu 24.04's AppArmor refuses unprivileged user namespaces by
+        # default; unshare needs one to make the network namespace unprivileged.
+        run: |
+          chmod +x "$RUNNER_TEMP/bin/tiles"
+          echo "TILES_BIN=$RUNNER_TEMP/bin/tiles" >> "$GITHUB_ENV"
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends strace
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: The sandbox fails a probe that connects out, a name lookup and the daily update check
+        run: TILES_NO_NETWORK_REQUIRED=1 python3 -m unittest scripts/test_policy_scripts.py -k NoNetwork -v
+      - name: Harness add-on tests, with no network
+        run: python3 scripts/no-network.py "$RUNNER_TEMP/trace-addons" node --test adapters/pi/index.test.ts adapters/claude/card.test.ts
+      - name: tiles card, tiles theme and tiles mcp on the repo's intents, with no network
+        run: python3 scripts/no-network.py "$RUNNER_TEMP/trace-cards" python3 scripts/drive-addon-paths.py "$TILES_BIN"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: no-network-traces
+          path: ${{ runner.temp }}/trace-*
+          if-no-files-found: ignore
+
+  policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-deny@0.20.2,cargo-audit@0.22.2
+      - name: Licences, advisories, bans and sources
+        run: cargo deny check
+      # A second reader of the RustSec database, over every package in
+      # Cargo.lock whatever its target (ADR-024).
+      - name: Known vulnerabilities (cargo-audit)
+        run: cargo audit
+      - name: Every definition-of-done point and playbook rule names a real check
+        run: python3 scripts/check-docs.py
+      - name: Only the data source crates reach the network, and nothing sends telemetry
+        run: python3 scripts/check-network-owners.py
+      - name: The policy scripts catch what they exist to catch
+        run: python3 -m unittest scripts/test_policy_scripts.py
+
+  # Every parser of untrusted input under libFuzzer for 60 s each, from the
+  # committed seed corpus (ADR-009, ADR-024). A crash fails the job and its
+  # input is kept as an artifact.
+  fuzz:
+    needs: main-gate
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NIGHTLY: nightly-2026-10-01
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain and a dated nightly for the sanitizer
+        run: rustup toolchain install && rustup toolchain install "$NIGHTLY" --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: fuzz
+          workspaces: fuzz
+      - name: Install cargo-fuzz
+        run: command -v cargo-fuzz >/dev/null || cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Fuzz each parser for 60 seconds
+        run: |
+          for file in fuzz/fuzz_targets/*.rs; do
+            target="$(basename "$file" .rs)"
+            cargo "+$NIGHTLY" fuzz run "$target" "fuzz/corpus/$target" -- -max_total_time=60
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: fuzz-crashes
+          path: fuzz/artifacts
+          if-no-files-found: ignore
+
+  # The formal proofs (ADR-026): the painter's TLA+ model under TLC, which
+  # fails the job on a counterexample, and the Kani proofs of the kitty
+  # payload encoder, whose install and run may fail without blocking a PR
+  # until two green runs show their runtime.
+  formal:
+    needs: main-gate
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      KANI_VERSION: 0.68.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      # ~/.kani holds the Kani bundle (its binaries and CBMC) and a link to
+      # the bundle's nightly, which `cargo kani setup` installs into ~/.rustup
+      # and rustup fetches again on a run that restores only ~/.kani. The
+      # cache is saved only after a finished install, so a failed fetch never
+      # stores a half-done one under the key.
+      - id: kani-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.kani
+            ~/.cargo/bin/kani
+            ~/.cargo/bin/cargo-kani
+          key: kani-${{ env.KANI_VERSION }}-${{ runner.os }}
+      - id: install-kani
+        name: Install Kani
+        continue-on-error: true
+        run: |
+          if [ ! -x "$HOME/.kani/kani-$KANI_VERSION/bin/kani-driver" ]; then
+            cargo install --locked --force kani-verifier --version "$KANI_VERSION"
+            bundle="$(sh scripts/fetch-kani-bundle.sh "$RUNNER_TEMP/kani")"
+            cargo kani setup --use-local-bundle "$bundle"
+          fi
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.install-kani.outcome == 'success' && steps.kani-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.kani
+            ~/.cargo/bin/kani
+            ~/.cargo/bin/cargo-kani
+          key: kani-${{ env.KANI_VERSION }}-${{ runner.os }}
+      - name: Model-check the painter (TLC)
+        run: sh verify/formal/painter/check.sh
+      - name: Prove the kitty payload encoder (Kani)
+        continue-on-error: true
+        run: sh verify/formal/kitty/check.sh
+
+  # No secret in the tree or in any commit, by gitleaks' default rules and
+  # the allowances in .gitleaks.toml (ADR-024).
+  secrets:
+    needs: main-gate
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install gitleaks, checked against its pinned hash
+        run: |
+          gitleaks="$(sh scripts/fetch-gitleaks.sh "$RUNNER_TEMP/gitleaks")"
+          echo "GITLEAKS=$gitleaks" >> "$GITHUB_ENV"
+      - name: Every commit
+        run: '"$GITLEAKS" git --no-banner --redact --exit-code 1 .'
+      - name: The tree
+        run: '"$GITLEAKS" dir --no-banner --redact --exit-code 1 .'
+

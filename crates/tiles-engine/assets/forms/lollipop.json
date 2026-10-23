@@ -1,0 +1,29 @@
+{
+  "name": "lollipop",
+  "summary": "Ranked stems ending in a dot, largest first, each carrying its value, with the average marked by a dashed rule over a value axis.",
+  "layout": "lollipop",
+  "width": { "min": 44, "max": 72, "per_label_char": 1.2 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the category beside each stem"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the value"
+    },
+    {
+      "name": "average",
+      "kind": "number",
+      "required": false,
+      "doc": "the average to mark, such as the average across all payments; the first row's number is used, and when left out the rows' own mean, which one row does not draw"
+    }
+  ],
+  "options": {
+    "sort": "value_desc"
+  }
+}

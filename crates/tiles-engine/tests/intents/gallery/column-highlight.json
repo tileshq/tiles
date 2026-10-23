@@ -1,0 +1,70 @@
+{
+  "v": 1,
+  "form": "column",
+  "title": "Refunds nearly doubled in November after the checkout bug",
+  "subtitle": "Made-up data \u00b7 refunds issued per month, 2025",
+  "claim": {
+    "kind": "compare",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "month",
+    "y": "refunds"
+  },
+  "data": {
+    "rows": [
+      {
+        "month": "Jan",
+        "refunds": 1820
+      },
+      {
+        "month": "Feb",
+        "refunds": 1760
+      },
+      {
+        "month": "Mar",
+        "refunds": 1905
+      },
+      {
+        "month": "Apr",
+        "refunds": 1840
+      },
+      {
+        "month": "May",
+        "refunds": 1790
+      },
+      {
+        "month": "Jun",
+        "refunds": 1880
+      },
+      {
+        "month": "Jul",
+        "refunds": 1850
+      },
+      {
+        "month": "Aug",
+        "refunds": 1810
+      },
+      {
+        "month": "Sep",
+        "refunds": 1930
+      },
+      {
+        "month": "Oct",
+        "refunds": 1870
+      },
+      {
+        "month": "Nov",
+        "refunds": 3420
+      },
+      {
+        "month": "Dec",
+        "refunds": 2210
+      }
+    ]
+  },
+  "highlight": [
+    "Nov"
+  ],
+  "note": "Checkout bug, 4 to 9 Nov"
+}

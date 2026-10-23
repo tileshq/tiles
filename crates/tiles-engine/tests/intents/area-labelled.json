@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "form": "area-labelled",
+  "title": "Storage use doubled after the June launch",
+  "claim": {
+    "kind": "trend",
+    "tone": "neutral"
+  },
+  "fields": {
+    "x": "month",
+    "y": "terabytes"
+  },
+  "highlight": [
+    "Jun"
+  ],
+  "data": {
+    "rows": [
+      {
+        "month": "Jan",
+        "terabytes": 42
+      },
+      {
+        "month": "Feb",
+        "terabytes": 44
+      },
+      {
+        "month": "Mar",
+        "terabytes": 45
+      },
+      {
+        "month": "Apr",
+        "terabytes": 47
+      },
+      {
+        "month": "May",
+        "terabytes": 49
+      },
+      {
+        "month": "Jun",
+        "terabytes": 58
+      },
+      {
+        "month": "Jul",
+        "terabytes": 66
+      },
+      {
+        "month": "Aug",
+        "terabytes": 71
+      },
+      {
+        "month": "Sep",
+        "terabytes": 77
+      },
+      {
+        "month": "Oct",
+        "terabytes": 82
+      },
+      {
+        "month": "Nov",
+        "terabytes": 86
+      },
+      {
+        "month": "Dec",
+        "terabytes": 91
+      }
+    ]
+  }
+}

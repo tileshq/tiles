@@ -1,0 +1,24 @@
+{
+  "name": "area-labelled",
+  "summary": "The area variant that edges the fill with its line and writes the value at the highlighted period.",
+  "layout": "line",
+  "width": { "min": 48, "max": 72, "per_point": 2 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the ordered period on the horizontal axis"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the value"
+    }
+  ],
+  "options": {
+    "area": true,
+    "label_highlight": true
+  }
+}

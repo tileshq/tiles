@@ -1,0 +1,245 @@
+# Release builds (ADR-007, ADR-009, ADR-014, ADR-036, ADR-056, ADR-059): a
+# `v*` tag builds `tiles` on GitHub's macOS arm64 and Intel runners from this
+# repository's source and design pack 1, which the build job fetches from
+# the private design repository at the commit DESIGN_COMMIT names with a
+# read-only deploy key and checks against scripts/design-pack.sha256. It
+# stamps the tag in as the version `tiles --version` prints and checks it
+# (ADR-025), each job hashing the tarball it built. A sign job checks those
+# hashes, signs and notarises the binaries when the Apple secrets exist,
+# hashes the result, and builds one installer package for every Mac from
+# the two binaries (scripts/package-macos.sh, ADR-035). A publish job checks
+# those hashes and creates the release in this repository, with the package,
+# the tarballs, a SHA256SUMS made from the jobs' own hashes and signed with
+# the release key, and scripts/install.sh, which checks that signature and
+# then SHA256SUMS. Every secret lives in the `release` environment, which
+# only `v*` tags may deploy to. Binaries are built only here, never on a
+# laptop.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  RELEASES_REPO: ${{ github.repository }}
+  DESIGN_REPO: tileshq/tiles-design
+  # The design repository's commit whose packs/tiles-design-1.pack this
+  # release seals in; scripts/design-pack.sha256 pins the pack's hash.
+  DESIGN_COMMIT: c4225257b4ee10681729c920da584f082e1afca3
+
+jobs:
+  # Fails in seconds, before forty minutes of macOS builds, when a secret the
+  # release needs is missing (ADR-056, ADR-059).
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: release
+    steps:
+      - name: Check the release secrets
+        env:
+          HAS_SIGNING_KEY: ${{ secrets.TILES_SIGNING_KEY != '' }}
+          HAS_DESIGN_KEY: ${{ secrets.TILES_DESIGN_DEPLOY_KEY != '' }}
+        run: |
+          if [ "$HAS_SIGNING_KEY" != true ]; then
+            echo "::error::The TILES_SIGNING_KEY secret is missing, so SHA256SUMS cannot be signed and install.sh would refuse the release. Add the release key's private half to the release environment (ADR-056)."
+            exit 1
+          fi
+          if [ "$HAS_DESIGN_KEY" != true ]; then
+            echo "::error::The TILES_DESIGN_DEPLOY_KEY secret is missing, so design pack 1 cannot be fetched from $DESIGN_REPO. Add the private half of that repository's read-only deploy key to the release environment (ADR-059)."
+            exit 1
+          fi
+
+  build:
+    needs: preflight
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    environment: release
+    # Build scripts and proc macros of every dependency run here, so this job
+    # holds no token that can write anywhere and no signing secret. The
+    # design repository's deploy key reaches only the one step that fetches
+    # the pack, which runs before any cargo command and deletes the key file
+    # before it ends; the pack's path then goes to the build and binary-check
+    # steps through their own env.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - name: Fetch and verify the pinned Skia archive
+        env:
+          TARGET: ${{ matrix.target }}
+        run: echo "SKIA_BINARIES_URL=$(sh scripts/fetch-skia.sh "$TARGET" "$RUNNER_TEMP/skia")" >> "$GITHUB_ENV"
+      # The design pack only, over SSH with the read-only deploy key, from the
+      # pinned commit; GitHub's host key is pinned, not learned. Before any
+      # cargo command, so no dependency code has run while the key exists.
+      - name: Fetch design pack 1 and check it against its pinned hash (ADR-036)
+        env:
+          DESIGN_DEPLOY_KEY: ${{ secrets.TILES_DESIGN_DEPLOY_KEY }}
+        run: |
+          set -eu
+          ssh_dir="$RUNNER_TEMP/design-ssh"
+          trap 'rm -rf "$ssh_dir" "$RUNNER_TEMP/design"' EXIT
+          (umask 077 && mkdir "$ssh_dir" && printf '%s\n' "$DESIGN_DEPLOY_KEY" > "$ssh_dir/key")
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$ssh_dir/known_hosts"
+          export GIT_SSH_COMMAND="ssh -F /dev/null -i $ssh_dir/key -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=$ssh_dir/known_hosts -o StrictHostKeyChecking=yes"
+          git init --quiet "$RUNNER_TEMP/design"
+          git -C "$RUNNER_TEMP/design" fetch --quiet --depth 1 "git@github.com:$DESIGN_REPO.git" "$DESIGN_COMMIT"
+          mkdir -p "$RUNNER_TEMP/pack"
+          git -C "$RUNNER_TEMP/design" show "FETCH_HEAD:packs/tiles-design-1.pack" > "$RUNNER_TEMP/pack/tiles-design-1.pack"
+          (cd "$RUNNER_TEMP/pack" && grep ' tiles-design-1.pack$' "$GITHUB_WORKSPACE/scripts/design-pack.sha256" | shasum -a 256 -c -) || {
+            echo "::error::packs/tiles-design-1.pack at $DESIGN_REPO@$DESIGN_COMMIT does not have the hash scripts/design-pack.sha256 pins (ADR-036)."
+            exit 1
+          }
+      # Without TILES_DESIGN_PACK, so this tests the plain set, as CI does.
+      - name: Test before shipping
+        run: cargo test --workspace --locked
+      - name: Build, with every source path remapped and the tag as the version
+        env:
+          TAG: ${{ github.ref_name }}
+          TILES_DESIGN_PACK: ${{ runner.temp }}/pack/tiles-design-1.pack
+        run: TILES_VERSION="${TAG#v}" RUSTFLAGS="$(sh scripts/release-rustflags.sh)" cargo build --release --locked -p tiles-cli
+      - name: tiles --version prints the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          got="$(target/release/tiles --version)"
+          echo "$got"
+          case "$got" in
+            "tiles ${TAG#v} (intent schema "*) ;;
+            *) echo "::error::tiles --version prints \"$got\", not the tag $TAG."; exit 1 ;;
+          esac
+      - name: The binary carries no source path and no readable form, token or colour
+        env:
+          TILES_DESIGN_PACK: ${{ runner.temp }}/pack/tiles-design-1.pack
+        run: python3 scripts/check-release-binary.py target/release/tiles --forbid "$GITHUB_WORKSPACE" --forbid "$HOME" --pack "$TILES_DESIGN_PACK"
+      - name: Package and hash
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          name="tiles-$TAG-$TARGET"
+          mkdir -p "dist/$name"
+          cp target/release/tiles LICENSE LICENSE-design "dist/$name/"
+          tar -czf "dist/$name.tar.gz" -C dist "$name"
+          rm -r "dist/$name"
+          (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256" && cat "$name.tar.gz.sha256")
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+
+  # Runs no dependency code: only Apple's codesign, notarytool, lipo, pkgbuild
+  # and productbuild touch the binaries, so the Apple secrets live here and
+  # nowhere else.
+  sign:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: unsigned-*
+          path: dist
+          merge-multiple: true
+      - name: Check each build's hash, then sign and notarise
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: sh scripts/sign-macos.sh dist
+      # Unsigned until the Developer ID Installer secrets ADR-035 lists are
+      # added to this step's env; package-macos.sh then signs and notarises it.
+      - name: Build the installer package for every Mac
+        env:
+          TAG: ${{ github.ref_name }}
+        run: sh scripts/package-macos.sh dist "$TAG"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tiles-release
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: sign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
+    # The only job that can write: it creates this repository's release with
+    # its own GITHUB_TOKEN, and runs no dependency code.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tiles-release
+          path: dist
+      - name: Check every tarball and the package against its hash
+        working-directory: dist
+        run: |
+          set -eu
+          ls tiles-*.tar.gz tiles-*-macos.pkg >/dev/null
+          for file in tiles-*.tar.gz tiles-*-macos.pkg; do
+            [ -f "$file.sha256" ] || { echo "no hash for $file"; exit 1; }
+          done
+          cat tiles-*.tar.gz.sha256 tiles-*-macos.pkg.sha256 > SHA256SUMS
+          sha256sum --check --strict SHA256SUMS
+          [ "$(wc -l < SHA256SUMS)" -eq "$(ls tiles-*.tar.gz tiles-*-macos.pkg | wc -l)" ]
+          cp ../scripts/install.sh install.sh
+          sha256sum install.sh >> SHA256SUMS
+      # The private key exists only for this step, in a file only the runner's
+      # user can read. The signature must pass install.sh's own pinned key, or
+      # no installer would accept the release (ADR-056).
+      - name: Sign SHA256SUMS with the release key
+        env:
+          TILES_SIGNING_KEY: ${{ secrets.TILES_SIGNING_KEY }}
+        working-directory: dist
+        run: |
+          set -eu
+          key="$RUNNER_TEMP/tiles-release"
+          trap 'rm -f "$key"' EXIT
+          (umask 077 && printf '%s\n' "$TILES_SIGNING_KEY" > "$key")
+          ssh-keygen -q -Y sign -f "$key" -n tiles-release SHA256SUMS < /dev/null
+          rm -f "$key"
+          pinned="$(sed -n "s/^signing_key='\(.*\)'\$/\1/p" install.sh)"
+          [ -n "$pinned" ] || { echo "::error::install.sh pins no release key."; exit 1; }
+          printf 'tiles-release namespaces="tiles-release" %s\n' "$pinned" > "$RUNNER_TEMP/allowed_signers"
+          ssh-keygen -Y verify -f "$RUNNER_TEMP/allowed_signers" -I tiles-release -n tiles-release -s SHA256SUMS.sig < SHA256SUMS || {
+            echo "::error::TILES_SIGNING_KEY does not match the key install.sh pins, so install.sh would refuse this release (ADR-056)."
+            exit 1
+          }
+      - name: Create the release and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        working-directory: dist
+        run: |
+          gh release create "$TAG" --repo "$RELEASES_REPO" --title "Tiles $TAG" \
+            --notes "Tiles $TAG for macOS. Install in a terminal: curl -fsSL https://github.com/$RELEASES_REPO/releases/download/$TAG/install.sh | sh. Or download tiles-$TAG-macos.pkg and open it; Terminal then runs tiles setup. Or by hand: download install.sh, tiles-$TAG-aarch64-apple-darwin.tar.gz (Apple Silicon) or tiles-$TAG-x86_64-apple-darwin.tar.gz (Intel), SHA256SUMS and SHA256SUMS.sig from this page, then run TILES_ARCHIVE=~/Downloads/<tarball> TILES_SUMS=~/Downloads/SHA256SUMS sh ~/Downloads/install.sh. SHA256SUMS is signed with the Tiles release key; https://github.com/$RELEASES_REPO/blob/$TAG/docs/install.md shows how to check it by hand." \
+            tiles-*-macos.pkg tiles-*.tar.gz SHA256SUMS SHA256SUMS.sig install.sh

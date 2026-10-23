@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "form": "bullet",
+  "title": "EMEA and APAC are behind their Q3 bookings quota",
+  "subtitle": "Made-up data \u00b7 new bookings this quarter vs quota (tick), \u20ac thousand \u00b7 bands: under 70%, 70 to 90%, over 90% of quota",
+  "claim": {
+    "kind": "compare",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "region",
+    "y": "actual",
+    "target": "target"
+  },
+  "data": {
+    "rows": [
+      {
+        "region": "NA West",
+        "actual": 2400,
+        "target": 2200
+      },
+      {
+        "region": "NA East",
+        "actual": 2050,
+        "target": 2000
+      },
+      {
+        "region": "DACH",
+        "actual": 1180,
+        "target": 1100
+      },
+      {
+        "region": "EMEA",
+        "actual": 1300,
+        "target": 1700
+      },
+      {
+        "region": "APAC",
+        "actual": 610,
+        "target": 900
+      }
+    ]
+  },
+  "highlight": [
+    "EMEA",
+    "APAC"
+  ]
+}

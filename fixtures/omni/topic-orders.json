@@ -1,0 +1,91 @@
+{
+  "success": true,
+  "topic": {
+    "name": "orders",
+    "label": "Orders",
+    "description": "Every café and web order, one row per order line.",
+    "base_view_name": "orders",
+    "default_filters": {},
+    "hidden": false,
+    "is_composite": false,
+    "relationships": [],
+    "views": [
+      {
+        "name": "orders",
+        "label": "Orders",
+        "table_name": "ORDERS",
+        "schema": "ANALYTICS",
+        "dimensions": [
+          {
+            "field_name": "created_at",
+            "view_name": "orders",
+            "data_type": "TIMESTAMP",
+            "label": "Created At",
+            "description": "When the order was placed.",
+            "is_dimension": true,
+            "fully_qualified_name": "orders.created_at",
+            "time_frames": ["DATE", "WEEK", "MONTH", "QUARTER", "YEAR"],
+            "date_type": "DATE"
+          },
+          {
+            "field_name": "region",
+            "view_name": "orders",
+            "data_type": "STRING",
+            "label": "Region",
+            "description": "Sales region of the café or shipping address.",
+            "is_dimension": true,
+            "fully_qualified_name": "orders.region"
+          },
+          {
+            "field_name": "channel",
+            "view_name": "orders",
+            "data_type": "STRING",
+            "label": "Channel",
+            "description": "Café or web.",
+            "is_dimension": true,
+            "fully_qualified_name": "orders.channel"
+          }
+        ],
+        "measures": [
+          {
+            "type": "aggregation",
+            "field_name": "count",
+            "view_name": "orders",
+            "aggregate_type": "COUNT",
+            "data_type": "NUMBER",
+            "label": "Orders",
+            "format": "NUMBER_0",
+            "ignored": false,
+            "fully_qualified_name": "orders.count"
+          },
+          {
+            "type": "aggregation",
+            "field_name": "revenue",
+            "view_name": "orders",
+            "aggregate_type": "SUM",
+            "data_type": "NUMBER",
+            "label": "Revenue",
+            "format": "USDCURRENCY_0",
+            "description": "Order value after discounts, before tax.",
+            "ignored": false,
+            "fully_qualified_name": "orders.revenue"
+          }
+        ]
+      },
+      {
+        "name": "customers",
+        "label": "Customers",
+        "dimensions": [
+          {
+            "field_name": "segment",
+            "view_name": "customers",
+            "data_type": "STRING",
+            "label": "Segment",
+            "is_dimension": true
+          }
+        ],
+        "measures": []
+      }
+    ]
+  }
+}

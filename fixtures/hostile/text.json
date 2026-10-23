@@ -1,0 +1,26 @@
+{
+  "_about": "Text that tries to drive the terminal (ADR-009). Every output path's tests feed each entry through and assert no unsafe character comes out. An intent refuses every entry but the emoji sequence joined with U+200D, which the card draws whole and printed text still drops the joiner from. Escapes are JSON escapes, so no raw control byte lives in the repository.",
+  "entries": [
+    "\u001b]52;c;ZXZpbA==\u0007",
+    "\u001b]8;;https://evil.example\u001b\\click\u001b]8;;\u001b\\",
+    "\u001b]0;pwned title\u0007",
+    "\u001b[2J\u001b[H",
+    "\u001b[31mred\u001b[0m",
+    "\u001b[?1049h",
+    "\u001b_Ga=T,f=100;AAAA\u001b\\",
+    "\u001bP0;1;0q#0;2;0;0;0\u001b\\",
+    "\u009b31m",
+    "\u009d0;title\u009c",
+    "\u202egnp.exe",
+    "Acme\udb40\udc49\udb40\udc47\udb40\udc4e\udb40\udc4f\udb40\udc52\udb40\udc45",
+    "\u2066isolated\u2069",
+    "line\u2028separator",
+    "tab\tand\nnewline\rreturn",
+    "nul\u0000byte",
+    "del\u007fchar",
+    "\u061carabic mark",
+    "zero\u200bwidth and \ufeffbom",
+    "Pri\u200dya joined letters",
+    "\ud83d\udc69\ud83c\udffd\u200d\ud83d\udcbb Priya"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "pageInfo": { "hasNextPage": false, "nextCursor": null, "pageSize": 100, "totalRecords": 1 },
+  "records": [
+    {
+      "id": "4f8c2a1e-0b7d-4c55-9a3e-2d1f6b8e9c01",
+      "baseModelId": "0d2b7c34-5e6f-4a1b-8c9d-1e2f3a4b5c6d",
+      "connectionId": "9a8b7c6d-5e4f-4321-8765-0fedcba98765",
+      "modelKind": "SHARED",
+      "name": "Lumen Coffee",
+      "createdAt": "2026-01-05T09:00:00Z",
+      "updatedAt": "2026-10-01T09:00:00Z",
+      "deletedAt": null
+    }
+  ]
+}

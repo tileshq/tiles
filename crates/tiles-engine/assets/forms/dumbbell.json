@@ -1,0 +1,26 @@
+{
+  "name": "dumbbell",
+  "summary": "The change between two values per category: a grey dot for the first, an accent dot for the second, joined by a bar, largest change first.",
+  "layout": "dumbbell",
+  "width": { "min": 48, "max": 72, "per_label_char": 1.2 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the category of each row"
+    },
+    {
+      "name": "lo",
+      "kind": "number",
+      "required": true,
+      "doc": "the first value, such as before; drawn grey"
+    },
+    {
+      "name": "hi",
+      "kind": "number",
+      "required": true,
+      "doc": "the second value, such as after; drawn in the accent"
+    }
+  ]
+}

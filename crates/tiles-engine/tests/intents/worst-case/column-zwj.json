@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "form": "column",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "change",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "name",
+    "y": "value"
+  },
+  "data": {
+    "rows": [
+      {
+        "name": "👩🏽‍💻 Priya",
+        "value": 1284
+      }
+    ]
+  }
+}
