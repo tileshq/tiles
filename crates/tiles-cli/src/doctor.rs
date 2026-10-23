@@ -430,7 +430,7 @@ mod tests {
         );
         assert!(
             joined.contains(
-                "\n  codex    /usr/local/bin/codex  version unknown (proved on 0.163.0)  MCP server"
+                "\n  codex    /usr/local/bin/codex  version unknown (proved on 0.164.0)  MCP server"
             ),
             "{joined}"
         );

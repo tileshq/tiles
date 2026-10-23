@@ -45,8 +45,8 @@ pub const PROVED: [Row; 5] = [
     Row {
         harness: Harness::Codex,
         cli: None,
-        versions: &["0.163.0"],
-        record: "ADR-011",
+        versions: &["0.163.0", "0.164.0"],
+        record: "ADR-032",
     },
     Row {
         harness: Harness::OpenCode,
@@ -91,7 +91,7 @@ pub fn title(harness: Harness) -> &'static str {
 }
 
 /// The version `program --version` names: `2.1.309 (Claude Code)`,
-/// `1.4.0` and `codex-cli 0.163.0` all name one. Read the way
+/// `1.4.0` and `codex-cli 0.164.0` all name one. Read the way
 /// [`opencode`] reads `OpenCode`'s: stdin closed, the answer in an unlinked
 /// file, at most 5 s.
 #[must_use]
@@ -198,7 +198,11 @@ mod tests {
         );
         assert_eq!(row(Harness::Pi, None).unwrap().newest(), "1.4.0");
         assert_eq!(row(Harness::Claude, None).unwrap().versions, ["2.1.309"]);
-        assert_eq!(row(Harness::Codex, None).unwrap().versions, ["0.163.0"]);
+        assert_eq!(
+            row(Harness::Codex, None).unwrap().versions,
+            ["0.163.0", "0.164.0"]
+        );
+        assert_eq!(row(Harness::Codex, None).unwrap().newest(), "0.164.0");
         assert_eq!(
             row(Harness::OpenCode, Some(Cli::Public)).unwrap().versions,
             [crate::opencode::PROVED_PUBLIC]
@@ -228,7 +232,10 @@ mod tests {
         assert!(!matches(claude, "2"));
         let codex = row(Harness::Codex, None).unwrap();
         assert!(matches(codex, "0.163.2"));
-        assert!(!matches(codex, "0.164.0"));
+        assert!(matches(codex, "0.164.0"));
+        assert!(matches(codex, "0.164.1"));
+        assert!(!matches(codex, "0.162.0"));
+        assert!(!matches(codex, "0.165.0"));
         assert!(!matches(codex, "0.16.3"));
         let pi = row(Harness::Pi, None).unwrap();
         assert!(matches(pi, "1.4.0"));
@@ -265,7 +272,7 @@ mod tests {
         assert_eq!(
             run_line(Harness::Codex, None, Some("0.170.1")).as_deref(),
             Some(
-                "Tiles was proved on Codex 0.163.0, and this is 0.170.1; if a card misdraws, run tiles check"
+                "Tiles was proved on Codex 0.164.0, and this is 0.170.1; if a card misdraws, run tiles check"
             )
         );
         assert!(
@@ -307,8 +314,22 @@ mod tests {
         assert_eq!(
             check_line(Harness::Codex, Some("0.164.0")),
             Some((
+                true,
+                "codex version: Codex 0.164.0, proved on 0.164.0 (ADR-032)".into()
+            ))
+        );
+        assert_eq!(
+            check_line(Harness::Codex, Some("0.163.0")),
+            Some((
+                true,
+                "codex version: Codex 0.163.0, proved on 0.164.0 (ADR-032)".into()
+            ))
+        );
+        assert_eq!(
+            check_line(Harness::Codex, Some("0.165.0")),
+            Some((
                 false,
-                "codex version: Codex 0.164.0, not the major and minor version Tiles was proved on, 0.163.0 (ADR-011)".into()
+                "codex version: Codex 0.165.0, not the major and minor version Tiles was proved on, 0.164.0 (ADR-032)".into()
             ))
         );
         assert_eq!(
@@ -350,7 +371,7 @@ mod tests {
         );
         assert_eq!(
             doctor_note(Harness::Codex, None, None),
-            "version unknown (proved on 0.163.0)"
+            "version unknown (proved on 0.164.0)"
         );
         assert_eq!(
             doctor_note(Harness::OpenCode, Some(Cli::Launcher), Some("2.0.32")),
@@ -371,7 +392,7 @@ mod tests {
         for (name, answer, want) in [
             ("claude", "2.1.309 (Claude Code)", Some("2.1.309")),
             ("pi", "1.4.0", Some("1.4.0")),
-            ("codex", "codex-cli 0.163.0", Some("0.163.0")),
+            ("codex", "codex-cli 0.164.0", Some("0.164.0")),
             ("odd", "\u{1b}]0;x\u{7}dev build", None),
         ] {
             let program = dir.join(name);
