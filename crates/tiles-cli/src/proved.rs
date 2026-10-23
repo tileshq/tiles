@@ -39,7 +39,7 @@ pub const PROVED: [Row; 5] = [
     Row {
         harness: Harness::Claude,
         cli: None,
-        versions: &["2.1.308"],
+        versions: &["2.1.309"],
         record: "ADR-032",
     },
     Row {
@@ -90,7 +90,7 @@ pub fn title(harness: Harness) -> &'static str {
     }
 }
 
-/// The version `program --version` names: `2.1.308 (Claude Code)`,
+/// The version `program --version` names: `2.1.309 (Claude Code)`,
 /// `1.4.0` and `codex-cli 0.163.0` all name one. Read the way
 /// [`opencode`] reads `OpenCode`'s: stdin closed, the answer in an unlinked
 /// file, at most 5 s.
@@ -197,7 +197,7 @@ mod tests {
             ["1.0.0", "1.2.0", "1.3.0", "1.4.0"]
         );
         assert_eq!(row(Harness::Pi, None).unwrap().newest(), "1.4.0");
-        assert_eq!(row(Harness::Claude, None).unwrap().versions, ["2.1.308"]);
+        assert_eq!(row(Harness::Claude, None).unwrap().versions, ["2.1.309"]);
         assert_eq!(row(Harness::Codex, None).unwrap().versions, ["0.163.0"]);
         assert_eq!(
             row(Harness::OpenCode, Some(Cli::Public)).unwrap().versions,
@@ -215,6 +215,7 @@ mod tests {
     #[test]
     fn pi_claude_and_codex_compare_major_and_minor() {
         let claude = row(Harness::Claude, None).unwrap();
+        assert!(matches(claude, "2.1.309"));
         assert!(matches(claude, "2.1.308"));
         assert!(matches(claude, "2.1.307"));
         assert!(matches(claude, "2.1.306"));
@@ -258,7 +259,7 @@ mod tests {
         assert_eq!(
             run_line(Harness::Claude, None, Some("2.2.0")).as_deref(),
             Some(
-                "Tiles was proved on Claude Code 2.1.308, and this is 2.2.0; if a card misdraws, run tiles check"
+                "Tiles was proved on Claude Code 2.1.309, and this is 2.2.0; if a card misdraws, run tiles check"
             )
         );
         assert_eq!(
@@ -297,10 +298,10 @@ mod tests {
     #[test]
     fn check_fails_another_minor_and_only_says_an_unread_version() {
         assert_eq!(
-            check_line(Harness::Claude, Some("2.1.308")),
+            check_line(Harness::Claude, Some("2.1.309")),
             Some((
                 true,
-                "claude version: Claude Code 2.1.308, proved on 2.1.308 (ADR-032)".into()
+                "claude version: Claude Code 2.1.309, proved on 2.1.309 (ADR-032)".into()
             ))
         );
         assert_eq!(
@@ -368,7 +369,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         for (name, answer, want) in [
-            ("claude", "2.1.308 (Claude Code)", Some("2.1.308")),
+            ("claude", "2.1.309 (Claude Code)", Some("2.1.309")),
             ("pi", "1.4.0", Some("1.4.0")),
             ("codex", "codex-cli 0.163.0", Some("0.163.0")),
             ("odd", "\u{1b}]0;x\u{7}dev build", None),
