@@ -1092,7 +1092,7 @@ mod tests {
         );
         assert_eq!(
             at(
-                "fail claude version: Claude Code 2.2.0, not the major and minor version Tiles was proved on, 2.1.308 (ADR-032)"
+                "fail claude version: Claude Code 2.2.0, not the major and minor version Tiles was proved on, 2.1.309 (ADR-032)"
             ),
             at("pass claude: /opt/bin/claude, drawn by the wrapper") + 1
         );
@@ -1104,7 +1104,7 @@ mod tests {
         let lines = run_with(&warp, &dir, None, &[(Harness::Claude, None)]);
         assert!(has(
             &lines,
-            "pass claude version: claude --version could not be read; Tiles was proved on 2.1.308"
+            "pass claude version: claude --version could not be read; Tiles was proved on 2.1.309"
         ));
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),

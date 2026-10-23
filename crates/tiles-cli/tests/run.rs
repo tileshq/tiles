@@ -213,14 +213,14 @@ fn a_dry_run_names_an_unproved_harness_version_and_nothing_else() {
             .collect();
         (plan, String::from_utf8_lossy(&out.stderr).into_owned())
     };
-    let (proved, said) = run("echo '2.1.308 (Claude Code)'");
+    let (proved, said) = run("echo '2.1.309 (Claude Code)'");
     assert_eq!(said, "");
     assert!(proved.iter().any(|l| l == "program: claude"), "{proved:?}");
     let (newer, said) = run("echo '2.2.0 (Claude Code)'");
     assert_eq!(newer, proved);
     assert_eq!(
         said,
-        "Tiles was proved on Claude Code 2.1.308, and this is 2.2.0; if a card misdraws, run tiles check\n"
+        "Tiles was proved on Claude Code 2.1.309, and this is 2.2.0; if a card misdraws, run tiles check\n"
     );
     let (unread, said) = run("exit 1");
     assert_eq!(unread, proved);
@@ -258,7 +258,7 @@ fn the_version_line_shows_again_after_the_harness_exits() {
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", text_of(&out));
-    let line = "Tiles was proved on Claude Code 2.1.308, and this is 2.2.0; if a card misdraws, run tiles check";
+    let line = "Tiles was proved on Claude Code 2.1.309, and this is 2.2.0; if a card misdraws, run tiles check";
     let said: Vec<String> = String::from_utf8_lossy(&out.stderr)
         .lines()
         .map(str::to_string)
