@@ -147,7 +147,7 @@ Either way it checks the archive against `SHA256SUMS` and refuses a mismatch wit
 
 At most once a day, `tiles run` and `tiles doctor` ask GitHub whether a newer release exists and print one line before the harness starts and again after it exits: `Tiles v0.1.5 is available; run tiles update`. The check is one anonymous request to `api.github.com` carrying only `User-Agent: tiles/<version>` and `Accept: application/json` ([ADR-032](adr/ADR-032-update-command-and-harness-versions.md)). `TILES_UPDATE_CHECK=off` (or `0`, `false`, `no`) turns the check off, and `tiles doctor` shows the value it read and how long ago the check last ran. Tiles never updates itself; only `tiles update` or a newer package replaces the binary.
 
-`tiles run` also names a harness version Tiles was not proved on, before the harness starts and again after it exits: `Tiles was proved on Claude Code 2.1.309, and this is 2.2.0; if a card misdraws, run tiles check`. `tiles check` fails that harness's `version:` line, and `tiles doctor` prints each harness's version beside the newest one Tiles was proved on.
+`tiles run` also names a harness version Tiles was not proved on, before the harness starts and again after it exits: `Tiles was proved on Claude Code 2.1.311, and this is 2.2.0; if a card misdraws, run tiles check`. `tiles check` fails that harness's `version:` line, and `tiles doctor` prints each harness's version beside the newest one Tiles was proved on.
 
 ## Removing it
 
