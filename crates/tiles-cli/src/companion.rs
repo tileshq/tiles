@@ -37,9 +37,9 @@ pub fn wanted(route: Route, env: &dyn Fn(&str) -> Option<String>) -> bool {
 /// The terminals that draw cards inline, for [`text_route_line`].
 const INLINE: &str = "Warp, Ghostty, kitty, iTerm2 and WezTerm";
 
-/// The line `tiles setup` and `tiles doctor` print on the text route: cards
-/// will not draw inline in this terminal, which terminals draw them, and
-/// how they open here. `None` on a route that draws pictures.
+/// The line `tiles doctor` and `tiles setup --verbose` print on the text
+/// route: cards will not draw inline in this terminal, which terminals draw
+/// them, and how they open here. `None` on a route that draws pictures.
 #[must_use]
 pub fn text_route_line(
     detected: &tiles_term::detect::Detected,

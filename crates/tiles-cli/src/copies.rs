@@ -229,7 +229,7 @@ impl Other {
 }
 
 impl Copies {
-    /// One line per other copy, for setup's `Tiles found:` list. A stale
+    /// One line per other copy, for setup's `--verbose` detail. A stale
     /// copy that is not the user's carries the `sudo mv` that moves it.
     #[must_use]
     pub fn found(&self) -> Vec<String> {

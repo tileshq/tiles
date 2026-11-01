@@ -40,7 +40,7 @@ Set up Tiles for Claude Code and Codex? [y/N] y
 Next: run tiles check, then start a session with tiles run pi.
 ```
 
-In a terminal each line starts with a mark: a green check for a finished step, `-` for a skipped one, `!` for one left to you and a red cross for a failure. Piped, or with `NO_COLOR` set, the words stay the same and the marks go. `tiles setup --verbose` adds each path and each change under its step, and shows what each harness's own command prints; `tiles doctor` shows the paths as well.
+In a terminal each line starts with a mark: a green check for a finished step, a dot for a pending one, `-` for a skipped one, `!` for one left to you and a red cross for a failure. Piped, or with `NO_COLOR` set, the words stay the same and the marks go. `tiles setup --verbose` adds each path and each change under its step, and shows what each harness's own command prints; `tiles doctor` shows the paths as well.
 
 On `y` it runs, for each harness, the steps `tiles install <harness>` runs ([surfaces.md](surfaces.md)). A data source's line names the commands that finish it, which need a key or a choice only you have: `tiles omni set-key https://<host>` ([omni.md](omni.md)). After those, run `tiles setup` again so each harness gets the data tools and asks before each Tiles tool call.
 
