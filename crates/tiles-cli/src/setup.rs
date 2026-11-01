@@ -223,10 +223,13 @@ pub fn plan(harness: Harness, i: &Inputs<'_>) -> Plan {
 }
 
 /// Whether `step` would change nothing: the file already holds those
-/// bytes, Codex already asks and waits long enough, or Codex already has
-/// the server.
+/// bytes, or for `OpenCode`'s config the same settings, Codex already asks
+/// and waits long enough, or Codex already has the server.
 fn current(step: &Step, spec: &Spec, i: &Inputs<'_>) -> bool {
     match step {
+        Step::Write(path, bytes) if *path == i.dirs.opencode_file() => {
+            fs::read(path).is_ok_and(|b| install::opencode_file_is_current(&b, bytes))
+        }
         Step::Write(path, bytes) => fs::read(path).is_ok_and(|b| b == *bytes),
         Step::CodexPrompt(path) => fs::read_to_string(path)
             .is_ok_and(|c| install::codex_prompt(&c).is_ok_and(|edited| edited == c)),

@@ -118,10 +118,13 @@ pub fn pi_tool(spec: &Spec) -> serde_json::Value {
     })
 }
 
+/// What every `OpenCode` permission key for a Tiles tool starts with.
+pub const OPENCODE_PERMISSION_PREFIX: &str = "tiles_";
+
 /// The `OpenCode` permission key for the Tiles server's tool `tool`.
 #[must_use]
 pub fn opencode_permission(tool: &str) -> String {
-    format!("tiles_{tool}")
+    format!("{OPENCODE_PERMISSION_PREFIX}{tool}")
 }
 
 /// The `OpenCode` `/theme` command: `OpenCode` 1.19.3 has `/themes` for its

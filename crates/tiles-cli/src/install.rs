@@ -74,9 +74,14 @@ impl Dirs {
 /// directory, so the user's own `opencode.json` is never edited.
 pub const OPENCODE_FILE: &str = "config.json";
 
+/// The instruction file `tiles install opencode` writes beside [`OPENCODE_FILE`].
+const OPENCODE_INSTRUCTIONS: &str = "tiles-instructions.md";
+
 /// Refuses to overwrite an `OpenCode` `config.json` that is not Tiles' own: one
-/// with keys beyond `mcp`, `permission`, `command` and `instructions`, a
-/// server other than `tiles`, or a command other than `theme`.
+/// with keys beyond `mcp`, `permission`, `command`, `instructions` and the
+/// `$schema` `OpenCode` adds when it first loads the file, a server other than
+/// `tiles`, a command other than `theme`, a permission for anything but a
+/// Tiles tool, or an instruction file other than [`OPENCODE_INSTRUCTIONS`].
 ///
 /// # Errors
 ///
@@ -85,27 +90,125 @@ pub fn opencode_file_is_ours(existing: Option<&[u8]>) -> Result<(), String> {
     let Some(bytes) = existing else { return Ok(()) };
     let ours = serde_json::from_slice::<serde_json::Value>(bytes).is_ok_and(|v| {
         v.as_object().is_some_and(|o| {
+            let keys_are_ours = |section: &str, ours: &dyn Fn(&str) -> bool| {
+                o.get(section).is_none_or(|m| {
+                    m.as_object()
+                        .is_some_and(|m| m.keys().all(|k| ours(k.as_str())))
+                })
+            };
             o.keys().all(|k| {
                 matches!(
                     k.as_str(),
-                    "mcp" | "permission" | "command" | "instructions"
+                    "$schema" | "mcp" | "permission" | "command" | "instructions"
                 )
-            }) && o
-                .get("mcp")
-                .and_then(|m| m.as_object())
-                .is_none_or(|m| m.keys().all(|k| k == "tiles"))
-                && o.get("command")
-                    .and_then(|m| m.as_object())
-                    .is_none_or(|m| m.keys().all(|k| k == "theme"))
+            }) && keys_are_ours("mcp", &|k| k == "tiles")
+                && keys_are_ours("command", &|k| k == "theme")
+                && keys_are_ours("permission", &|k| {
+                    k.starts_with(addons::OPENCODE_PERMISSION_PREFIX)
+                })
+                && o.get("instructions").is_none_or(|files| {
+                    files.as_array().is_some_and(|files| {
+                        files.iter().all(|f| {
+                            f.as_str()
+                                .is_some_and(|f| Path::new(f).ends_with(OPENCODE_INSTRUCTIONS))
+                        })
+                    })
+                })
         })
     });
     if ours {
         Ok(())
     } else {
-        Err(format!(
-            "OpenCode's {OPENCODE_FILE} holds settings of yours; add the tiles server to opencode.json by hand (tiles install --dry-run opencode shows it) or use tiles run opencode"
-        ))
+        Err(opencode_refused())
     }
+}
+
+fn opencode_refused() -> String {
+    format!(
+        "OpenCode's {OPENCODE_FILE} holds settings of yours; add the tiles server to opencode.json by hand (tiles install --dry-run opencode shows it) or use tiles run opencode"
+    )
+}
+
+/// Refuses an install over an `OpenCode` `config.json` it would change more
+/// than Tiles' own edits explain: on top of [`opencode_file_is_ours`], a
+/// permission other than `ask`, or `allow` on `tiles_chart` or `tiles_theme`,
+/// and a tiles server with settings no install writes.
+///
+/// # Errors
+///
+/// What the file holds and what to do instead.
+pub fn opencode_file_is_replaceable(existing: Option<&[u8]>) -> Result<(), String> {
+    opencode_file_is_ours(existing)?;
+    let Some(bytes) = existing else { return Ok(()) };
+    let config: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|_| opencode_refused())?;
+    let preapprovable = [TOOL_NAME, THEME_TOOL].map(addons::opencode_permission);
+    let permissions_are_tiles = config["permission"].as_object().is_none_or(|p| {
+        p.iter()
+            .all(|(k, v)| *v == "ask" || (*v == "allow" && preapprovable.contains(k)))
+    });
+    if permissions_are_tiles && opencode_server_is_tiles(&config["mcp"]["tiles"]) {
+        Ok(())
+    } else {
+        Err(opencode_refused())
+    }
+}
+
+/// Whether the `OpenCode` server entry `server` holds only what an install
+/// writes, for any `tiles` path.
+fn opencode_server_is_tiles(server: &serde_json::Value) -> bool {
+    let draw = installed_draw(Harness::OpenCode).name();
+    server.is_null()
+        || server.as_object().is_some_and(|s| {
+            s.iter().all(|(k, v)| match k.as_str() {
+                "type" => *v == "local",
+                "enabled" => *v == true,
+                "command" => v
+                    .as_array()
+                    .is_some_and(|c| c.len() == 2 && c[0].is_string() && c[1] == "mcp"),
+                "environment" => v.as_object().is_some_and(|e| {
+                    e.iter()
+                        .all(|(name, value)| name == "TILES_DRAW" && *value == draw)
+                }),
+                _ => false,
+            })
+        })
+}
+
+/// Whether the `OpenCode` config holding `existing` has a tiles server and
+/// leaves `tiles_chart`, `tiles_theme` or a data tool of `tools` at `allow`
+/// or unlisted.
+fn opencode_runs_unasked(existing: &[u8], tools: &[&str]) -> bool {
+    let Ok(config) = serde_json::from_slice::<serde_json::Value>(existing) else {
+        return false;
+    };
+    let permission = &config["permission"];
+    !config["mcp"]["tiles"].is_null()
+        && [TOOL_NAME, THEME_TOOL].iter().chain(tools).any(|tool| {
+            let value = if permission.is_object() {
+                &permission[addons::opencode_permission(tool).as_str()]
+            } else {
+                permission
+            };
+            value.is_null() || *value == "allow"
+        })
+}
+
+/// Whether the `OpenCode` `config.json` holding `existing` already says what
+/// an install would write, `wanted`, apart from the `$schema` `OpenCode` adds
+/// and how it lays the file out.
+#[must_use]
+pub fn opencode_file_is_current(existing: &[u8], wanted: &[u8]) -> bool {
+    let (Ok(mut existing), Ok(wanted)) = (
+        serde_json::from_slice::<serde_json::Value>(existing),
+        serde_json::from_slice::<serde_json::Value>(wanted),
+    ) else {
+        return false;
+    };
+    if let Some(config) = existing.as_object_mut() {
+        config.remove("$schema");
+    }
+    existing == wanted
 }
 
 /// Codex's config file, in `CODEX_HOME` (`~/.codex` by default).
@@ -346,12 +449,20 @@ fn codex_needs_timeout(config: &str, secs: u64) -> bool {
 /// a machine where Omni or a warehouse is configured, whose data tools are
 /// `tools`, or whose Codex stops waiting sooner than `timeout`, the seconds
 /// a configured source's chart call may take, each with the command that
-/// fixes it.
+/// fixes it, or the edit by hand for an `OpenCode` file an install refuses.
 #[must_use]
 pub fn stale_installs(dirs: &Dirs, tools: &[&str], timeout: Option<u64>) -> Vec<String> {
     let mut out = Vec::new();
-    if fs::read(dirs.opencode_file()).is_ok_and(|b| opencode_ask(&b, tools).is_some()) {
-        out.push("OpenCode's Tiles install runs tiles_chart or a data tool without asking; run tiles install opencode".to_string());
+    if let Ok(existing) = fs::read(dirs.opencode_file()) {
+        if opencode_file_is_replaceable(Some(&existing)).is_err() {
+            if opencode_runs_unasked(&existing, tools) {
+                out.push(format!(
+                    "OpenCode's {OPENCODE_FILE} holds settings of yours and runs tiles_chart or a data tool without asking; tiles install opencode refuses that file, so set those tools to ask in it by hand"
+                ));
+            }
+        } else if opencode_ask(&existing, tools).is_some() {
+            out.push("OpenCode's Tiles install runs tiles_chart or a data tool without asking; run tiles install opencode".to_string());
+        }
     }
     if fs::read_to_string(dirs.codex_file()).is_ok_and(|c| codex_needs_prompt(&c)) {
         out.push(format!(
@@ -506,7 +617,7 @@ pub fn steps(
         }
         Harness::OpenCode => {
             let dir = config_home.join("opencode");
-            let instructions = dir.join("tiles-instructions.md");
+            let instructions = dir.join(OPENCODE_INSTRUCTIONS);
             let config =
                 addons::opencode_config(&tiles, &spec.env, &spec.reach, &[], &instructions);
             vec![
@@ -570,15 +681,17 @@ pub fn spec(harness: Harness, tiles: PathBuf, reach: Reach, forms: Vec<FormEntry
 }
 
 /// Refuses an install that would overwrite a file of the user's:
-/// [`opencode_file_is_ours`] for `OpenCode`, [`codex_setting_is_ours`] for
-/// Codex.
+/// [`opencode_file_is_replaceable`] for `OpenCode`, [`codex_setting_is_ours`]
+/// for Codex.
 ///
 /// # Errors
 ///
 /// What the file holds and what to do instead.
 pub fn refusal(harness: Harness, dirs: &Dirs) -> Result<(), String> {
     match harness {
-        Harness::OpenCode => opencode_file_is_ours(fs::read(dirs.opencode_file()).ok().as_deref()),
+        Harness::OpenCode => {
+            opencode_file_is_replaceable(fs::read(dirs.opencode_file()).ok().as_deref())
+        }
         Harness::Codex => {
             codex_setting_is_ours(fs::read_to_string(dirs.codex_file()).ok().as_deref())
         }
@@ -721,10 +834,22 @@ mod tests {
         use super::opencode_file_is_ours;
         assert!(opencode_file_is_ours(None).is_ok());
         assert!(
-            opencode_file_is_ours(Some(br#"{"mcp":{"tiles":{}},"instructions":["x"]}"#)).is_ok()
+            opencode_file_is_ours(Some(
+                br#"{"mcp":{"tiles":{}},"permission":{"tiles_tiles_chart":"ask"},"instructions":["/xdg/opencode/tiles-instructions.md"]}"#
+            ))
+            .is_ok()
         );
+        assert!(
+            opencode_file_is_ours(Some(br#"{"mcp":{"tiles":{}},"instructions":["x"]}"#)).is_err()
+        );
+        assert!(opencode_file_is_ours(Some(br#"{"instructions":"x"}"#)).is_err());
+        assert!(opencode_file_is_ours(Some(br#"{"instructions":[1]}"#)).is_err());
+        assert!(opencode_file_is_ours(Some(br#"{"permission":{"bash":"ask"}}"#)).is_err());
+        assert!(opencode_file_is_ours(Some(br#"{"permission":"ask"}"#)).is_err());
         assert!(opencode_file_is_ours(Some(br#"{"theme":"x"}"#)).is_err());
         assert!(opencode_file_is_ours(Some(br#"{"mcp":{"github":{}}}"#)).is_err());
+        assert!(opencode_file_is_ours(Some(br#"{"mcp":"x"}"#)).is_err());
+        assert!(opencode_file_is_ours(Some(br#"{"command":"x"}"#)).is_err());
         assert!(opencode_file_is_ours(Some(b"// jsonc\n{}")).is_err());
     }
 
@@ -1044,6 +1169,211 @@ mod tests {
             reapply_approvals(&dirs, OMNI_TOOLS, None).is_empty(),
             "a second run changes nothing"
         );
+        let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
+    }
+
+    /// Adds the key `OpenCode` 1.19.3 and 1.19.5 add to the `config.json`
+    /// Tiles wrote, the first time they load it.
+    fn opencode_loads(dirs: &Dirs) {
+        let file = dirs.opencode_file();
+        let mut config: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+        config["$schema"] = serde_json::json!("https://opencode.ai/config.json");
+        crate::addons::write_file(&file, config.to_string().as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn opencodes_schema_key_leaves_the_config_tiles_own() {
+        let dirs = fake_dirs("schema-key-ours");
+        install_without_omni(&dirs);
+        opencode_loads(&dirs);
+        assert_eq!(super::refusal(Harness::OpenCode, &dirs), Ok(()));
+        let file = dirs.opencode_file();
+        for not_ours in [
+            br#"{"$schema":"https://opencode.ai/config.json","theme":"x"}"#.as_slice(),
+            br#"{"$schema":"https://opencode.ai/config.json","mcp":{"github":{}}}"#.as_slice(),
+        ] {
+            crate::addons::write_file(&file, not_ours).unwrap();
+            assert!(super::refusal(Harness::OpenCode, &dirs).is_err());
+        }
+        let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
+    }
+
+    #[test]
+    fn opencodes_schema_key_still_gets_the_warning_and_the_ask_entries() {
+        let dirs = fake_dirs("schema-key-ask");
+        install_without_omni(&dirs);
+        opencode_loads(&dirs);
+        assert!(
+            stale_installs(&dirs, OMNI_TOOLS, None)
+                .iter()
+                .any(|l| l.starts_with("OpenCode's Tiles install runs tiles_chart")),
+            "{:?}",
+            stale_installs(&dirs, OMNI_TOOLS, None)
+        );
+        let changed = reapply_approvals(&dirs, OMNI_TOOLS, None);
+        assert!(
+            changed
+                .iter()
+                .any(|l| l.starts_with("set the Tiles tools to ask in ")),
+            "{changed:?}"
+        );
+        assert_eq!(
+            opencode_permission(&dirs),
+            serde_json::json!({
+                "tiles_tiles_chart": "ask",
+                "tiles_tiles_theme": "ask",
+                "tiles_tiles_omni_topics": "ask",
+                "tiles_tiles_omni_fields": "ask",
+            })
+        );
+        let bytes = std::fs::read(dirs.opencode_file()).unwrap();
+        let config: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(config["$schema"], "https://opencode.ai/config.json");
+        assert!(
+            !stale_installs(&dirs, OMNI_TOOLS, None)
+                .iter()
+                .any(|l| l.starts_with("OpenCode's")),
+        );
+        let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
+    }
+
+    #[test]
+    fn opencodes_schema_key_does_not_make_the_users_permissions_ours() {
+        let dirs = fake_dirs("schema-key-users-permissions");
+        let file = dirs.opencode_file();
+        let mine = br#"{"$schema":"https://opencode.ai/config.json","permission":{"bash":"ask"},"instructions":["~/rules.md"]}"#;
+        crate::addons::write_file(&file, mine).unwrap();
+        assert!(super::refusal(Harness::OpenCode, &dirs).is_err());
+        assert_eq!(
+            stale_installs(&dirs, OMNI_TOOLS, None),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            reapply_approvals(&dirs, OMNI_TOOLS, None),
+            Vec::<String>::new()
+        );
+        assert_eq!(std::fs::read(&file).unwrap(), mine);
+        let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
+    }
+
+    #[test]
+    fn an_install_refuses_settings_tiles_never_writes() {
+        let dirs = fake_dirs("refuses-users-values");
+        install_without_omni(&dirs);
+        opencode_loads(&dirs);
+        let file = dirs.opencode_file();
+        let loaded: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+        let edited = |pointer: &str, value: serde_json::Value| {
+            let mut config = loaded.clone();
+            let (parent, key) = pointer.rsplit_once('/').unwrap();
+            config.pointer_mut(parent).unwrap()[key] = value;
+            config.to_string()
+        };
+        for mine in [
+            edited("/permission/tiles_tiles_chart", serde_json::json!("deny")),
+            edited(
+                "/permission/tiles_tiles_omni_topics",
+                serde_json::json!("allow"),
+            ),
+            edited("/mcp/tiles/environment/MINE", serde_json::json!("1")),
+            edited(
+                "/mcp/tiles/environment/TILES_DRAW",
+                serde_json::json!("image"),
+            ),
+            edited("/mcp/tiles/enabled", serde_json::json!(false)),
+            edited("/mcp/tiles/timeout", serde_json::json!(5000)),
+            edited(
+                "/mcp/tiles/command",
+                serde_json::json!(["/opt/tiles", "mcp", "--mine"]),
+            ),
+        ] {
+            crate::addons::write_file(&file, mine.as_bytes()).unwrap();
+            assert!(super::refusal(Harness::OpenCode, &dirs).is_err(), "{mine}");
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), mine);
+        }
+        for explained in [
+            edited("/permission/tiles_tiles_chart", serde_json::json!("ask")),
+            edited(
+                "/permission/tiles_tiles_omni_topics",
+                serde_json::json!("ask"),
+            ),
+            edited(
+                "/mcp/tiles/command",
+                serde_json::json!(["/old/tiles", "mcp"]),
+            ),
+        ] {
+            crate::addons::write_file(&file, explained.as_bytes()).unwrap();
+            assert_eq!(
+                super::refusal(Harness::OpenCode, &dirs),
+                Ok(()),
+                "{explained}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
+    }
+
+    #[test]
+    fn a_refused_config_that_runs_tools_unasked_gets_the_by_hand_warning() {
+        let dirs = fake_dirs("refused-by-hand-warning");
+        install_without_omni(&dirs);
+        let file = dirs.opencode_file();
+        let installed: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+        let by_hand = |config: &serde_json::Value| {
+            crate::addons::write_file(&file, config.to_string().as_bytes()).unwrap();
+            let lines = stale_installs(&dirs, OMNI_TOOLS, None);
+            let lines: Vec<_> = lines
+                .iter()
+                .filter(|l| l.starts_with("OpenCode's"))
+                .collect();
+            assert!(lines.len() <= 1, "{lines:?}");
+            lines.first().is_some_and(|l| {
+                assert!(!l.contains("run tiles install"), "{l}");
+                l.contains("refuses that file") && l.contains("by hand")
+            })
+        };
+        let asks = serde_json::json!({
+            "tiles_tiles_chart": "ask",
+            "tiles_tiles_theme": "ask",
+            "tiles_tiles_omni_topics": "ask",
+            "tiles_tiles_omni_fields": "ask",
+        });
+
+        let mut extra_permission = installed.clone();
+        extra_permission["permission"]["bash"] = serde_json::json!("ask");
+        assert!(by_hand(&extra_permission));
+        let mut extra_instructions = installed.clone();
+        extra_instructions["instructions"] = serde_json::json!(["~/rules.md"]);
+        assert!(by_hand(&extra_instructions));
+        let mut users_value = installed.clone();
+        users_value["permission"]["tiles_tiles_chart"] = serde_json::json!("deny");
+        assert!(by_hand(&users_value));
+        let mut users_allow = installed.clone();
+        users_allow["permission"] = asks.clone();
+        users_allow["permission"]["tiles_tiles_omni_fields"] = serde_json::json!("allow");
+        assert!(by_hand(&users_allow));
+        let mut users_env = installed.clone();
+        users_env["mcp"]["tiles"]["environment"]["MINE"] = serde_json::json!("1");
+        assert!(by_hand(&users_env));
+
+        let mut asks_everything = installed.clone();
+        asks_everything["permission"] = asks.clone();
+        asks_everything["permission"]["bash"] = serde_json::json!("ask");
+        assert!(!by_hand(&asks_everything), "every Tiles tool asks");
+        let mut no_server = extra_permission.clone();
+        no_server.as_object_mut().unwrap().remove("mcp");
+        assert!(!by_hand(&no_server), "no tiles server to run");
+
+        let before = serde_json::to_vec(&extra_permission).unwrap();
+        crate::addons::write_file(&file, &before).unwrap();
+        assert!(
+            reapply_approvals(&dirs, OMNI_TOOLS, None)
+                .iter()
+                .all(|l| !l.starts_with("set the Tiles tools"))
+        );
+        assert_eq!(std::fs::read(&file).unwrap(), before, "the refusal stays");
         let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
     }
 
