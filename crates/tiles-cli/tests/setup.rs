@@ -254,8 +254,6 @@ fn yes_sets_up_every_harness_and_a_second_run_changes_nothing() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// What `claude mcp get tiles` prints of a server for `/old/tiles` kept in
-/// `scope`'s config.
 /// A `tiles setup` after `OpenCode` 1.19.3 or 1.19.5 first loaded the
 /// `config.json` Tiles wrote, which adds `$schema` to it.
 #[test]
@@ -298,6 +296,38 @@ fn opencodes_schema_key_reads_as_already_set_up() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A `config.json` of the user's own, after `OpenCode` loaded it and added
+/// `$schema`: only its keys are ones Tiles also writes.
+#[test]
+fn a_users_config_with_opencodes_schema_key_is_refused() {
+    let root = machine("schema-key-users");
+    let file = root.join("home/.config/opencode/config.json");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    let mine = br#"{"$schema":"https://opencode.ai/config.json","permission":{"bash":"ask"},"instructions":["~/rules.md"]}"#;
+    std::fs::write(&file, mine).unwrap();
+
+    let said = text(&tiles(&root, &["setup", "--yes"], None));
+    assert!(
+        said.contains(
+            "  OpenCode       (left as it is: OpenCode's config.json holds settings of yours"
+        ),
+        "{said}"
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), mine, "setup left the file");
+
+    let install = tiles(&root, &["install", "opencode"], None);
+    let said = text(&install);
+    assert!(!install.status.success(), "{said}");
+    assert!(
+        said.contains("OpenCode's config.json holds settings of yours"),
+        "{said}"
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), mine, "install left the file");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// What `claude mcp get tiles` prints of a server for `/old/tiles` kept in
+/// `scope`'s config.
 fn old_server(scope: &str) -> String {
     format!(
         "tiles:\n  Scope: {scope}\n  Type: stdio\n  Command: /old/tiles\n  Args: mcp\n  Environment:\n    TILES_DRAW=text\n"

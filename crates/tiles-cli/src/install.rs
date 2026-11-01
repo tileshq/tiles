@@ -74,10 +74,14 @@ impl Dirs {
 /// directory, so the user's own `opencode.json` is never edited.
 pub const OPENCODE_FILE: &str = "config.json";
 
+/// The instruction file `tiles install opencode` writes beside [`OPENCODE_FILE`].
+const OPENCODE_INSTRUCTIONS: &str = "tiles-instructions.md";
+
 /// Refuses to overwrite an `OpenCode` `config.json` that is not Tiles' own: one
 /// with keys beyond `mcp`, `permission`, `command`, `instructions` and the
 /// `$schema` `OpenCode` adds when it first loads the file, a server other than
-/// `tiles`, or a command other than `theme`.
+/// `tiles`, a command other than `theme`, a permission for anything but a
+/// Tiles tool, or an instruction file other than [`OPENCODE_INSTRUCTIONS`].
 ///
 /// # Errors
 ///
@@ -86,18 +90,30 @@ pub fn opencode_file_is_ours(existing: Option<&[u8]>) -> Result<(), String> {
     let Some(bytes) = existing else { return Ok(()) };
     let ours = serde_json::from_slice::<serde_json::Value>(bytes).is_ok_and(|v| {
         v.as_object().is_some_and(|o| {
+            let keys_are_ours = |section: &str, ours: &dyn Fn(&str) -> bool| {
+                o.get(section).is_none_or(|m| {
+                    m.as_object()
+                        .is_some_and(|m| m.keys().all(|k| ours(k.as_str())))
+                })
+            };
             o.keys().all(|k| {
                 matches!(
                     k.as_str(),
                     "$schema" | "mcp" | "permission" | "command" | "instructions"
                 )
-            }) && o
-                .get("mcp")
-                .and_then(|m| m.as_object())
-                .is_none_or(|m| m.keys().all(|k| k == "tiles"))
-                && o.get("command")
-                    .and_then(|m| m.as_object())
-                    .is_none_or(|m| m.keys().all(|k| k == "theme"))
+            }) && keys_are_ours("mcp", &|k| k == "tiles")
+                && keys_are_ours("command", &|k| k == "theme")
+                && keys_are_ours("permission", &|k| {
+                    k.starts_with(addons::OPENCODE_PERMISSION_PREFIX)
+                })
+                && o.get("instructions").is_none_or(|files| {
+                    files.as_array().is_some_and(|files| {
+                        files.iter().all(|f| {
+                            f.as_str()
+                                .is_some_and(|f| Path::new(f).ends_with(OPENCODE_INSTRUCTIONS))
+                        })
+                    })
+                })
         })
     });
     if ours {
@@ -524,7 +540,7 @@ pub fn steps(
         }
         Harness::OpenCode => {
             let dir = config_home.join("opencode");
-            let instructions = dir.join("tiles-instructions.md");
+            let instructions = dir.join(OPENCODE_INSTRUCTIONS);
             let config =
                 addons::opencode_config(&tiles, &spec.env, &spec.reach, &[], &instructions);
             vec![
@@ -739,10 +755,22 @@ mod tests {
         use super::opencode_file_is_ours;
         assert!(opencode_file_is_ours(None).is_ok());
         assert!(
-            opencode_file_is_ours(Some(br#"{"mcp":{"tiles":{}},"instructions":["x"]}"#)).is_ok()
+            opencode_file_is_ours(Some(
+                br#"{"mcp":{"tiles":{}},"permission":{"tiles_tiles_chart":"ask"},"instructions":["/xdg/opencode/tiles-instructions.md"]}"#
+            ))
+            .is_ok()
         );
+        assert!(
+            opencode_file_is_ours(Some(br#"{"mcp":{"tiles":{}},"instructions":["x"]}"#)).is_err()
+        );
+        assert!(opencode_file_is_ours(Some(br#"{"instructions":"x"}"#)).is_err());
+        assert!(opencode_file_is_ours(Some(br#"{"instructions":[1]}"#)).is_err());
+        assert!(opencode_file_is_ours(Some(br#"{"permission":{"bash":"ask"}}"#)).is_err());
+        assert!(opencode_file_is_ours(Some(br#"{"permission":"ask"}"#)).is_err());
         assert!(opencode_file_is_ours(Some(br#"{"theme":"x"}"#)).is_err());
         assert!(opencode_file_is_ours(Some(br#"{"mcp":{"github":{}}}"#)).is_err());
+        assert!(opencode_file_is_ours(Some(br#"{"mcp":"x"}"#)).is_err());
+        assert!(opencode_file_is_ours(Some(br#"{"command":"x"}"#)).is_err());
         assert!(opencode_file_is_ours(Some(b"// jsonc\n{}")).is_err());
     }
 
@@ -1128,6 +1156,25 @@ mod tests {
                 .iter()
                 .any(|l| l.starts_with("OpenCode's")),
         );
+        let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
+    }
+
+    #[test]
+    fn opencodes_schema_key_does_not_make_the_users_permissions_ours() {
+        let dirs = fake_dirs("schema-key-users-permissions");
+        let file = dirs.opencode_file();
+        let mine = br#"{"$schema":"https://opencode.ai/config.json","permission":{"bash":"ask"},"instructions":["~/rules.md"]}"#;
+        crate::addons::write_file(&file, mine).unwrap();
+        assert!(super::refusal(Harness::OpenCode, &dirs).is_err());
+        assert_eq!(
+            stale_installs(&dirs, OMNI_TOOLS, None),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            reapply_approvals(&dirs, OMNI_TOOLS, None),
+            Vec::<String>::new()
+        );
+        assert_eq!(std::fs::read(&file).unwrap(), mine);
         let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
     }
 
