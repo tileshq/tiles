@@ -75,8 +75,9 @@ impl Dirs {
 pub const OPENCODE_FILE: &str = "config.json";
 
 /// Refuses to overwrite an `OpenCode` `config.json` that is not Tiles' own: one
-/// with keys beyond `mcp`, `permission`, `command` and `instructions`, a
-/// server other than `tiles`, or a command other than `theme`.
+/// with keys beyond `mcp`, `permission`, `command`, `instructions` and the
+/// `$schema` `OpenCode` adds when it first loads the file, a server other than
+/// `tiles`, or a command other than `theme`.
 ///
 /// # Errors
 ///
@@ -88,7 +89,7 @@ pub fn opencode_file_is_ours(existing: Option<&[u8]>) -> Result<(), String> {
             o.keys().all(|k| {
                 matches!(
                     k.as_str(),
-                    "mcp" | "permission" | "command" | "instructions"
+                    "$schema" | "mcp" | "permission" | "command" | "instructions"
                 )
             }) && o
                 .get("mcp")
@@ -106,6 +107,23 @@ pub fn opencode_file_is_ours(existing: Option<&[u8]>) -> Result<(), String> {
             "OpenCode's {OPENCODE_FILE} holds settings of yours; add the tiles server to opencode.json by hand (tiles install --dry-run opencode shows it) or use tiles run opencode"
         ))
     }
+}
+
+/// Whether the `OpenCode` `config.json` holding `existing` already says what
+/// an install would write, `wanted`, apart from the `$schema` `OpenCode` adds
+/// and how it lays the file out.
+#[must_use]
+pub fn opencode_file_is_current(existing: &[u8], wanted: &[u8]) -> bool {
+    let (Ok(mut existing), Ok(wanted)) = (
+        serde_json::from_slice::<serde_json::Value>(existing),
+        serde_json::from_slice::<serde_json::Value>(wanted),
+    ) else {
+        return false;
+    };
+    if let Some(config) = existing.as_object_mut() {
+        config.remove("$schema");
+    }
+    existing == wanted
 }
 
 /// Codex's config file, in `CODEX_HOME` (`~/.codex` by default).
@@ -1043,6 +1061,72 @@ mod tests {
         assert!(
             reapply_approvals(&dirs, OMNI_TOOLS, None).is_empty(),
             "a second run changes nothing"
+        );
+        let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
+    }
+
+    /// Adds the key `OpenCode` 1.19.3 and 1.19.5 add to the `config.json`
+    /// Tiles wrote, the first time they load it.
+    fn opencode_loads(dirs: &Dirs) {
+        let file = dirs.opencode_file();
+        let mut config: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+        config["$schema"] = serde_json::json!("https://opencode.ai/config.json");
+        crate::addons::write_file(&file, config.to_string().as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn opencodes_schema_key_leaves_the_config_tiles_own() {
+        let dirs = fake_dirs("schema-key-ours");
+        install_without_omni(&dirs);
+        opencode_loads(&dirs);
+        assert_eq!(super::refusal(Harness::OpenCode, &dirs), Ok(()));
+        let file = dirs.opencode_file();
+        for not_ours in [
+            br#"{"$schema":"https://opencode.ai/config.json","theme":"x"}"#.as_slice(),
+            br#"{"$schema":"https://opencode.ai/config.json","mcp":{"github":{}}}"#.as_slice(),
+        ] {
+            crate::addons::write_file(&file, not_ours).unwrap();
+            assert!(super::refusal(Harness::OpenCode, &dirs).is_err());
+        }
+        let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
+    }
+
+    #[test]
+    fn opencodes_schema_key_still_gets_the_warning_and_the_ask_entries() {
+        let dirs = fake_dirs("schema-key-ask");
+        install_without_omni(&dirs);
+        opencode_loads(&dirs);
+        assert!(
+            stale_installs(&dirs, OMNI_TOOLS, None)
+                .iter()
+                .any(|l| l.starts_with("OpenCode's Tiles install runs tiles_chart")),
+            "{:?}",
+            stale_installs(&dirs, OMNI_TOOLS, None)
+        );
+        let changed = reapply_approvals(&dirs, OMNI_TOOLS, None);
+        assert!(
+            changed
+                .iter()
+                .any(|l| l.starts_with("set the Tiles tools to ask in ")),
+            "{changed:?}"
+        );
+        assert_eq!(
+            opencode_permission(&dirs),
+            serde_json::json!({
+                "tiles_tiles_chart": "ask",
+                "tiles_tiles_theme": "ask",
+                "tiles_tiles_omni_topics": "ask",
+                "tiles_tiles_omni_fields": "ask",
+            })
+        );
+        let bytes = std::fs::read(dirs.opencode_file()).unwrap();
+        let config: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(config["$schema"], "https://opencode.ai/config.json");
+        assert!(
+            !stale_installs(&dirs, OMNI_TOOLS, None)
+                .iter()
+                .any(|l| l.starts_with("OpenCode's")),
         );
         let _ = std::fs::remove_dir_all(dirs.home.parent().unwrap());
     }

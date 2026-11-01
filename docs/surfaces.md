@@ -43,7 +43,7 @@ Some OpenCode installs are a launcher whose TUI attaches to a background service
 
 ## Permanent install
 
-`tiles install <harness>` adds Tiles for sessions started without `tiles run`; `tiles setup` runs it for every harness on `PATH` after one question ([install.md](install.md), [ADR-035](adr/ADR-035-macos-package-and-tiles-setup.md)). Pi gets the extension in `~/.pi/agent/extensions/tiles/`; OpenCode gets `~/.config/opencode/config.json` (refused if you already have one of your own); Claude Code and Codex get the MCP server through their own `claude mcp add` and `codex mcp add`. `--dry-run` shows the steps first. Outside `tiles run` no wrapper draws, so those sessions get the summary and the PNG's path, except Pi, which draws the image itself.
+`tiles install <harness>` adds Tiles for sessions started without `tiles run`; `tiles setup` runs it for every harness on `PATH` after one question ([install.md](install.md), [ADR-035](adr/ADR-035-macos-package-and-tiles-setup.md)). Pi gets the extension in `~/.pi/agent/extensions/tiles/`; OpenCode gets `~/.config/opencode/config.json` (refused if you already have one of your own; the `$schema` key OpenCode adds to Tiles' file does not make it yours); Claude Code and Codex get the MCP server through their own `claude mcp add` and `codex mcp add`. `--dry-run` shows the steps first. Outside `tiles run` no wrapper draws, so those sessions get the summary and the PNG's path, except Pi, which draws the image itself.
 
 ## Checks in Warp
 
