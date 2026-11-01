@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cardFrom } from "./hooks/card.ts";
+import { TOOL, cardFrom, cardsIn } from "./hooks/card.ts";
 
 const TEXT = `Tiles drew "Signups dipped in W3" as a column card (id a1b2c3, 52x12 cells). The user sees the chart as the image in this result.
 
@@ -53,4 +53,19 @@ test("only the last PNG line, naming this card's file, is read", () => {
 test("alt text drops every invisible format character", () => {
   const hidden = TEXT.replace("Signups dipped in W3", "Signups\u200b\u00ad\ufeff\u{E0049} dipped");
   assert.ok(cardFrom(hidden)?.alt.startsWith("Signups dipped"));
+});
+
+test("a folded run yields the card of each finished tiles_chart call, in order", () => {
+  const call = { tool: TOOL, isErrored: false, isInterrupted: false };
+  const other = TEXT.replaceAll("a1b2c3", "d4e5f6");
+  const cards = cardsIn([
+    { ...call, output: TEXT },
+    { ...call, tool: "Read", output: other },
+    { ...call, output: undefined },
+    { ...call, isErrored: true, output: other },
+    { ...call, isInterrupted: true, output: other },
+    { ...call, output: "tiles_chart refused: highlight[0]: bad" },
+    { ...call, output: [{ type: "text", text: other }] },
+  ]);
+  assert.deepEqual(cards.map((card) => card.id), ["a1b2c3", "d4e5f6"]);
 });
