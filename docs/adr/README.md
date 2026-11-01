@@ -18,7 +18,7 @@ Older records cite `docs/playbook.md`, `tests/reference.rs` and `tools/`, which 
 | [ADR-010](ADR-010-engine-v0-1.md) | Text drawn as glyph outlines, forms and tokens as checked data, 15 v0.1 forms, a measured distance to the prototype |
 | [ADR-011](ADR-011-surfaces-v0-1.md) | `tiles run` loads Tiles through each harness's own launch options; the card travels as a placeholder block; the wrapper draws only where no hook does (its ```` ```tiles ```` fence superseded by ADR-043, restored by ADR-052) |
 | [ADR-012](ADR-012-prototype-parity.md) | Cards match the gallery on the pixel grid, every gallery counterpart is a reference, and intent v1 takes an optional unit and note |
-| [ADR-013](ADR-013-data-stays-local.md) | Chart results carry no picture; Omni cards keep their values local; Omni tools need approval; the Omni key is bound to its host and readable only by `tiles` |
+| [ADR-013](ADR-013-data-stays-local.md) | Chart results carry no picture; Omni cards keep their values local; Omni tools need approval; the Omni key is bound to its host and readable only by `tiles` (its fix for a refused OpenCode `config.json` amended by ADR-032) |
 | [ADR-014](ADR-014-release-integrity.md) | Release builds hold no write token, SHA256SUMS comes from the build jobs, and the Skia archive is checked against a pinned hash |
 | [ADR-015](ADR-015-parity-round-2.md) | The bullet, lollipop, dumbbell and big number draw as their gallery cards, and the horizontal 100% bar is its own form |
 | [ADR-016](ADR-016-card-width-and-rows.md) | Cards size to their content from a width range in each form file; `tiles_chart` takes `row` and draws 2 to 4 cards as one picture |
