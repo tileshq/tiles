@@ -21,46 +21,49 @@ What the package cannot do yet ([ADR-035](adr/ADR-035-macos-package-and-tiles-se
 
 ## `tiles setup`: every harness in one step
 
-`tiles setup` finds each harness Tiles supports on your `PATH` (Claude Code, Codex, OpenCode and Pi), the terminal, and the data login it can see without reading a secret, an Omni URL in the Keychain or `TILES_OMNI_URL`. It prints one list and asks once; nothing changes unless you answer `y`:
+`tiles setup` finds each harness Tiles supports on your `PATH` (Claude Code, Codex, OpenCode and Pi), the terminal, and the data login it can see without reading a secret, an Omni URL in the Keychain or `TILES_OMNI_URL`. It names what it would change and asks once; nothing changes unless you answer `y`. Then it prints one line per step ([ADR-060](adr/ADR-060-setup-prints-a-step-list.md)):
 
 ```text
-Tiles found:
-  terminal: warp, nothing to change (tiles doctor shows how cards draw here)
-  pi: /Users/<you>/.local/bin/pi, already set up
-  opencode: not on PATH
-  claude: /Users/<you>/.local/bin/claude, not set up
-  codex: /usr/local/bin/codex, not set up
-  omni: the Keychain names acme.omniapp.co but holds no API key for it
-Tiles will change:
-  claude: run claude mcp add --scope user tiles -e TILES_DRAW=text -- /usr/local/bin/tiles mcp
-  codex: run codex mcp add tiles --env TILES_DRAW=text -- /usr/local/bin/tiles mcp
-  codex: write /Users/<you>/.codex/skills/tiles-theme/SKILL.md
-Set up Tiles for Claude Code and Codex? [y/N]
+Tiles 0.2.0 setup
+  Claude Code    (will configure)
+  Codex          (will configure)
+tiles setup --dry-run --verbose lists each change.
+Set up Tiles for Claude Code and Codex? [y/N] y
+
+  Tiles on PATH  (installed)
+  Terminal       (warp: nothing to set up)
+  Pi             (already set up)
+  OpenCode       (skipped: not on PATH)
+  Claude Code    (configured)
+  Codex          (configured)
+  Omni           (the Keychain names acme.omniapp.co but holds no API key for it; to finish: tiles omni set-key https://acme.omniapp.co; then tiles setup again)
+Next: run tiles check, then start a session with tiles run pi.
 ```
 
-On `y` it runs, for each harness, the steps `tiles install <harness>` runs ([surfaces.md](surfaces.md)). Then it prints the commands that finish each data source it found, which need a key or a choice only you have: `tiles omni set-key https://<host>` ([omni.md](omni.md)). After those, run `tiles setup` again so each harness gets the data tools and asks before each Tiles tool call.
+In a terminal each line starts with a mark: a green check for a finished step, a dot for a pending one, `-` for a skipped one, `!` for one left to you and a red cross for a failure. Piped, or with `NO_COLOR` set, the words stay the same and the marks go. `tiles setup --verbose` adds each path and each change under its step, and shows what each harness's own command prints; `tiles doctor` shows the paths as well.
 
-Running it again changes nothing that is already set up. `tiles setup --dry-run` prints the list and changes nothing; `tiles setup --yes` answers for a script. A harness installed later shows up in `tiles doctor` as `setup: Tiles is not set up, or is out of date, for <harness>; run tiles setup`; for Claude Code, doctor reads its registration from `~/.claude.json` and starts nothing. `tiles setup` leaves alone an OpenCode `config.json` or a Codex approval setting of your own, as `tiles install` does, and says so.
+On `y` it runs, for each harness, the steps `tiles install <harness>` runs ([surfaces.md](surfaces.md)). A data source's line names the commands that finish it, which need a key or a choice only you have: `tiles omni set-key https://<host>` ([omni.md](omni.md)). After those, run `tiles setup` again so each harness gets the data tools and asks before each Tiles tool call.
 
-When Claude Code already has a user-scope `tiles` server that runs another `tiles`, such as `~/.local/bin/tiles` from an earlier `install.sh`, `tiles setup` lists `claude: <path>, set up with another tiles, /Users/<you>/.local/bin/tiles; Tiles will replace it`, and on `y` runs `claude mcp remove tiles --scope user` and then the `claude mcp add` above ([ADR-039](adr/ADR-039-setup-replaces-a-stale-claude-code-server.md)). If the remove fails it adds nothing and prints the two commands to run yourself. A `tiles` server in a project's or a folder's Claude Code config, or one that sets variables of your own, is named with the commands that replace it and left as it is.
+Running it again changes nothing and prints the same list with `(already set up)`. `tiles setup --dry-run` prints the list and changes nothing; `tiles setup --yes` answers for a script. A harness installed later shows up in `tiles doctor` as `setup: Tiles is not set up, or is out of date, for <harness>; run tiles setup`; for Claude Code, doctor reads its registration from `~/.claude.json` and starts nothing. `tiles setup` leaves alone an OpenCode `config.json` or a Codex approval setting of your own, as `tiles install` does, and says so.
 
-An earlier `install.sh` leaves its own copy in `~/.local/bin`, and when that folder comes first on your `PATH` a terminal keeps running the old `tiles`. `tiles setup` names every other `tiles` on your `PATH` with its version, and offers to move one that comes before it aside ([ADR-035](adr/ADR-035-macos-package-and-tiles-setup.md)):
+When Claude Code already has a user-scope `tiles` server that runs another `tiles`, such as `~/.local/bin/tiles` from an earlier `install.sh`, its line reads `Claude Code (set up with another tiles, /Users/<you>/.local/bin/tiles; Tiles will replace it)`, and on `y` setup runs `claude mcp remove tiles --scope user` and then `claude mcp add` ([ADR-039](adr/ADR-039-setup-replaces-a-stale-claude-code-server.md)). If the remove fails it adds nothing and its line names the two commands to run yourself. A `tiles` server in a project's or a folder's Claude Code config, or one that sets variables of your own, is named with the commands that replace it and left as it is.
+
+An earlier `install.sh` leaves its own copy in `~/.local/bin`, and when that folder comes first on your `PATH` a terminal keeps running the old `tiles`. `tiles setup` gives every other `tiles` on your `PATH` a line with its version, and offers to move one that comes before it aside ([ADR-035](adr/ADR-035-macos-package-and-tiles-setup.md)):
 
 ```text
-Tiles found:
-  terminal: warp, nothing to change (tiles doctor shows how cards draw here)
-  tiles: /Users/<you>/.local/bin/tiles, version 0.1.2, comes first on PATH, so a terminal runs it, not this one (/usr/local/bin/tiles, version 0.1.9)
-  ...
-Tiles will change:
-  claude: run claude mcp add --scope user tiles -e TILES_DRAW=text -- /usr/local/bin/tiles mcp
-  tiles: move /Users/<you>/.local/bin/tiles aside, to tiles-0.1.2-old beside it
+Tiles 0.2.0 setup
+  Claude Code    (will configure)
+  Other tiles    (/Users/<you>/.local/bin/tiles, version 0.1.2, is ahead of this one on PATH; Tiles will move it aside, to tiles-0.1.2-old beside it)
+tiles setup --dry-run --verbose lists each change.
 Set up Tiles for Claude Code? [y/N] y
-installed Tiles for claude; ...
 Move /Users/<you>/.local/bin/tiles aside, to /Users/<you>/.local/bin/tiles-0.1.2-old? [y/N] y
-Moved /Users/<you>/.local/bin/tiles to /Users/<you>/.local/bin/tiles-0.1.2-old. To run /usr/local/bin/tiles as tiles, open a new terminal tab, or run hash -r (rehash in zsh).
+
+  Tiles on PATH  (installed)
+  Other tiles    (moved /Users/<you>/.local/bin/tiles aside, to /Users/<you>/.local/bin/tiles-0.1.2-old; open a new terminal tab to run this one)
+  ...
 ```
 
-It renames the old copy and never deletes it; delete `tiles-0.1.2-old` yourself once the new one works. It offers only for a copy older than itself, or one whose version it cannot read; a newer copy that comes first is named as newer and left. It asks only in a terminal and only for a file you own: without a terminal, with `--yes` or `--dry-run`, or when you answer `n`, it prints the `mv -n` command to run yourself, and a copy owned by another user is named with `sudo mv -n`. `tiles doctor` prints the same command on one line while the old copy comes first.
+It renames the old copy and never deletes it; delete `tiles-0.1.2-old` yourself once the new one works. It offers only for a copy older than itself, or one whose version it cannot read; a newer copy that comes first is named as newer and left. It asks only in a terminal and only for a file you own: without a terminal, with `--yes` or `--dry-run`, or when you answer `n`, it prints the `mv -n` command to run yourself, and a copy owned by another user is named with `sudo mv -n`. While that copy stays ahead, the closing line reads `Not yet: see the Other tiles line, then run tiles check, ...`. `tiles doctor` prints the same command on one line while the old copy comes first.
 
 ## `install.sh`: no administrator, or a script
 
@@ -83,7 +86,7 @@ TILES_ARCHIVE=~/Downloads/tiles-v0.1.0-aarch64-apple-darwin.tar.gz \
 TILES_SUMS=~/Downloads/SHA256SUMS sh ~/Downloads/install.sh
 ```
 
-The script reads the signature from `SHA256SUMS.sig` beside `SHA256SUMS`. Whenever the signature does not check out, it prints one line and installs nothing. With no `SHA256SUMS.sig` beside `SHA256SUMS` it prints `tiles: no signature <path> for <sums>; download SHA256SUMS.sig from the same release beside it; not installed`; when a release has no `SHA256SUMS.sig` to download, `tiles: cannot download <url>/SHA256SUMS.sig, the signature of SHA256SUMS, so its checksums cannot be trusted; not installed`; and for a signature the release key did not make, one for another namespace, or a `SHA256SUMS` changed after signing, `tiles: SHA256SUMS is not signed by the Tiles release key; not installed`. It has no switch to skip the check. Releases published before signing began have no `SHA256SUMS.sig`; install one of those with the `install.sh` from its own release. The script refuses an archive whose checksum does not match. It removes the quarantine flag a browser download carries from the binary it installs, and says `installed` only when `tiles --version` runs and prints a version. When macOS stops the binary anyway, it says so, names Gatekeeper and endpoint security software, and points to System Settings > Privacy & Security. Run in Terminal, it then runs `tiles setup`, which asks before it changes anything; run from a script or with its output redirected, it prints `next: tiles setup` instead.
+The script reads the signature from `SHA256SUMS.sig` beside `SHA256SUMS`. Whenever the signature does not check out, it prints one line and installs nothing. With no `SHA256SUMS.sig` beside `SHA256SUMS` it prints `tiles: no signature <path> for <sums>; download SHA256SUMS.sig from the same release beside it; not installed`; when a release has no `SHA256SUMS.sig` to download, `tiles: cannot download <url>/SHA256SUMS.sig, the signature of SHA256SUMS, so its checksums cannot be trusted; not installed`; and for a signature the release key did not make, one for another namespace, or a `SHA256SUMS` changed after signing, `tiles: SHA256SUMS is not signed by the Tiles release key; not installed`. It has no switch to skip the check. Releases published before signing began have no `SHA256SUMS.sig`; install one of those with the `install.sh` from its own release. The script refuses an archive whose checksum does not match. It removes the quarantine flag a browser download carries from the binary it installs, and says `installed` only when `tiles --version` runs and prints a version. When macOS stops the binary anyway, it says so, names Gatekeeper and endpoint security software, and points to System Settings > Privacy & Security. Run in Terminal, it then runs `tiles setup`, which asks before it changes anything; run from a script or with its output redirected, it prints `Next: run tiles setup` instead. It prints one line per step, as `tiles setup` does ([ADR-060](adr/ADR-060-setup-prints-a-step-list.md)).
 
 ## Checking a download by hand
 
@@ -108,7 +111,7 @@ shasum -a 256 -c --ignore-missing SHA256SUMS
 `install.sh` runs before anything has checked it, so check it first. The `install.sh` this page describes has this SHA-256, which `shasum -a 256 install.sh` prints:
 
 ```text
-e4ba5f1928d81ae42857279f36cad97b215aa530e44c9d7e43dc655e120c1196
+29223157e7fb64834e1d96460367b54008ff5ef3e1a0fbd07d2857731f8eeafb
 ```
 
 The signed `SHA256SUMS` lists it as well, so the commands above check it the same way for any release.

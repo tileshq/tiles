@@ -8,7 +8,8 @@
 # tiles update does (ADR-032), and calls the install done only when the
 # installed `tiles --version` prints a version. Run in a terminal, piped from
 # curl included, it then runs `tiles setup`, which asks once before it
-# changes anything (ADR-035); with no terminal it prints that next step.
+# changes anything (ADR-035); with no terminal it prints that next step. It
+# prints one line per step, as tiles setup does (ADR-060).
 #
 #   curl -fsSL https://github.com/tileshq/tiles/releases/latest/download/install.sh | sh
 #   sh install.sh            # latest release
@@ -36,6 +37,18 @@ case "$(uname -s)-$(uname -m)" in
 esac
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# A green check or yellow ! in a terminal with NO_COLOR unset; otherwise the
+# same words with no mark.
+if [ -t 1 ] && [ -z "${NO_COLOR+set}" ]; then
+  done_mark="$(printf '\033[32m\342\234\223\033[0m ')"
+  note_mark="$(printf '\033[33m!\033[0m ')"
+else
+  done_mark=
+  note_mark=
+fi
+step() { # <mark> <label> <state>
+  printf '  %s%-9s  (%s)\n' "$1" "$2" "$3"
+}
 quarantine=com.apple.quarantine
 # Removes the quarantine flag from the file itself, never through a symlink
 # (xattr -s); a file without one is left as it is.
@@ -52,6 +65,8 @@ if [ -n "${TILES_ARCHIVE:-}" ]; then
   cp "$TILES_ARCHIVE" "$work/"
   cp "$TILES_SUMS" "$work/SHA256SUMS"
   cp "$sig" "$work/SHA256SUMS.sig"
+  from_label=Archive
+  from_state="from TILES_ARCHIVE"
 else
   command -v curl >/dev/null || { echo "tiles: curl is not installed; download the archive, SHA256SUMS and SHA256SUMS.sig from the release page and set TILES_ARCHIVE and TILES_SUMS" >&2; exit 1; }
   # HTTPS only, failing on an HTTP error rather than saving its page.
@@ -82,6 +97,8 @@ else
     echo "tiles: cannot download $releases/download/$tag/SHA256SUMS.sig, the signature of SHA256SUMS, so its checksums cannot be trusted; not installed" >&2
     exit 1
   }
+  from_label=Download
+  from_state="$tag"
 fi
 # SHA256SUMS counts only once the release key's signature over it checks out.
 command -v ssh-keygen >/dev/null || { echo "tiles: ssh-keygen is not on PATH, so the signature of SHA256SUMS cannot be checked; not installed" >&2; exit 1; }
@@ -90,9 +107,14 @@ ssh-keygen -Y verify -f "$work/allowed_signers" -I tiles-release -n tiles-releas
   echo "tiles: SHA256SUMS is not signed by the Tiles release key; not installed" >&2
   exit 1
 }
+# The list starts here, so a refusal above stays one line (ADR-056).
+echo "Tiles install"
+step "$done_mark" "$from_label" "$from_state"
+step "$done_mark" Signature "matches the release key"
 archive="$(cd "$work" && ls tiles-*-"$target".tar.gz)"
 unquarantine "$work/$archive"
-( cd "$work" && grep " $archive\$" SHA256SUMS | shasum -a 256 -c - ) || { echo "tiles: $archive does not match SHA256SUMS; not installed" >&2; exit 1; }
+( cd "$work" && grep " $archive\$" SHA256SUMS | shasum -a 256 -c - ) >/dev/null 2>&1 || { echo "tiles: $archive does not match SHA256SUMS; not installed" >&2; exit 1; }
+step "$done_mark" Checksum "matches SHA256SUMS"
 tar -xzf "$work/$archive" -C "$work"
 unquarantine "$work/${archive%.tar.gz}/tiles"
 mkdir -p "$dest"
@@ -109,15 +131,17 @@ if ! version="$("$dest/tiles" --version 2>/dev/null)" || [ -z "$version" ]; then
   echo "tiles: macOS Gatekeeper or the laptop's endpoint security software most likely stopped it. Open System Settings > Privacy & Security; if it names tiles, choose Open Anyway and run this script again. On a managed laptop, ask IT to allow tiles. Then check with: $dest/tiles --version" >&2
   exit 1
 fi
-echo "installed $dest/tiles ($version)"
-case ":$PATH:" in *":$dest:"*) ;; *) echo "add $dest to PATH, for example: echo 'export PATH=\"$dest:\$PATH\"' >> ~/.zshrc" ;; esac
+step "$done_mark" Tiles "installed $dest/tiles, $version"
+case ":$PATH:" in *":$dest:"*) ;; *) step "$note_mark" PATH "add $dest to PATH, for example: echo 'export PATH=\"$dest:\$PATH\"' >> ~/.zshrc" ;; esac
 # Piped from curl, the script's stdin is the pipe, so tiles setup reads its
 # one question from the terminal at /dev/tty when stdout is a terminal and
 # /dev/tty opens (ADR-059).
 if [ -t 0 ] && [ -t 1 ]; then
+  echo
   "$dest/tiles" setup
 elif [ -t 1 ] && (: < /dev/tty) 2>/dev/null; then
+  echo
   "$dest/tiles" setup < /dev/tty
 else
-  echo "next: tiles setup, which sets Tiles up for every harness it finds after one question"
+  echo "Next: run tiles setup, which sets Tiles up for every harness it finds after one question."
 fi

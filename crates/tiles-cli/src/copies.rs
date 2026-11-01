@@ -64,6 +64,8 @@ pub struct Copies {
     pub current: String,
     /// The others, in `PATH` order.
     pub others: Vec<Other>,
+    /// Whether the running one is on `PATH`.
+    pub on_path: bool,
 }
 
 /// The version in `answer`, a `tiles --version` output such as `tiles 0.1.2
@@ -153,6 +155,7 @@ pub fn find(
         this: this.to_path_buf(),
         current: current.to_string(),
         others,
+        on_path,
     }
 }
 
@@ -226,7 +229,7 @@ impl Other {
 }
 
 impl Copies {
-    /// One line per other copy, for setup's `Tiles found:` list. A stale
+    /// One line per other copy, for setup's `--verbose` detail. A stale
     /// copy that is not the user's carries the `sudo mv` that moves it.
     #[must_use]
     pub fn found(&self) -> Vec<String> {

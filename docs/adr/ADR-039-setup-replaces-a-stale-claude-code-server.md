@@ -1,6 +1,6 @@
 # ADR-039: `tiles setup` replaces a user-scope Claude Code `tiles` server for another `tiles` after its one question, and leaves every other one
 
-- Status: Accepted; supersedes [ADR-035](ADR-035-macos-package-and-tiles-setup.md)'s rule that `tiles setup` never removes Claude Code's `tiles` server; ADR-035's one question, `--yes`, `--dry-run` and `tiles doctor`'s read of `~/.claude.json` stand
+- Status: Accepted; supersedes [ADR-035](ADR-035-macos-package-and-tiles-setup.md)'s rule that `tiles setup` never removes Claude Code's `tiles` server; ADR-035's one question, `--yes`, `--dry-run` and `tiles doctor`'s read of `~/.claude.json` stand; the words setup prints follow [ADR-060](ADR-060-setup-prints-a-step-list.md)
 - Date: 2026-10-20
 
 ## Context

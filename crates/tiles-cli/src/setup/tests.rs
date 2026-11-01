@@ -4,12 +4,34 @@ use std::path::{Path, PathBuf};
 use tiles_mcp::source::Found;
 use tiles_omni::{ConfigError, SecretStore};
 
+use tiles_term::style::{Mark, Style};
+
 use super::{
-    Args, Inputs, Plan, Registered, Report, add_cards, apply, hints, omni, parse, plan, report, run,
+    Args, CLAUDE_FIX, Change, Inputs, Plan, Registered, Report, Row, add_cards, apply, harness_row,
+    hints, omni, parse, plan, report, run,
 };
 use crate::copies::{Copies, Other, Place};
 use crate::harness::Harness;
 use crate::install::{self, Dirs, Step};
+
+/// The terminal's step in these reports.
+fn warp() -> Row {
+    Row::new(Mark::Done, "Terminal", "warp: nothing to set up")
+}
+
+/// The first line of everything setup prints.
+fn header() -> String {
+    format!("Tiles {} setup\n", tiles_intent::TILES_VERSION)
+}
+
+/// Args with only `--yes` or `--dry-run`.
+fn answered(yes: bool, dry_run: bool) -> Args {
+    Args {
+        yes,
+        dry_run,
+        verbose: false,
+    }
+}
 
 fn dirs(name: &str) -> Dirs {
     let root = std::env::temp_dir().join(format!("tiles-setup-{name}-{}", std::process::id()));
@@ -43,14 +65,15 @@ const CODEX_ADDED: &str = "[mcp_servers.tiles]\ncommand = \"/opt/tiles\"\nargs =
 const CLAUDE_ADDED: &str = "tiles:\n  Scope: User config (available in all your projects)\n  Status: \u{2714} Connected\n  Type: stdio\n  Command: /opt/tiles\n  Args: mcp\n  Environment:\n    TILES_DRAW=text\n\nTo remove this server, run: claude mcp remove \"tiles\" -s user\n";
 
 #[test]
-fn it_takes_yes_and_dry_run_only() {
+fn it_takes_yes_dry_run_and_verbose_only() {
     let args = |a: &[&str]| parse(&a.iter().map(|s| (*s).to_string()).collect::<Vec<_>>());
     assert_eq!(args(&[]).unwrap(), Args::default());
     assert_eq!(
-        args(&["--yes", "--dry-run"]).unwrap(),
+        args(&["--yes", "--dry-run", "--verbose"]).unwrap(),
         Args {
             yes: true,
-            dry_run: true
+            dry_run: true,
+            verbose: true,
         }
     );
     assert!(args(&["-y"]).is_err(), "--yes is the one spelling");
@@ -300,7 +323,7 @@ fn a_user_scope_claude_server_for_another_tiles_is_replaced_and_any_other_is_lef
 }
 
 #[test]
-fn a_replacement_is_listed_before_the_one_question() {
+fn a_replacement_is_named_before_the_one_question_with_its_steps_under_verbose() {
     let replace = Plan::Replace(
         on_path("claude"),
         "set up with another tiles, /old/tiles".into(),
@@ -308,13 +331,9 @@ fn a_replacement_is_listed_before_the_one_question() {
     );
     let r = report(
         vec![(Harness::Claude, replace.clone())],
-        "terminal: Warp",
+        warp(),
         &Copies::default(),
         &[],
-    );
-    assert_eq!(
-        r.found[1],
-        "claude: /bin/claude, set up with another tiles, /old/tiles; Tiles will replace it"
     );
     assert_eq!(r.installs, [(Harness::Claude, claude_replace())]);
     assert!(!r.left);
@@ -322,11 +341,41 @@ fn a_replacement_is_listed_before_the_one_question() {
     assert!(installed.is_empty() && ok, "no answer replaces nothing");
     assert!(
         text.contains(
-            "Tiles will change:\n  claude: run claude mcp remove tiles --scope user\n  claude: run claude mcp add --scope user tiles -e TILES_DRAW=text -- /opt/tiles mcp\nSet up Tiles for Claude Code? [y/N] "
+            "  Claude Code    (set up with another tiles, /old/tiles; Tiles will replace it)\n"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("Set up Tiles for Claude Code? [y/N] "),
+        "{text}"
+    );
+    assert!(
+        text.contains(
+            "  Claude Code    (not confirmed; set up with another tiles, /old/tiles: run claude mcp remove tiles --scope user, then tiles setup)\n"
         ),
         "{text}"
     );
     assert!(text.contains("Nothing changed."), "{text}");
+    assert!(!text.contains("claude mcp add"), "{text}");
+    let verbose = Args {
+        verbose: true,
+        ..Args::default()
+    };
+    let (text, _, _) = drive(verbose, &r, None);
+    assert!(
+        text.contains(
+            "      /bin/claude\n      run claude mcp remove tiles --scope user\n      run claude mcp add --scope user tiles -e TILES_DRAW=text -- /opt/tiles mcp\n"
+        ),
+        "{text}"
+    );
+    let (text, installed, _) = drive(answered(true, false), &r, None);
+    assert_eq!(installed, [Harness::Claude]);
+    assert!(
+        text.contains(
+            "  Claude Code    (configured; it was set up with another tiles, /old/tiles)\n"
+        ),
+        "{text}"
+    );
     assert_eq!(
         hints(&[(Harness::Claude, replace)]),
         [
@@ -440,15 +489,15 @@ fn a_harness_left_for_the_user_is_never_called_set_up() {
         ];
         let (text, installed, ok) = drive(
             Args::default(),
-            &report(plans, "terminal: Warp", &Copies::default(), &[]),
+            &report(plans, warp(), &Copies::default(), &[]),
             None,
         );
         assert!(installed.is_empty() && ok);
+        assert!(text.contains("(left as it is: "), "{text}");
         assert!(
             text.contains("Nothing for Tiles to change; see the lines above.\n"),
             "{text}"
         );
-        assert!(!text.contains("already has it"), "{text}");
         assert!(!text.contains("[y/N]"), "{text}");
     }
 }
@@ -646,7 +695,16 @@ fn drive(args: Args, report: &Report, reply: Option<&str>) -> (String, Vec<Harne
         }
     };
     let mut out = Vec::new();
-    let ok = run(args, report, false, &mut out, &mut answer, &apply).unwrap();
+    let ok = run(
+        args,
+        report,
+        false,
+        Style::default(),
+        &mut out,
+        &mut answer,
+        &apply,
+    )
+    .unwrap();
     let text = String::from_utf8(out).unwrap();
     if args.yes || args.dry_run {
         assert!(!*asked.borrow(), "asked despite {args:?}");
@@ -655,13 +713,8 @@ fn drive(args: Args, report: &Report, reply: Option<&str>) -> (String, Vec<Harne
 }
 
 #[test]
-fn it_lists_everything_asks_once_and_no_answer_or_no_changes_nothing() {
-    let report = report(
-        plans(),
-        "terminal: Warp, nothing to change",
-        &Copies::default(),
-        &data(),
-    );
+fn it_lists_every_step_asks_once_and_no_answer_or_no_changes_nothing() {
+    let report = report(plans(), warp(), &Copies::default(), &data());
     for reply in [None, Some("\n"), Some("n\n"), Some("no\n"), Some("yep\n")] {
         let (text, installed, ok) = drive(Args::default(), &report, reply);
         assert!(installed.is_empty(), "{reply:?} installed {installed:?}");
@@ -673,71 +726,238 @@ fn it_lists_everything_asks_once_and_no_answer_or_no_changes_nothing() {
         );
     }
     let (text, installed, ok) = drive(Args::default(), &report, None);
+    let width = "Tiles on PATH".len();
     assert_eq!(
         text,
-        "Tiles found:
-  terminal: Warp, nothing to change
-  pi: /bin/pi, already set up
-  opencode: not on PATH
-  claude: /bin/claude, not set up
-  codex: /bin/codex, not set up
-  warehouse: not set up; found a gcloud login at /h/adc.json
-Tiles will change:
-  claude: run claude mcp add
-  codex: write /c/SKILL.md
+        format!(
+            "{}  {:<width$}  (will configure)
+  {:<width$}  (will configure)
+tiles setup --dry-run --verbose lists each change.
 Set up Tiles for Claude Code and Codex? [y/N]\u{20}
-Nothing changed. Run tiles setup again to set it up, or tiles install <harness> for one harness.
-To finish the data sources, run:
-  tiles warehouse setup --billing-project <id> --project <id>
-Then run tiles setup again, so each harness gets the data tools and asks before each Tiles tool call.
-"
+
+  Tiles on PATH  (not on PATH: add  to PATH, then open a new terminal tab)
+  Terminal       (warp: nothing to set up)
+  Pi             (already set up)
+  OpenCode       (skipped: not on PATH)
+  Claude Code    (skipped: not confirmed)
+  Codex          (skipped: not confirmed)
+  Warehouse      (not set up; found a gcloud login at /h/adc.json; to finish: tiles warehouse setup --billing-project <id> --project <id>; then tiles setup again)
+Nothing changed. To set it up, see the Tiles on PATH line, then run tiles setup again, or tiles install <harness> for one harness.
+",
+            header(),
+            "Claude Code",
+            "Codex",
+        )
     );
     assert!(installed.is_empty() && ok);
 }
 
 #[test]
+fn a_finished_machine_reads_already_set_up_with_paths_only_under_verbose() {
+    let current = vec![
+        (Harness::Pi, Plan::Current(PathBuf::from("/bin/pi"))),
+        (Harness::OpenCode, Plan::Missing),
+        (Harness::Claude, Plan::Current(PathBuf::from("/bin/claude"))),
+    ];
+    let copies = Copies {
+        this: PathBuf::from("/opt/homebrew/bin/tiles"),
+        current: "0.2.0".into(),
+        on_path: true,
+        ..Copies::default()
+    };
+    let r = report(current, warp(), &copies, &[]);
+    let (text, installed, ok) = drive(Args::default(), &r, None);
+    assert!(installed.is_empty() && ok);
+    assert_eq!(
+        text,
+        format!(
+            "{}  Tiles on PATH  (already set up)
+  Terminal       (warp: nothing to set up)
+  Pi             (already set up)
+  OpenCode       (skipped: not on PATH)
+  Claude Code    (already set up)
+Next: run tiles check, then start a session with tiles run pi.
+",
+            header()
+        )
+    );
+    let verbose = Args {
+        verbose: true,
+        ..Args::default()
+    };
+    let (text, _, _) = drive(verbose, &r, None);
+    assert!(
+        text.contains(
+            "  Tiles on PATH  (already set up)\n      /opt/homebrew/bin/tiles, version 0.2.0\n"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("  Pi             (already set up)\n      /bin/pi\n"),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_terminal_gets_marks_and_the_same_words_as_a_pipe() {
+    let r = report(plans(), warp(), &Copies::default(), &data());
+    let printed = |style: Style| {
+        let mut out = Vec::new();
+        let apply = |h: Harness, _: &[Step]| {
+            if h == Harness::Codex {
+                Err("codex exited with exit status: 1".to_string())
+            } else {
+                Ok(())
+            }
+        };
+        let args = answered(true, false);
+        run(args, &r, false, style, &mut out, &mut || None, &apply).unwrap();
+        String::from_utf8(out).unwrap()
+    };
+    let marked = printed(Style::new(true, false));
+    assert!(
+        marked.contains("  \u{1b}[32m\u{2713}\u{1b}[0m Claude Code    (configured)\n"),
+        "{marked}"
+    );
+    assert!(
+        marked.contains("  \u{1b}[2m\u{2013}\u{1b}[0m OpenCode       (skipped: not on PATH)\n"),
+        "{marked}"
+    );
+    assert!(
+        marked.contains("  \u{1b}[31m\u{2717}\u{1b}[0m Codex          (failed: "),
+        "{marked}"
+    );
+    for words in [Style::new(false, false), Style::new(true, true)] {
+        let plain = printed(words);
+        assert!(
+            !plain.contains('\u{1b}') && !plain.contains('\u{2713}'),
+            "{plain}"
+        );
+        let mut unmarked = marked.clone();
+        for mark in [
+            "\u{1b}[32m\u{2713}\u{1b}[0m ",
+            "\u{1b}[2m\u{2013}\u{1b}[0m ",
+            "\u{1b}[33m!\u{1b}[0m ",
+            "\u{1b}[31m\u{2717}\u{1b}[0m ",
+        ] {
+            unmarked = unmarked.replace(mark, "");
+        }
+        assert_eq!(unmarked, plain);
+    }
+}
+
+#[test]
 fn yes_installs_each_harness_and_reports_a_failure_without_stopping() {
-    let report = report(plans(), "terminal: Warp", &Copies::default(), &data());
+    let report = report(plans(), warp(), &Copies::default(), &data());
     for (args, reply) in [
         (Args::default(), Some("y\n")),
         (Args::default(), Some(" YES \n")),
-        (
-            Args {
-                yes: true,
-                dry_run: false,
-            },
-            None,
-        ),
+        (answered(true, false), None),
     ] {
         let (text, installed, ok) = drive(args, &report, reply);
         assert_eq!(installed, [Harness::Claude, Harness::Codex]);
         assert!(!ok, "codex failed");
+        assert!(text.contains("  Claude Code    (configured)\n"), "{text}");
         assert!(
-            text.contains("installed Tiles for claude; tiles run claude adds the inline card"),
+            text.contains(
+                "  Codex          (failed: codex exited with exit status: 1; then tiles setup again)\n"
+            ),
             "{text}"
         );
         assert!(
-            text.contains("tiles: codex not set up: codex exited with exit status: 1"),
+            text.ends_with("Some steps failed; each failed line says what to run.\n"),
             "{text}"
         );
     }
 }
 
 #[test]
-fn dry_run_prints_the_plan_and_changes_nothing() {
-    let report = report(plans(), "terminal: Warp", &Copies::default(), &data());
-    let (text, installed, ok) = drive(
-        Args {
-            yes: true,
-            dry_run: true,
-        },
-        &report,
-        Some("y\n"),
+fn a_failed_line_gets_the_fix_unless_it_already_ends_with_one() {
+    let plan = Plan::Install(on_path("codex"), Vec::new());
+    let state = |e: &str| harness_row(Harness::Codex, &plan, Change::Failed(e)).state;
+    assert_eq!(
+        state("codex said: run tiles setup with care"),
+        "failed: codex said: run tiles setup with care; then tiles setup again"
     );
+    let fixed = format!("claude failed; {CLAUDE_FIX}");
+    assert_eq!(state(&fixed), format!("failed: {fixed}"));
+}
+
+#[test]
+fn the_closing_line_sends_no_one_to_a_tiles_that_will_not_start_this_one() {
+    let current = || vec![(Harness::Pi, Plan::Current(PathBuf::from("/bin/pi")))];
+    let install = || {
+        vec![(
+            Harness::Pi,
+            Plan::Install(PathBuf::from("/bin/pi"), Vec::new()),
+        )]
+    };
+    let none = || vec![(Harness::Pi, Plan::Missing)];
+    let last = |plans: Vec<(Harness, Plan)>, copies: &Copies| {
+        let r = report(plans, warp(), copies, &[]);
+        let (text, _, ok) = drive(Args::default(), &r, None);
+        assert!(ok, "{text}");
+        text.lines().last().unwrap().to_string()
+    };
+    let (root, _old, stale) = shadowed("closing", "0.1.2");
+    let unfound = Copies::default();
+    for (copies, row) in [(&stale, "Other tiles"), (&unfound, "Tiles on PATH")] {
+        assert_eq!(
+            last(current(), copies),
+            format!(
+                "Not yet: see the {row} line, then run tiles check, then start a session with tiles run pi."
+            )
+        );
+        assert_eq!(
+            last(install(), copies),
+            format!(
+                "Nothing changed. To set it up, see the {row} line, then run tiles setup again, or tiles install <harness> for one harness."
+            )
+        );
+        assert_eq!(
+            last(none(), copies),
+            format!(
+                "No harness Tiles supports is on PATH; see the {row} line, then install Claude Code, Codex, OpenCode or Pi, then run tiles setup again."
+            )
+        );
+    }
+    assert_eq!(
+        last(
+            vec![(
+                Harness::Pi,
+                Plan::Refused(PathBuf::from("/bin/pi"), "holds settings of yours".into())
+            )],
+            &stale
+        ),
+        "Nothing for Tiles to change; see the lines above."
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn dry_run_prints_the_plan_and_changes_nothing() {
+    let report = report(plans(), warp(), &Copies::default(), &data());
+    let (text, installed, ok) = drive(answered(true, true), &report, Some("y\n"));
     assert!(installed.is_empty() && ok);
-    assert!(text.contains("  claude: run claude mcp add\n"), "{text}");
-    assert!(text.contains("Dry run: nothing changed.\n"), "{text}");
+    assert!(
+        text.contains("  Claude Code    (would configure)\n"),
+        "{text}"
+    );
+    assert!(!text.contains("run claude mcp add"), "{text}");
+    assert!(text.ends_with("Dry run: nothing changed.\n"), "{text}");
     assert!(!text.contains("[y/N]"), "{text}");
+    let verbose = Args {
+        dry_run: true,
+        verbose: true,
+        ..Args::default()
+    };
+    let (text, _, _) = drive(verbose, &report, None);
+    assert!(
+        text.contains(
+            "  Claude Code    (would configure)\n      /bin/claude\n      run claude mcp add\n"
+        ),
+        "{text}"
+    );
 }
 
 #[test]
@@ -750,22 +970,20 @@ fn a_second_run_and_a_machine_with_no_harness_ask_nothing() {
     ];
     let (text, installed, ok) = drive(
         Args::default(),
-        &report(current, "terminal: Warp", &Copies::default(), &[]),
+        &report(current, warp(), &Copies::default(), &[]),
         None,
     );
     assert!(installed.is_empty() && ok);
+    assert!(text.contains("(already set up)"), "{text}");
+    assert!(text.ends_with("tiles run pi.\n"), "{text}");
     assert!(
-        text.contains("already has it; nothing to change."),
-        "{text}"
-    );
-    assert!(
-        !text.contains("[y/N]") && !text.contains("data sources"),
+        !text.contains("[y/N]") && !text.contains("to finish"),
         "{text}"
     );
     let none = Harness::ALL.map(|h| (h, Plan::Missing)).to_vec();
     let (text, _, _) = drive(
         Args::default(),
-        &report(none, "terminal: Warp", &Copies::default(), &[]),
+        &report(none, warp(), &Copies::default(), &[]),
         None,
     );
     assert!(
@@ -775,17 +993,27 @@ fn a_second_run_and_a_machine_with_no_harness_ask_nothing() {
 }
 
 #[test]
-fn found_lines_are_one_plain_line_each() {
+fn step_lines_are_one_plain_line_each() {
     let hostile = Found {
         line: "warehouse: \u{1b}]52;c;aGk=\u{7}found\nmore".into(),
         next: vec!["tiles \u{202e}x".into()],
     };
     let r = report(
-        vec![(
-            Harness::OpenCode,
-            Plan::Refused(PathBuf::from("/bin/\u{1b}[2Jopencode"), "no\nway".into()),
-        )],
-        "terminal: Warp",
+        vec![
+            (
+                Harness::OpenCode,
+                Plan::Refused(PathBuf::from("/bin/\u{1b}[2Jopencode"), "no\nway".into()),
+            ),
+            (
+                Harness::Claude,
+                Plan::Replace(
+                    PathBuf::from("/bin/claude"),
+                    "set up with another tiles, /\u{1b}]52;c;aGk=\u{7}old".into(),
+                    claude_replace(),
+                ),
+            ),
+        ],
+        warp(),
         &Copies {
             this: PathBuf::from("/usr/local/bin/tiles"),
             current: "0.1.9".into(),
@@ -797,13 +1025,22 @@ fn found_lines_are_one_plain_line_each() {
                 yours: false,
                 aside: Some(PathBuf::from("/h/\u{7}bin/tiles-0.1.2-old")),
             }],
+            on_path: true,
         },
         &[hostile],
     );
-    for line in r.found.iter().chain(&r.next) {
-        assert!(!line.chars().any(tiles_intent::forbidden), "{line:?}");
-        assert!(!line.contains('\n'), "{line:?}");
-    }
+    let verbose = Args {
+        verbose: true,
+        ..Args::default()
+    };
+    let (text, _, _) = drive(verbose, &r, None);
+    assert!(
+        !text
+            .chars()
+            .any(|c| c != '\n' && tiles_intent::forbidden(c)),
+        "{text:?}"
+    );
+    assert!(text.lines().any(|l| l.contains("found more")), "{text}");
 }
 
 #[test]
@@ -816,39 +1053,41 @@ fn on_the_text_route_setup_says_cards_will_not_draw_inline_and_how_they_open() {
         }
     };
     let apple = env(&[("TERM_PROGRAM", "Apple_Terminal")]);
-    let mut shown = report(
-        plans(),
-        "terminal: apple-terminal, nothing to change",
-        &Copies::default(),
-        &[],
-    );
+    let mut shown = report(plans(), warp(), &Copies::default(), &[]);
     add_cards(&mut shown, &apple);
     let (text, _, _) = drive(Args::default(), &shown, None);
+    assert!(
+        text.contains(
+            "  Pictures       (cards will not draw inline here; tiles doctor says how they open)\n"
+        ),
+        "{text}"
+    );
     let here = if cfg!(target_os = "macos") {
         "tiles run shows each session's cards in one window beside this terminal (TILES_WINDOW=off keeps it closed)"
     } else {
         "each reply gives the card's PNG path"
     };
+    let verbose = Args {
+        verbose: true,
+        ..Args::default()
+    };
+    let (text, _, _) = drive(verbose, &shown, None);
     assert!(
-        text.starts_with(&format!(
-            "Tiles found:
-  terminal: apple-terminal, nothing to change
-  pictures: none in this terminal, so cards will not draw inline here; Warp, Ghostty, kitty, iTerm2 and WezTerm draw them inline. Here {here}.
-  pi: /bin/pi, already set up
-"
+        text.contains(&format!(
+            "      pictures: none in this terminal, so cards will not draw inline here; Warp, Ghostty, kitty, iTerm2 and WezTerm draw them inline. Here {here}.\n"
         )),
         "{text}"
     );
     // A terminal that draws, and one setup cannot name, get no such line.
     for vars in [&[("TERM_PROGRAM", "WarpTerminal")][..], &[]] {
-        let mut shown = report(plans(), "terminal: x", &Copies::default(), &[]);
+        let mut shown = report(plans(), warp(), &Copies::default(), &[]);
         add_cards(&mut shown, &env(vars));
-        assert_eq!(shown.found[1], "pi: /bin/pi, already set up", "{vars:?}");
+        assert_eq!(shown.pictures, None, "{vars:?}");
     }
     // Forced to the text route, any terminal gets it.
-    let mut shown = report(plans(), "terminal: x", &Copies::default(), &[]);
+    let mut shown = report(plans(), warp(), &Copies::default(), &[]);
     add_cards(&mut shown, &env(&[("TILES_ROUTE", "text")]));
-    assert!(shown.found[1].starts_with("pictures: none in this terminal"));
+    assert!(shown.pictures.is_some());
 }
 
 /// A machine with `tiles` `version` in `local`, ahead of the running one,
@@ -902,21 +1141,21 @@ fn drive_plan(
     tty: bool,
     reply: Option<&str>,
 ) -> (String, bool, bool) {
-    let r = report(vec![(Harness::Pi, pi)], "terminal: Warp", copies, &[]);
+    let r = report(vec![(Harness::Pi, pi)], warp(), copies, &[]);
     let asked = RefCell::new(false);
     let mut answer = || {
         *asked.borrow_mut() = true;
         reply.map(str::to_string)
     };
     let mut out = Vec::new();
-    let ok = run(args, &r, tty, &mut out, &mut answer, &|_, _| Ok(())).unwrap();
+    let style = Style::default();
+    let ok = run(args, &r, tty, style, &mut out, &mut answer, &|_, _| Ok(())).unwrap();
     (String::from_utf8(out).unwrap(), asked.into_inner(), ok)
 }
 
 #[test]
 fn an_older_tiles_first_on_path_is_moved_aside_only_after_a_yes() {
     let (root, old, copies) = shadowed("yes", "0.1.2");
-    let this = root.join("usr/tiles");
     let aside = root.join("local/tiles-0.1.2-old");
     let mv = format!("mv -n {} {}", old.display(), aside.display());
     for reply in [None, Some("\n"), Some("n\n")] {
@@ -926,17 +1165,16 @@ fn an_older_tiles_first_on_path_is_moved_aside_only_after_a_yes() {
         assert_eq!(
             text,
             format!(
-                "Tiles found:
-  terminal: Warp
-  tiles: {}, version 0.1.2, comes first on PATH, so a terminal runs it, not this one ({}, version 0.1.9)
-  pi: /bin/pi, already set up
-Tiles will change:
-  tiles: move {} aside, to tiles-0.1.2-old beside it
-Every harness on PATH that Tiles can set up already has it.
-Move {} aside, to {}? [y/N] {}Left {} where it is; to move it aside, run: {mv}
+                "{}  Other tiles    ({}, version 0.1.2, is ahead of this one on PATH; Tiles will move it aside, to tiles-0.1.2-old beside it)
+tiles setup --dry-run --verbose lists each change.
+Move {} aside, to {}? [y/N] {}
+  Tiles on PATH  (installed)
+  Other tiles    ({}, version 0.1.2, comes first on PATH, so a terminal runs it; run: {mv}, then open a new terminal tab)
+  Terminal       (warp: nothing to set up)
+  Pi             (already set up)
+Not yet: see the Other tiles line, then run tiles check, then start a session with tiles run pi.
 ",
-                old.display(),
-                this.display(),
+                header(),
                 old.display(),
                 old.display(),
                 aside.display(),
@@ -949,12 +1187,15 @@ Move {} aside, to {}? [y/N] {}Left {} where it is; to move it aside, run: {mv}
     assert!(ok);
     assert!(!old.exists() && aside.exists());
     assert!(
-        text.ends_with(&format!(
-            "Moved {} to {}. To run {} as tiles, open a new terminal tab, or run hash -r (rehash in zsh).\n",
+        text.contains(&format!(
+            "  Other tiles    (moved {} aside, to {}; open a new terminal tab to run this one)\n",
             old.display(),
             aside.display(),
-            this.display()
         )),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("Next: run tiles check, then start a session with tiles run pi.\n"),
         "{text}"
     );
     // Moved already: the name it wanted is taken, so the move fails, says
@@ -964,7 +1205,7 @@ Move {} aside, to {}? [y/N] {}Left {} where it is; to move it aside, run: {mv}
     assert!(!ok, "{text}");
     assert!(
         text.contains(&format!(
-            "tiles: could not move {}: {} exists now; run: {mv}",
+            "  Other tiles    (could not move {}: {} exists now; run: {mv})\n",
             old.display(),
             aside.display()
         )),
@@ -983,44 +1224,27 @@ fn without_a_terminal_or_with_yes_or_a_dry_run_setup_prints_the_move_and_asks_no
         root.join("local/tiles-0.1.2-old").display()
     );
     let printed = format!(
-        "To move {} aside, run: {mv}, then open a new terminal tab, or run hash -r (rehash in zsh).\n",
+        "  Other tiles    ({}, version 0.1.2, comes first on PATH, so a terminal runs it; run: {mv}, then open a new terminal tab)\n",
         old.display()
     );
     for (args, tty) in [
         (Args::default(), false),
-        (
-            Args {
-                yes: true,
-                dry_run: false,
-            },
-            true,
-        ),
-        (
-            Args {
-                yes: false,
-                dry_run: true,
-            },
-            true,
-        ),
+        (answered(true, false), true),
+        (answered(false, true), true),
     ] {
         let (text, asked, ok) = drive_copies(args, &copies, tty, Some("y\n"));
         assert!(!asked && ok, "{args:?}");
-        assert!(
-            text.ends_with(&format!(
-                "Every harness on PATH that Tiles can set up already has it; nothing to change.\n{printed}"
-            )),
-            "{args:?}: {text}"
-        );
-        assert!(!text.contains("Tiles will change:"), "{args:?}: {text}");
+        assert!(text.contains(&printed), "{args:?}: {text}");
+        assert!(!text.contains("Tiles will move"), "{args:?}: {text}");
         assert!(old.exists());
     }
     // With an install to make, --yes lists only the install, and a dry run
-    // says it changed nothing before the command.
+    // says it changed nothing.
     let install = || Plan::Install(PathBuf::from("/bin/pi"), Vec::new());
     for (yes, dry_run) in [(true, false), (false, true)] {
-        let (text, _, _) = drive_plan(install(), Args { yes, dry_run }, &copies, true, None);
-        assert!(!text.contains("tiles: move "), "{text}");
-        assert!(text.ends_with(&printed), "{text}");
+        let (text, _, _) = drive_plan(install(), answered(yes, dry_run), &copies, true, None);
+        assert!(!text.contains("Tiles will move"), "{text}");
+        assert!(text.contains(&printed), "{text}");
         assert_eq!(
             text.contains("Dry run: nothing changed.\n"),
             dry_run,
@@ -1032,19 +1256,13 @@ fn without_a_terminal_or_with_yes_or_a_dry_run_setup_prints_the_move_and_asks_no
 
 #[test]
 fn with_a_harness_left_the_move_is_the_one_change_setup_names() {
-    let (root, old, copies) = shadowed("left", "0.1.2");
+    let (root, _old, copies) = shadowed("left", "0.1.2");
     let refused = Plan::Refused(PathBuf::from("/bin/pi"), "holds settings of yours".into());
     let (text, asked, ok) = drive_plan(refused, Args::default(), &copies, true, Some("n\n"));
     assert!(asked && ok);
+    assert!(text.contains("Tiles will move it aside"), "{text}");
     assert!(
-        text.contains(&format!(
-            "Tiles will change:
-  tiles: move {} aside, to tiles-0.1.2-old beside it
-Tiles changes no harness; see the lines above.
-Move {} aside, to ",
-            old.display(),
-            old.display()
-        )),
+        text.ends_with("Tiles changes no harness; see the lines above.\n"),
         "{text}"
     );
     assert!(!text.contains("Nothing for Tiles to change"), "{text}");
@@ -1060,7 +1278,7 @@ fn declining_the_install_says_no_harness_changed_and_still_asks_the_move() {
             Harness::Pi,
             Plan::Install(PathBuf::from("/bin/pi"), Vec::new()),
         )],
-        "terminal: Warp",
+        warp(),
         &copies,
         &[],
     );
@@ -1073,25 +1291,35 @@ fn declining_the_install_says_no_harness_changed_and_still_asks_the_move() {
             Ok(())
         };
         let mut out = Vec::new();
-        let ok = run(Args::default(), &r, true, &mut out, &mut answer, &apply).unwrap();
+        let ok = run(
+            Args::default(),
+            &r,
+            true,
+            Style::default(),
+            &mut out,
+            &mut answer,
+            &apply,
+        )
+        .unwrap();
         let text = String::from_utf8(out).unwrap();
         assert!(ok && !*applied.borrow(), "{text}");
         assert_eq!(replies.next(), None, "{text}");
         assert!(
             text.contains(&format!(
-                "Tiles will change:
-  tiles: move {} aside, to tiles-0.1.2-old beside it
-Set up Tiles for Pi? [y/N] No harness changed. Run tiles setup again to set it up, or tiles install <harness> for one harness.
-Move {} aside, to {}? [y/N] ",
-                old.display(),
+                "Set up Tiles for Pi? [y/N] Move {} aside, to {}? [y/N] ",
                 old.display(),
                 aside.display()
             )),
             "{text}"
         );
+        assert!(
+            text.contains("  Pi             (skipped: not confirmed)\n"),
+            "{text}"
+        );
+        assert!(text.contains("No harness changed."), "{text}");
         assert!(!text.contains("Nothing changed"), "{text}");
         assert_eq!((old.exists(), aside.exists()), (!moved, moved), "{text}");
-        assert_eq!(text.contains("? [y/N] Moved "), moved, "{text}");
+        assert_eq!(text.contains("(moved "), moved, "{text}");
     }
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -1106,16 +1334,36 @@ fn a_newer_tiles_first_on_path_is_named_newer_and_never_offered() {
         assert_eq!(
             text,
             format!(
-                "Tiles found:
-  terminal: Warp
-  tiles: {}, version 0.2.0, is newer than this one ({}, version 0.1.9) and comes first on PATH, so a terminal runs it
-  pi: /bin/pi, already set up
-Every harness on PATH that Tiles can set up already has it; nothing to change.
+                "{}  Tiles on PATH  (already set up)
+  Other tiles    ({}, version 0.2.0, is newer than this one and comes first on PATH, so a terminal runs it)
+  Terminal       (warp: nothing to set up)
+  Pi             (already set up)
+Next: run tiles check, then start a session with tiles run pi.
 ",
+                header(),
                 newer.display(),
-                root.join("usr/tiles").display()
             )
         );
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn an_older_tiles_later_on_path_is_only_named_and_blocks_nothing() {
+    let (root, old, mut copies) = shadowed("behind", "0.1.2");
+    copies.others[0].place = Place::Behind;
+    let (text, asked, ok) = drive_copies(Args::default(), &copies, true, Some("y\n"));
+    assert!(!asked && ok && old.exists());
+    assert!(
+        text.contains(&format!(
+            "  Other tiles    ({}, version 0.1.2, is later on PATH, so a terminal runs this one)\n",
+            old.display(),
+        )),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("Next: run tiles check, then start a session with tiles run pi.\n"),
+        "{text}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -2,6 +2,7 @@
 //! path this crate owns (ADR-009): nothing that can drive a terminal comes out.
 
 use tiles_intent::text::is_unsafe_char;
+use tiles_term::style::{Mark, Style};
 use tiles_term::{block, detect, fallback, sanitize};
 
 fn corpus() -> Vec<String> {
@@ -48,6 +49,18 @@ fn the_placeholder_block_and_the_summary_are_plain() {
         assert!(lines.iter().all(|l| plain(l)), "{e:?}");
         let summary = fallback::summary(&e, std::slice::from_ref(&e), &e);
         assert!(summary.iter().all(|l| plain(l)), "{e:?}");
+    }
+}
+
+#[test]
+fn a_step_line_holds_only_its_own_mark_sequences() {
+    for e in corpus() {
+        let words = Style::new(false, false);
+        assert!(plain(&words.step(Mark::Failed, &e, 12, &e)), "{e:?}");
+        assert!(plain(&words.detail(&e)), "{e:?}");
+        let line = Style::new(true, false).step(Mark::Failed, &e, 12, &e);
+        let rest = line.strip_prefix("  \x1b[31m\u{2717}\x1b[0m ").unwrap();
+        assert!(plain(rest), "{e:?}");
     }
 }
 

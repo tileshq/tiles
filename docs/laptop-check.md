@@ -44,7 +44,7 @@ Its `trace:` line says whether the wrapper saw every card of that session whole;
 
 ## Apple Terminal
 
-Terminal.app shows no pictures, so cards come in a companion window beside it ([ADR-046](adr/ADR-046-companion-window-on-the-text-route.md)). In a Terminal.app window, `tiles setup --dry-run` and `tiles doctor` each print a `pictures:` line saying cards will not draw inline in this terminal, naming Warp, Ghostty, kitty, iTerm2 and WezTerm, and saying `tiles run` shows each session's cards in one window beside the terminal.
+Terminal.app shows no pictures, so cards come in a companion window beside it ([ADR-046](adr/ADR-046-companion-window-on-the-text-route.md)). In a Terminal.app window, `tiles setup --dry-run --verbose` and `tiles doctor` each print a `pictures:` line saying cards will not draw inline in this terminal, naming Warp, Ghostty, kitty, iTerm2 and WezTerm, and saying `tiles run` shows each session's cards in one window beside the terminal.
 
 Then for each of `claude`, `pi` and `opencode`, with Terminal.app taking the left two thirds of the screen:
 

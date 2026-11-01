@@ -41,23 +41,33 @@ tar -czf "$work/$name.tar.gz" -C "$work" "$name"
 ( cd "$work" && shasum -a 256 "$name.tar.gz" > SHA256SUMS )
 sign "$work/SHA256SUMS"
 TILES_ARCHIVE="$work/$name.tar.gz" TILES_SUMS="$work/SHA256SUMS" TILES_BIN_DIR="$work/bin" sh "$installer" > "$work/out.txt"
-grep -q "installed $work/bin/tiles (tiles 0.0.0" "$work/out.txt" || { cat "$work/out.txt"; echo "FAIL: good archive not installed"; exit 1; }
+grep -q "(installed $work/bin/tiles, tiles 0.0.0" "$work/out.txt" || { cat "$work/out.txt"; echo "FAIL: good archive not installed"; exit 1; }
+# One line per step: piped, no mark and no line from shasum; in a terminal
+# a green check, and with NO_COLOR the piped words again (ADR-060).
+for row in "Signature  (matches the release key)" "Checksum   (matches SHA256SUMS)"; do
+  grep -qF "  $row" "$work/out.txt" || { cat "$work/out.txt"; echo "FAIL: no step line: $row"; exit 1; }
+done
+! grep -q ": OK\$" "$work/out.txt" || { cat "$work/out.txt"; echo "FAIL: shasum's line in the step list"; exit 1; }
+! grep -q "$(printf '\033')" "$work/out.txt" || { echo "FAIL: escape sequence in piped output"; exit 1; }
 # Without a terminal it names tiles setup and never runs it; in one (script
 # gives it a pseudo-terminal) it runs the installed tiles setup.
-grep -q "^next: tiles setup" "$work/out.txt" || { cat "$work/out.txt"; echo "FAIL: next step not named"; exit 1; }
+grep -q "^Next: run tiles setup" "$work/out.txt" || { cat "$work/out.txt"; echo "FAIL: next step not named"; exit 1; }
 ! grep -q "^setup" "$work/bin/tiles.calls" || { echo "FAIL: tiles setup ran without a terminal"; exit 1; }
 TILES_ARCHIVE="$work/$name.tar.gz" TILES_SUMS="$work/SHA256SUMS" TILES_BIN_DIR="$work/bint" script -q "$work/tty.txt" sh "$installer" < /dev/null > /dev/null
 grep -q "^setup\$" "$work/bint/tiles.calls" || { cat "$work/tty.txt"; echo "FAIL: tiles setup not run in a terminal"; exit 1; }
-! grep -q "next: tiles setup" "$work/tty.txt" || { cat "$work/tty.txt"; echo "FAIL: named tiles setup after running it"; exit 1; }
+! grep -q "Next: run tiles setup" "$work/tty.txt" || { cat "$work/tty.txt"; echo "FAIL: named tiles setup after running it"; exit 1; }
+grep -qF "$(printf '\342\234\223\033[0m') Signature" "$work/tty.txt" || { cat "$work/tty.txt"; echo "FAIL: no check mark in a terminal"; exit 1; }
+NO_COLOR=1 TILES_ARCHIVE="$work/$name.tar.gz" TILES_SUMS="$work/SHA256SUMS" TILES_BIN_DIR="$work/binc" script -q "$work/nocolor.txt" sh "$installer" < /dev/null > /dev/null
+grep -q "^  Signature " "$work/nocolor.txt" || { cat "$work/nocolor.txt"; echo "FAIL: NO_COLOR did not take the marks away"; exit 1; }
 # Piped into sh, as curl ... | sh runs it, its stdin is the pipe; tiles setup
 # then reads the terminal at /dev/tty.
 TILES_ARCHIVE="$work/$name.tar.gz" TILES_SUMS="$work/SHA256SUMS" TILES_BIN_DIR="$work/binp" script -q "$work/pipe.txt" sh -c 'cat "$1" | sh' _ "$installer" < /dev/null > /dev/null
 grep -q "^setup\$" "$work/binp/tiles.calls" || { cat "$work/pipe.txt"; echo "FAIL: tiles setup not run when piped into sh"; exit 1; }
 grep -q "^setup read a terminal\$" "$work/binp/tiles.calls" || { cat "$work/binp/tiles.calls"; echo "FAIL: tiles setup piped into sh did not read /dev/tty"; exit 1; }
-! grep -q "next: tiles setup" "$work/pipe.txt" || { cat "$work/pipe.txt"; echo "FAIL: named tiles setup after running it piped"; exit 1; }
+! grep -q "Next: run tiles setup" "$work/pipe.txt" || { cat "$work/pipe.txt"; echo "FAIL: named tiles setup after running it piped"; exit 1; }
 # Piped with no terminal at all, it names the step and never runs it.
 cat "$installer" | TILES_ARCHIVE="$work/$name.tar.gz" TILES_SUMS="$work/SHA256SUMS" TILES_BIN_DIR="$work/binn" sh > "$work/outn.txt"
-grep -q "^next: tiles setup" "$work/outn.txt" || { cat "$work/outn.txt"; echo "FAIL: next step not named when piped with no terminal"; exit 1; }
+grep -q "^Next: run tiles setup" "$work/outn.txt" || { cat "$work/outn.txt"; echo "FAIL: next step not named when piped with no terminal"; exit 1; }
 ! grep -q "^setup" "$work/binn/tiles.calls" || { echo "FAIL: tiles setup ran piped with no terminal"; exit 1; }
 # A browser download carries com.apple.quarantine; the installed binary must
 # not, and the download itself is left as it is.
@@ -65,7 +75,7 @@ mkdir "$work/dl"
 cp "$work/$name.tar.gz" "$work/dl/$name.tar.gz"
 xattr -w com.apple.quarantine "0081;00000000;Chrome;" "$work/dl/$name.tar.gz"
 TILES_ARCHIVE="$work/dl/$name.tar.gz" TILES_SUMS="$work/SHA256SUMS" TILES_BIN_DIR="$work/binq" sh "$installer" > "$work/outq.txt"
-grep -q "installed $work/binq/tiles (tiles 0.0.0" "$work/outq.txt" || { cat "$work/outq.txt"; echo "FAIL: quarantined archive not installed"; exit 1; }
+grep -q "(installed $work/binq/tiles, tiles 0.0.0" "$work/outq.txt" || { cat "$work/outq.txt"; echo "FAIL: quarantined archive not installed"; exit 1; }
 ! xattr -p com.apple.quarantine "$work/binq/tiles" >/dev/null 2>&1 || { echo "FAIL: installed binary still quarantined"; exit 1; }
 xattr -p com.apple.quarantine "$work/dl/$name.tar.gz" >/dev/null || { echo "FAIL: the download itself was changed"; exit 1; }
 
@@ -162,7 +172,7 @@ chmod +x "$work/fakebin/curl"
 printf '#!/bin/sh\necho "$*" >> "%s/gh.log"\nexit 1\n' "$work" > "$work/fakebin/gh"
 chmod +x "$work/fakebin/gh"
 PATH="$work/fakebin:$PATH" TILES_BIN_DIR="$work/bin3" env -u TILES_RELEASES_REPO -u TILES_REPO sh "$installer" > "$work/out3.txt"
-grep -q "installed $work/bin3/tiles (tiles 0.0.0" "$work/out3.txt" || { cat "$work/out3.txt"; echo "FAIL: curl install"; exit 1; }
+grep -q "(installed $work/bin3/tiles, tiles 0.0.0" "$work/out3.txt" || { cat "$work/out3.txt"; echo "FAIL: curl install"; exit 1; }
 grep -q -- "--proto =https .* https://github.com/tileshq/tiles/releases/download/v0.0.0/$name.tar.gz\$" "$work/curl.log" || { cat "$work/curl.log"; echo "FAIL: not downloaded over HTTPS from the releases repository"; exit 1; }
 grep -q "https://github.com/tileshq/tiles/releases/download/v0.0.0/SHA256SUMS\$" "$work/curl.log" || { cat "$work/curl.log"; echo "FAIL: SHA256SUMS not downloaded"; exit 1; }
 grep -q -- "--proto =https .* https://github.com/tileshq/tiles/releases/download/v0.0.0/SHA256SUMS.sig\$" "$work/curl.log" || { cat "$work/curl.log"; echo "FAIL: SHA256SUMS.sig not downloaded over HTTPS"; exit 1; }

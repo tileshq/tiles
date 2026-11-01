@@ -1,6 +1,6 @@
 # ADR-035: One macOS package installs a universal `tiles` and opens `tiles setup`, which sets Tiles up for every harness on `PATH` after one question; `install.sh` removes the quarantine flag and refuses a binary that does not run
 
-- Status: Accepted; its rule that `tiles setup` never removes Claude Code's `tiles` server is superseded by [ADR-039](ADR-039-setup-replaces-a-stale-claude-code-server.md), which replaces a user-scope server for another `tiles` after the same question; adds the package to [ADR-022](ADR-022-sealed-assets-and-releases-only-channel.md)'s release files and its signing steps, and leaves an install the package made to the next package in [ADR-032](ADR-032-update-command-and-harness-versions.md)'s `tiles update`
+- Status: Accepted; the words `tiles setup` prints are superseded by [ADR-060](ADR-060-setup-prints-a-step-list.md), which keeps its one question and what it changes; its rule that `tiles setup` never removes Claude Code's `tiles` server is superseded by [ADR-039](ADR-039-setup-replaces-a-stale-claude-code-server.md), which replaces a user-scope server for another `tiles` after the same question; adds the package to [ADR-022](ADR-022-sealed-assets-and-releases-only-channel.md)'s release files and its signing steps, and leaves an install the package made to the next package in [ADR-032](ADR-032-update-command-and-harness-versions.md)'s `tiles update`
 - Date: 2026-10-20
 
 ## Context
