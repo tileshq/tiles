@@ -1,6 +1,6 @@
 # Installing Tiles on a Mac
 
-Each release ships one installer package for every Mac, `tiles-<tag>-macos.pkg`, beside a tarball per architecture (Apple Silicon and Intel), `SHA256SUMS`, its signature `SHA256SUMS.sig` and `install.sh`. The release workflow (`.github/workflows/release.yml`) builds them all when a `v*` tag is pushed. Releases live on this repository's Releases page ([ADR-059](adr/ADR-059-public-cut.md)). `scripts/install.sh` and `tiles update` read [tileshq/tiles](https://github.com/tileshq/tiles) unless `TILES_RELEASES_REPO=<owner>/<repo>` names another.
+Each release ships one installer package for every Mac, `tiles-<tag>-macos.pkg`, beside a tarball per architecture (Apple Silicon and Intel), `SHA256SUMS`, its signature `SHA256SUMS.sig` and `install.sh`. The release workflow (`.github/workflows/release.yml`) builds them all when a `v*` tag is pushed. Releases live on this repository's Releases page ([ADR-059](adr/ADR-059-public-cut.md)). The same workflow's last job pins the [Homebrew formula](#homebrew) to each final release ([ADR-061](adr/ADR-061-release-job-owns-the-formula-bump.md)). `scripts/install.sh` and `tiles update` read [tileshq/tiles](https://github.com/tileshq/tiles) unless `TILES_RELEASES_REPO=<owner>/<repo>` names another.
 
 `SHA256SUMS` holds the SHA-256 of the package, each tarball and `install.sh`. The release job signs it with the Tiles release key, whose private half only the release workflow can read, from the repository's `release` environment, so whoever can upload a file to a release still cannot replace it and `SHA256SUMS` together ([ADR-056](adr/ADR-056-signed-sums-and-weekly-advisories.md)). `install.sh` checks that signature before it trusts `SHA256SUMS`, and [Checking a download by hand](#checking-a-download-by-hand) shows how to check it yourself.
 
@@ -88,6 +88,15 @@ TILES_SUMS=~/Downloads/SHA256SUMS sh ~/Downloads/install.sh
 
 The script reads the signature from `SHA256SUMS.sig` beside `SHA256SUMS`. Whenever the signature does not check out, it prints one line and installs nothing. With no `SHA256SUMS.sig` beside `SHA256SUMS` it prints `tiles: no signature <path> for <sums>; download SHA256SUMS.sig from the same release beside it; not installed`; when a release has no `SHA256SUMS.sig` to download, `tiles: cannot download <url>/SHA256SUMS.sig, the signature of SHA256SUMS, so its checksums cannot be trusted; not installed`; and for a signature the release key did not make, one for another namespace, or a `SHA256SUMS` changed after signing, `tiles: SHA256SUMS is not signed by the Tiles release key; not installed`. It has no switch to skip the check. Releases published before signing began have no `SHA256SUMS.sig`; install one of those with the `install.sh` from its own release. The script refuses an archive whose checksum does not match. It removes the quarantine flag a browser download carries from the binary it installs, and says `installed` only when `tiles --version` runs and prints a version. When macOS stops the binary anyway, it says so, names Gatekeeper and endpoint security software, and points to System Settings > Privacy & Security. Run in Terminal, it then runs `tiles setup`, which asks before it changes anything; run from a script or with its output redirected, it prints `Next: run tiles setup` instead. It prints one line per step, as `tiles setup` does ([ADR-060](adr/ADR-060-setup-prints-a-step-list.md)).
 
+## Homebrew
+
+```sh
+brew install tileshq/tap/tiles
+tiles setup
+```
+
+The formula in [tileshq/homebrew-tap](https://github.com/tileshq/homebrew-tap) installs the tarball for this Mac's architecture and pins its SHA-256. The release workflow takes that hash from the release's `SHA256SUMS` after checking its signature, and pushes the new formula as its last job, so `brew upgrade tiles` sees a final release once that job ends. A prerelease tag never moves the formula.
+
 ## Checking a download by hand
 
 The release key's public half, also pinned in `install.sh`:
@@ -129,6 +138,8 @@ The release job stamps the tag into the binary and stops when `tiles --version` 
 
 ## Updating
 
+A `tiles` Homebrew installed updates with `brew upgrade tiles`. The daily notice still says to run `tiles update`, which would write a second copy to `~/.local/bin` and leave Homebrew's where it is, so use `brew upgrade` instead.
+
 A `tiles` the package installed updates by the next package: download `tiles-<tag>-macos.pkg` from the latest release and open it. `tiles update` run from `/usr/local/bin/tiles` says so instead of writing a second copy to `~/.local/bin`; `tiles update --check` and the daily notice name the package, as in `Tiles v0.1.5 is available; download tiles-v0.1.5-macos.pkg from its release and open it`.
 
 A `tiles` that `install.sh` installed updates in place:
@@ -154,4 +165,4 @@ At most once a day, `tiles run` and `tiles doctor` ask GitHub whether a newer re
 
 ## Removing it
 
-For a package install: `sudo rm /usr/local/bin/tiles && sudo rm -r /usr/local/share/tiles && sudo pkgutil --forget io.github.tileshq.tiles`. For an `install.sh` install: `rm ~/.local/bin/tiles`. Then remove Tiles from each harness: `claude mcp remove tiles --scope user`, `codex mcp remove tiles`, and the files [surfaces.md](surfaces.md) lists for Pi and OpenCode.
+For a Homebrew install: `brew uninstall tiles`. For a package install: `sudo rm /usr/local/bin/tiles && sudo rm -r /usr/local/share/tiles && sudo pkgutil --forget io.github.tileshq.tiles`. For an `install.sh` install: `rm ~/.local/bin/tiles`. Then remove Tiles from each harness: `claude mcp remove tiles --scope user`, `codex mcp remove tiles`, and the files [surfaces.md](surfaces.md) lists for Pi and OpenCode.

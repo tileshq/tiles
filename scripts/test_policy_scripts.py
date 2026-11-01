@@ -7,6 +7,7 @@ import importlib.util
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -686,6 +687,106 @@ class SignMacos(unittest.TestCase):
         result, _ = self.sign(APPLE_ID="a@example.com", APPLE_TEAM_ID="TEAM123456")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("2 of the 6 Apple signing secrets", result.stderr)
+
+
+class BumpFormula(unittest.TestCase):
+    FORMULA = (HERE.parent / "fixtures/homebrew/tiles.rb").read_text()
+    ARM = "a" * 64
+    INTEL = "b" * 64
+
+    def sums(self, tag: str = "v0.2.1", arm: bool = True, intel: bool = True, extra: str = "") -> str:
+        lines = []
+        if arm:
+            lines.append(f"{self.ARM}  tiles-{tag}-aarch64-apple-darwin.tar.gz")
+        if intel:
+            lines.append(f"{self.INTEL}  tiles-{tag}-x86_64-apple-darwin.tar.gz")
+        lines += [f"{'c' * 64}  tiles-{tag}-macos.pkg", f"{'d' * 64}  install.sh"]
+        return "\n".join(lines) + "\n" + extra
+
+    def run_script(self, tag: str, sums: str, formula: str | None = None):
+        """Run the script; return its exit code, stderr and the formula after it."""
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root)
+        (root / "SHA256SUMS").write_text(sums)
+        (root / "tiles.rb").write_text(self.FORMULA if formula is None else formula)
+        script = HERE / "bump-formula.py"
+        done = subprocess.run(
+            [sys.executable, str(script), tag, str(root / "SHA256SUMS"), str(root / "tiles.rb")],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return done.returncode, done.stderr, (root / "tiles.rb").read_text()
+
+    def assert_refused(self, tag: str, sums: str, needle: str, formula: str | None = None):
+        code, err, after = self.run_script(tag, sums, formula)
+        self.assertEqual(code, 1, err)
+        self.assertIn("::error::bump-formula:", err)
+        self.assertIn(needle, err)
+        self.assertEqual(after, self.FORMULA if formula is None else formula)
+
+    def test_rewrites_version_urls_hashes_and_test_block(self):
+        code, err, after = self.run_script("v0.2.1", self.sums())
+        self.assertEqual(code, 0, err)
+        expected = (
+            self.FORMULA.replace("0.2.0", "0.2.1")
+            .replace("f00f2127b8eb0520b9351fe5655cd1bdefd795bbcf5ed5840fea543d9f440d06", self.ARM)
+            .replace("49f96aff9e57e91559887a45c5212bd3c9219980bd471639865ade9f22a76b4b", self.INTEL)
+        )
+        self.assertEqual(after, expected)
+
+    def test_the_published_sums_of_the_pinned_release_change_nothing(self):
+        sums = (HERE.parent / "fixtures/homebrew/SHA256SUMS-v0.2.0").read_text()
+        code, err, after = self.run_script("v0.2.0", sums)
+        self.assertEqual((code, after), (0, self.FORMULA), err)
+
+    def test_a_second_run_changes_nothing(self):
+        _, _, once = self.run_script("v0.2.1", self.sums())
+        code, err, twice = self.run_script("v0.2.1", self.sums(), once)
+        self.assertEqual((code, twice), (0, once), err)
+
+    def test_refuses_a_prerelease(self):
+        for tag in ("v0.2.1-rc.1", "v0.2.1-beta", "0.2.1", "v0.2"):
+            self.assert_refused(tag, self.sums(tag), "prerelease")
+
+    def test_refuses_sums_without_either_tarball(self):
+        self.assert_refused("v0.2.1", self.sums(arm=False), "aarch64-apple-darwin")
+        self.assert_refused("v0.2.1", self.sums(intel=False), "x86_64-apple-darwin")
+
+    def test_refuses_another_tags_sums(self):
+        self.assert_refused("v0.2.1", self.sums("v0.2.0"), "tiles-v0.2.1-aarch64-apple-darwin.tar.gz")
+
+    def test_refuses_a_repeated_tarball_and_a_line_it_cannot_read(self):
+        repeat = f"{'e' * 64}  tiles-v0.2.1-x86_64-apple-darwin.tar.gz\n"
+        self.assert_refused("v0.2.1", self.sums(extra=repeat), "2 lines")
+        self.assert_refused("v0.2.1", self.sums(extra="nonsense\n"), "line 5")
+
+    def test_refuses_other_hashes_for_the_version_already_pinned(self):
+        self.assert_refused("v0.2.0", self.sums("v0.2.0"), "would change it")
+
+    def test_refuses_to_move_back_to_an_older_version(self):
+        self.assert_refused("v0.1.9", self.sums("v0.1.9"), "would change it")
+
+    def test_refuses_a_formula_of_another_shape(self):
+        no_test = re.sub(r"assert_match.*\n", "", self.FORMULA)
+        self.assert_refused("v0.2.1", self.sums(), "test block", no_test)
+        no_intel = re.sub(r"  else\n.*?\n  end\n", "  end\n", self.FORMULA, flags=re.S)
+        self.assert_refused("v0.2.1", self.sums(), "one url", no_intel)
+        stanza = self.FORMULA.replace('  license "', '  version "0.2.0"\n  license "')
+        self.assert_refused("v0.2.1", self.sums(), "does not rewrite", stanza)
+
+    def test_only_the_last_job_reads_the_tap_key_in_one_step(self):
+        workflow = (HERE.parent / ".github/workflows/release.yml").read_text()
+        reads = re.findall(r"^ +(\w+): \$\{\{ secrets\.TAP_DEPLOY_KEY( != '')? \}\}$", workflow, re.M)
+        self.assertEqual(reads, [("HAS_TAP_KEY", " != ''"), ("TAP_DEPLOY_KEY", "")])
+        self.assertEqual(workflow.count("secrets.TAP_DEPLOY_KEY"), 2)
+        before, job = workflow.split("\n  bump-formula:\n")
+        self.assertIn("secrets.TAP_DEPLOY_KEY != ''", before.split("\n  build:\n")[0])
+        self.assertIn("secrets.TAP_DEPLOY_KEY }}", job)
+        self.assertIn("    needs: publish\n", job)
+        self.assertIn("    environment: release\n", job)
+        self.assertNotRegex(job, r"\n  [a-z-]+:\n", "bump-formula must be the last job")
+        self.assertNotIn("contents: write", job)
 
 
 class CiMainGate(unittest.TestCase):
