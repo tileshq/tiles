@@ -35,7 +35,7 @@ pub fn wanted(route: Route, env: &dyn Fn(&str) -> Option<String>) -> bool {
 }
 
 /// The terminals that draw cards inline, for [`text_route_line`].
-const INLINE: &str = "Warp, Ghostty, kitty, iTerm2 and WezTerm";
+const INLINE: &str = "Warp, Ghostty, kitty, iTerm2, WezTerm and Rex";
 
 /// The line `tiles doctor` and `tiles setup --verbose` print on the text
 /// route: cards will not draw inline in this terminal, which terminals draw
@@ -424,7 +424,7 @@ mod tests {
         };
         let none = |_: &str| None;
         let line = super::text_route_line(&d(Terminal::AppleTerminal, Route::Text), &none).unwrap();
-        assert!(line.starts_with("pictures: none in this terminal, so cards will not draw inline here; Warp, Ghostty, kitty, iTerm2 and WezTerm draw them inline. Here "), "{line}");
+        assert!(line.starts_with("pictures: none in this terminal, so cards will not draw inline here; Warp, Ghostty, kitty, iTerm2, WezTerm and Rex draw them inline. Here "), "{line}");
         if cfg!(target_os = "macos") {
             assert!(line.ends_with("Here tiles run shows each session's cards in one window beside this terminal (TILES_WINDOW=off keeps it closed)."), "{line}");
             let off = super::text_route_line(&d(Terminal::AppleTerminal, Route::Text), &|k| {

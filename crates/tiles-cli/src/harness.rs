@@ -117,7 +117,7 @@ pub fn places_early(detected: &Detected) -> bool {
 
 /// Whether the wrapper plays a card's entrance: where it places cards early
 /// ([`places_early`]), and on the pre-cut route (Warp, `WezTerm`, VS Code,
-/// herdr), a frame placed per 50 ms tick (ADR-030).
+/// Rex, herdr), a frame placed per 50 ms tick (ADR-030).
 #[must_use]
 pub fn animates(detected: &Detected) -> bool {
     places_early(detected) || detected.route == Route::KittyPrecut
@@ -621,8 +621,8 @@ mod tests {
     use tiles_mcp::source::{Offer, Reach, Tool};
 
     use super::{
-        Harness, Plan, Setup, claude_settings, draw_for, opencode_deny, pre_approved,
-        settings_value, take_settings, toml_string,
+        Harness, Plan, Setup, animates, claude_settings, draw_for, opencode_deny, places_early,
+        pre_approved, settings_value, take_settings, toml_string,
     };
     use crate::motion::Motion;
     use crate::wrap::paint::conversation_cols;
@@ -670,6 +670,16 @@ mod tests {
 
     fn warp() -> Detected {
         detected(Terminal::Warp, None, Route::KittyPrecut)
+    }
+
+    #[test]
+    fn the_wrapper_draws_for_every_harness_in_rex_and_plays_the_entrance() {
+        let rex = detected(Terminal::Rex, None, Route::KittyPrecut);
+        for h in Harness::ALL {
+            assert_eq!(draw_for(h, &rex, false), (Draw::Block, true), "{h:?}");
+        }
+        assert!(animates(&rex));
+        assert!(!places_early(&rex));
     }
 
     #[test]

@@ -645,6 +645,18 @@ mod tests {
     }
 
     #[test]
+    fn check_names_rex_and_its_route_with_no_replies() {
+        let dir = cache("rex");
+        let lines = run(&[("TERM_PROGRAM", "rex")], &dir, None);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with("pass terminal: rex, route kitty-precut")),
+            "{lines:#?}"
+        );
+    }
+
+    #[test]
     fn warp_reads_its_window_as_points_and_the_wrapper_draws_for_every_harness() {
         let dir = cache("warp");
         let lines = run(&[("TERM_PROGRAM", "WarpTerminal")], &dir, Some((8, 16)));

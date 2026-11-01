@@ -25,6 +25,8 @@ pub enum Terminal {
     Wezterm,
     /// The VS Code terminal.
     Vscode,
+    /// Rex, from Superlogical.
+    Rex,
     /// macOS Terminal.app.
     AppleTerminal,
     /// Alacritty.
@@ -43,13 +45,14 @@ pub enum Terminal {
 
 impl Terminal {
     /// Every terminal, for overrides and docs.
-    pub const ALL: [Terminal; 13] = [
+    pub const ALL: [Terminal; 14] = [
         Terminal::Kitty,
         Terminal::Ghostty,
         Terminal::Iterm2,
         Terminal::Warp,
         Terminal::Wezterm,
         Terminal::Vscode,
+        Terminal::Rex,
         Terminal::AppleTerminal,
         Terminal::Alacritty,
         Terminal::Foot,
@@ -69,6 +72,7 @@ impl Terminal {
             Terminal::Warp => "warp",
             Terminal::Wezterm => "wezterm",
             Terminal::Vscode => "vscode",
+            Terminal::Rex => "rex",
             Terminal::AppleTerminal => "apple-terminal",
             Terminal::Alacritty => "alacritty",
             Terminal::Foot => "foot",
@@ -90,7 +94,9 @@ impl Terminal {
     pub fn native_route(self) -> Route {
         match self {
             Terminal::Kitty | Terminal::Ghostty | Terminal::Iterm2 => Route::KittyPlaceholders,
-            Terminal::Warp | Terminal::Wezterm | Terminal::Vscode => Route::KittyPrecut,
+            Terminal::Warp | Terminal::Wezterm | Terminal::Vscode | Terminal::Rex => {
+                Route::KittyPrecut
+            }
             Terminal::Foot | Terminal::WindowsTerminal => Route::Sixel,
             Terminal::AppleTerminal
             | Terminal::Alacritty
@@ -369,8 +375,12 @@ fn terminal_from_env(env: &dyn Fn(&str) -> Option<String>) -> Option<(Terminal, 
     let program = env("TERM_PROGRAM").unwrap_or_default().to_ascii_lowercase();
     let term = env("TERM").unwrap_or_default().to_ascii_lowercase();
     // Most specific first: a terminal's own variables survive a `TERM` that
-    // a multiplexer or SSH rewrote.
-    let found = if has("KITTY_WINDOW_ID") || program == "kitty" || term == "xterm-kitty" {
+    // a multiplexer or SSH rewrote. Rex comes before them all, since a stray
+    // GHOSTTY_RESOURCES_DIR or KITTY_WINDOW_ID must not name it, and only by
+    // these two: a tmux or herdr inside Rex inherits its REX_* variables.
+    let found = if program == "rex" || term == "xterm-rex" {
+        (Terminal::Rex, "TERM_PROGRAM=rex or TERM=xterm-rex")
+    } else if has("KITTY_WINDOW_ID") || program == "kitty" || term == "xterm-kitty" {
         (Terminal::Kitty, "KITTY_WINDOW_ID or TERM")
     } else if program == "ghostty" || term.contains("ghostty") || has("GHOSTTY_RESOURCES_DIR") {
         (Terminal::Ghostty, "TERM_PROGRAM=ghostty")
@@ -437,6 +447,7 @@ fn terminal_from_replies(r: &Replies) -> Option<Terminal> {
         ("wezterm", Terminal::Wezterm),
         ("foot", Terminal::Foot),
         ("xterm", Terminal::Xterm),
+        ("rex ", Terminal::Rex),
     ]
     .into_iter()
     .find(|(n, _)| name.starts_with(n))
@@ -698,6 +709,146 @@ mod tests {
         );
         let r = Replies::parse(b"\x1b[?62;4c");
         assert_eq!(detect(&env(&[]), Some(&r)).unwrap().route, Route::Sixel);
+    }
+
+    fn terminal(pairs: &[(&str, &str)]) -> Terminal {
+        detect(&env(pairs), None).unwrap().terminal
+    }
+
+    #[test]
+    fn rex_is_named_by_either_variable_and_takes_the_precut_route() {
+        for pairs in [
+            &[("TERM_PROGRAM", "rex"), ("TERM", "xterm-256color")][..],
+            &[("TERM", "xterm-rex")],
+        ] {
+            let d = detect(&env(pairs), None).unwrap();
+            assert_eq!(
+                (d.terminal, d.multiplexer, d.route),
+                (Terminal::Rex, None, Route::KittyPrecut),
+                "{pairs:?}"
+            );
+        }
+        assert_eq!(Terminal::from_name("rex"), Some(Terminal::Rex));
+    }
+
+    #[test]
+    fn a_rex_lookalike_is_not_rex() {
+        for pairs in [
+            &[("TERM", "xterm-rex-extra")][..],
+            &[("TERM", "rex")],
+            &[("TERM_PROGRAM", "rexy")],
+            &[("TERM_PROGRAM", "xterm-rex")],
+        ] {
+            let d = detect(&env(pairs), None).unwrap();
+            assert_eq!((d.terminal, d.route), (Terminal::Unknown, Route::Text));
+        }
+    }
+
+    #[test]
+    fn rex_variables_alone_name_no_terminal() {
+        let rex_only = [
+            ("REX_SESSION", "s"),
+            ("REX_BLOCK", "b"),
+            ("REX_SERVER", "x"),
+            ("REX_BIN_DIR", "/r"),
+        ];
+        assert_eq!(terminal(&rex_only), Terminal::Unknown);
+    }
+
+    #[test]
+    fn rex_wins_over_a_stray_variable_of_another_terminal() {
+        for stray in [
+            ("GHOSTTY_RESOURCES_DIR", "/g"),
+            ("KITTY_WINDOW_ID", "1"),
+            ("WARP_SESSION_ID", "w"),
+            ("ITERM_SESSION_ID", "i"),
+            ("WEZTERM_PANE", "1"),
+        ] {
+            let pairs = [("TERM_PROGRAM", "rex"), stray];
+            let d = detect(&env(&pairs), None).unwrap();
+            assert_eq!((d.terminal, d.route), (Terminal::Rex, Route::KittyPrecut));
+            let pairs = [("TERM", "xterm-rex"), stray];
+            assert_eq!(terminal(&pairs), Terminal::Rex, "{stray:?}");
+        }
+    }
+
+    #[test]
+    fn tmux_inside_rex_stays_on_text() {
+        // tmux rewrites TERM_PROGRAM and TERM and inherits REX_*.
+        let rewritten = [
+            ("TERM_PROGRAM", "tmux"),
+            ("TERM", "tmux-256color"),
+            ("TMUX", "/t,1,0"),
+            ("REX_SESSION", "s"),
+        ];
+        let d = detect(&env(&rewritten), None).unwrap();
+        assert_eq!(
+            (d.terminal, d.multiplexer, d.route),
+            (Terminal::Unknown, Some(Multiplexer::Tmux), Route::Text)
+        );
+        let kept = [("TERM_PROGRAM", "rex"), ("TMUX", "/t,1,0")];
+        let d = detect(&env(&kept), None).unwrap();
+        assert_eq!(
+            (d.terminal, d.multiplexer, d.route),
+            (Terminal::Rex, Some(Multiplexer::Tmux), Route::Text)
+        );
+    }
+
+    #[test]
+    fn herdr_inside_rex_stays_on_precut() {
+        // herdr rewrites TERM_PROGRAM and inherits REX_*.
+        let rewritten = [
+            ("TERM_PROGRAM", "herdr"),
+            ("TERM", "xterm-256color"),
+            ("REX_SESSION", "s"),
+        ];
+        let d = detect(&env(&rewritten), None).unwrap();
+        assert_eq!(
+            (d.terminal, d.multiplexer, d.route),
+            (
+                Terminal::Unknown,
+                Some(Multiplexer::Herdr),
+                Route::KittyPrecut
+            )
+        );
+        for kept in [
+            [("TERM_PROGRAM", "herdr"), ("TERM", "xterm-rex")],
+            [("TERM_PROGRAM", "rex"), ("HERDR_PANE_ID", "p1")],
+        ] {
+            let d = detect(&env(&kept), None).unwrap();
+            assert_eq!(
+                (d.terminal, d.multiplexer, d.route),
+                (Terminal::Rex, Some(Multiplexer::Herdr), Route::KittyPrecut)
+            );
+        }
+    }
+
+    #[test]
+    fn an_xtversion_reply_names_rex_where_the_environment_does_not() {
+        let bytes = b"\x1b_Gi=31;OK\x1b\\\x1bP>|rex 0.0.1793047680-g2db882\x1b\\\x1b[?62;22c";
+        let r = Replies::parse(bytes);
+        let over_ssh = [("TERM", "xterm-256color")];
+        let d = detect(&env(&over_ssh), Some(&r)).unwrap();
+        assert_eq!((d.terminal, d.route), (Terminal::Rex, Route::KittyPrecut));
+        assert_eq!(d.reason, "XTVERSION reply");
+        // Named, Rex keeps its route when it never answers the kitty query.
+        let r = Replies::parse(b"\x1bP>|rex 0.0.1\x1b\\\x1b[?62;22c");
+        assert_eq!(
+            detect(&env(&over_ssh), Some(&r)).unwrap().route,
+            Route::KittyPrecut
+        );
+        for other in [
+            b"\x1bP>|rexx 1.0\x1b\\".as_slice(),
+            b"\x1bP>|rex\x1b\\",
+            b"\x1bP>|rex-term 1.0\x1b\\",
+        ] {
+            let r = Replies::parse(other);
+            assert_eq!(
+                detect(&env(&over_ssh), Some(&r)).unwrap().terminal,
+                Terminal::Unknown,
+                "{other:?}"
+            );
+        }
     }
 
     #[test]

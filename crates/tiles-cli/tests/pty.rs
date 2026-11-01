@@ -273,6 +273,21 @@ fn warp_draws_a_placed_picture_without_placeholders() {
     done(&lab);
 }
 
+#[test]
+fn rex_draws_a_placed_picture_without_placeholders() {
+    let lab = lab("rex");
+    let out = run(&lab, "rex");
+    assert!(
+        has(&out, b"\x1b_Ga=T,f=100,t=d,q=2,C=1,i="),
+        "a placed picture"
+    );
+    assert!(
+        !has(&out, "\u{10EEEE}".as_bytes()),
+        "no placeholders in Rex"
+    );
+    done(&lab);
+}
+
 /// The security review's F9: a block naming a card made for no session or
 /// for another `tiles run` (an earlier session in scrollback, a second tab,
 /// a file the harness shows) stays text on every route, even when the card
