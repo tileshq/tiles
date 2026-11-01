@@ -41,7 +41,7 @@ Then ask for a chart: "chart our weekly signups: W1 120, W2 180, W3 150; W3 dipp
 | Terminal | How the card appears |
 |---|---|
 | kitty, Ghostty, iTerm2 | inline, placed over the reply |
-| Warp, WezTerm, VS Code | inline, placed as the reply arrives |
+| Warp, WezTerm, VS Code, Rex | inline, placed as the reply arrives |
 | foot, Windows Terminal | inline, as sixel graphics |
 | Terminal.app, Alacritty, GNOME Terminal, tmux | in a companion window beside the terminal on macOS, otherwise as the card's file path |
 

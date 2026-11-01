@@ -1074,12 +1074,16 @@ fn on_the_text_route_setup_says_cards_will_not_draw_inline_and_how_they_open() {
     let (text, _, _) = drive(verbose, &shown, None);
     assert!(
         text.contains(&format!(
-            "      pictures: none in this terminal, so cards will not draw inline here; Warp, Ghostty, kitty, iTerm2 and WezTerm draw them inline. Here {here}.\n"
+            "      pictures: none in this terminal, so cards will not draw inline here; Warp, Ghostty, kitty, iTerm2, WezTerm and Rex draw them inline. Here {here}.\n"
         )),
         "{text}"
     );
     // A terminal that draws, and one setup cannot name, get no such line.
-    for vars in [&[("TERM_PROGRAM", "WarpTerminal")][..], &[]] {
+    for vars in [
+        &[("TERM_PROGRAM", "WarpTerminal")][..],
+        &[("TERM_PROGRAM", "rex")],
+        &[],
+    ] {
         let mut shown = report(plans(), warp(), &Copies::default(), &[]);
         add_cards(&mut shown, &env(vars));
         assert_eq!(shown.pictures, None, "{vars:?}");

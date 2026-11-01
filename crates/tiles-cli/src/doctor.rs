@@ -510,6 +510,19 @@ mod tests {
     }
 
     #[test]
+    fn doctor_names_rex_and_gives_no_pictures_line() {
+        let text = run(
+            &[("TERM_PROGRAM", "rex"), ("GHOSTTY_RESOURCES_DIR", "/g")],
+            &Store(None),
+        );
+        assert!(
+            text.contains("terminal: rex, route kitty-precut (TERM_PROGRAM=rex or TERM=xterm-rex)"),
+            "{text}"
+        );
+        assert!(!text.contains("  pictures: "), "{text}");
+    }
+
+    #[test]
     fn on_the_text_route_a_line_says_cards_will_not_draw_inline() {
         let text = run(&[("TERM_PROGRAM", "Apple_Terminal")], &Store(None));
         let lines: Vec<&str> = text.lines().collect();
@@ -522,7 +535,7 @@ mod tests {
             .find(|l| l.starts_with("  pictures: "))
             .unwrap_or_else(|| panic!("{text}"));
         assert!(
-            pictures.starts_with("  pictures: none in this terminal, so cards will not draw inline here; Warp, Ghostty, kitty, iTerm2 and WezTerm draw them inline. Here "),
+            pictures.starts_with("  pictures: none in this terminal, so cards will not draw inline here; Warp, Ghostty, kitty, iTerm2, WezTerm and Rex draw them inline. Here "),
             "{pictures}"
         );
         assert_eq!(text.matches("  pictures: ").count(), 1, "{text}");

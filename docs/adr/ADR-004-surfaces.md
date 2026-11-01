@@ -1,6 +1,6 @@
 # ADR-004: v0.1 draws in Pi, OpenCode, Claude Code and Codex, in Warp, Warp inside herdr and ordinary terminals; official hooks first, the wrapper as fallback
 
-- Status: Accepted; its harness routes and the floating window are superseded by [ADR-011](ADR-011-surfaces-v0-1.md)
+- Status: Accepted; its harness routes and the floating window are superseded by [ADR-011](ADR-011-surfaces-v0-1.md); [ADR-062](ADR-062-rex-is-named-and-stays-pre-cut.md) adds Rex to the pre-cut row
 - Date: 2026-10-17
 
 ## Context
