@@ -2,7 +2,7 @@
 // command, draws each card with pi-tui's Image component (kitty graphics or
 // iTerm2 images) from the saved file, and adds the session instruction that
 // makes the model choose the tile. Where `tiles run` gives the wrapper the
-// drawing (TILES_DRAW=block: Warp, WezTerm, VS Code, herdr, sixel), the
+// drawing (TILES_DRAW=block: Warp, WezTerm, VS Code, Rex, herdr, sixel), the
 // result shows nothing: the model copies the block into its reply and the
 // card is drawn there, outside Pi's tool-result panel.
 //

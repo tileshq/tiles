@@ -30,4 +30,5 @@ Public reports dated 2026-10-27 to 2026-11-01 give Rex's identity: `TERM_PROGRAM
 - No picture has been seen in Rex with this change: the tests check Tiles' choices and its bytes, and whether a card survives closing a Rex window and reattaching is still unknown.
 - A program started from a Rex shell inherits `TERM_PROGRAM=rex` unless it sets its own. kitty does not set it, so a kitty window opened from Rex reads as Rex and takes pre-cut, which kitty also draws. `--terminal kitty` or unsetting the variable restores it.
 - Another terminal started from a Rex shell that keeps `TERM=xterm-rex` also reads as Rex until `--terminal` overrides it.
+- A terminal started from inside Rex that leaves `TERM_PROGRAM=rex` in place, for example Alacritty or foot, is detected as Rex and gets no card, the same limit Warp has; `TILES_TERMINAL` or `TILES_ROUTE` (the `--terminal` and `--route` flags set them) overrides it.
 - Related: [ADR-004](ADR-004-surfaces.md), [ADR-011](ADR-011-surfaces-v0-1.md), [ADR-046](ADR-046-companion-window-on-the-text-route.md), [ADR-060](ADR-060-setup-prints-a-step-list.md).
