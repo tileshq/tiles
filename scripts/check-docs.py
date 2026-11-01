@@ -16,7 +16,9 @@ reference must name something that exists:
     maintainer review     a person checks it
 
 References are separated by " · ". Relative links in README.md, AGENTS.md and
-docs/ must also resolve. Run from anywhere; paths are relative to the repo.
+docs/ must also resolve, and the Claude Code version CI's adapters job installs
+must be the newest in Claude's row of crates/tiles-cli/src/proved.rs. Run from
+anywhere; paths are relative to the repo.
 """
 
 from __future__ import annotations
@@ -38,6 +40,9 @@ VALUE = re.compile(
 PLAYBOOK = "docs/playbook.md"
 CARD_RULES = "docs/card-rules.md"
 LINK = re.compile(r"\]\(([^)\s]+)\)")
+CLAUDE_INSTALL = re.compile(r"@anthropic-ai/claude-code@(\S+)")
+CLAUDE_ROW = re.compile(r"harness: Harness::Claude,.*?versions: &\[(.*?)\]", re.S)
+ADAPTERS_JOB = re.compile(r"^ {2}adapters:\s*\n(.*?)(?=^ {2}[a-z][\w-]*:\s*$|\Z)", re.M | re.S)
 
 
 def ci_jobs(root: Path) -> set[str]:
@@ -153,6 +158,23 @@ def check_links(root: Path, problems: list[str]) -> None:
                     problems.append(f"{rel}:{number}: link `{target}` does not resolve")
 
 
+def check_claude_pin(root: Path, problems: list[str]) -> None:
+    workflow = (root / ".github/workflows/ci.yml").read_text()
+    job = ADAPTERS_JOB.search(workflow.split("\njobs:\n", 1)[-1])
+    lines = job[1].split("\n") if job else []
+    installed = [pin for line in lines if not line.lstrip().startswith("#") for pin in CLAUDE_INSTALL.findall(line)]
+    row = CLAUDE_ROW.search((root / "crates/tiles-cli/src/proved.rs").read_text())
+    versions = re.findall(r'"([^"]+)"', row[1]) if row else []
+    if len(installed) != 1:
+        problems.append(f"ci `adapters` installs Claude Code {len(installed)} times, not once")
+    if not versions:
+        problems.append("crates/tiles-cli/src/proved.rs: cannot read Claude's row")
+    if len(installed) == 1 and versions and installed[0] != versions[-1]:
+        problems.append(
+            f"ci `adapters` installs Claude Code {installed[0]} but crates/tiles-cli/src/proved.rs names {versions[-1]} as the newest"
+        )
+
+
 def run(root: Path) -> list[str]:
     problems: list[str] = []
     known = {"ci": ci_jobs(root), "lint": lints(root), "deny": deny_sections(root)}
@@ -161,6 +183,7 @@ def run(root: Path) -> list[str]:
     if points == 0 or rules == 0:
         problems.append("found no points or no rules; has the format changed?")
     check_links(root, problems)
+    check_claude_pin(root, problems)
     return problems
 
 
@@ -171,7 +194,7 @@ def main() -> int:
         print(problem, file=sys.stderr)
     if problems:
         return 1
-    print("Every definition-of-done point and card rule names a check that exists; every doc link resolves.")
+    print("Every definition-of-done point and card rule names a check that exists; every doc link resolves; CI tests the mod on the newest proved Claude Code.")
     return 0
 
 

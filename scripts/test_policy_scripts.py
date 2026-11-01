@@ -31,10 +31,19 @@ ci_main_gate = load("ci-main-gate")
 no_network = load("no-network")
 
 
+CLAUDE_INSTALL = "npm install --no-fund @anthropic-ai/claude-code@2.1.316"
+ADAPTERS_JOB = f"  adapters:\n    runs-on: x\n    steps:\n      - run: {CLAUDE_INSTALL}\n"
+RUST_JOB = "  rust:\n    runs-on: x\n"
+CLAUDE_ROW = 'Row {\n    harness: Harness::Claude,\n    cli: None,\n    versions: &["2.1.316"],\n},\n'
+PI_ROW = 'Row {\n    harness: Harness::Pi,\n    cli: None,\n    versions: &["1.4.0"],\n},\n'
+
+
 def repo(dod: str, playbook: str | None, readme: str = "# Tiles\n", card_rules: str | None = None) -> Path:
     root = Path(tempfile.mkdtemp())
     (root / ".github/workflows").mkdir(parents=True)
-    (root / ".github/workflows/ci.yml").write_text("name: CI\non: push\njobs:\n  rust:\n    runs-on: x\n")
+    (root / ".github/workflows/ci.yml").write_text(f"name: CI\non: push\njobs:\n{RUST_JOB}{ADAPTERS_JOB}")
+    (root / "crates/tiles-cli/src").mkdir(parents=True)
+    (root / "crates/tiles-cli/src/proved.rs").write_text(PI_ROW + CLAUDE_ROW)
     (root / "Cargo.toml").write_text('[workspace.lints.rust]\nunsafe_code = "forbid"\n[workspace.lints.clippy]\npedantic = "warn"\n')
     (root / "deny.toml").write_text("[licenses]\nallow = []\n")
     (root / "docs").mkdir()
@@ -146,6 +155,43 @@ class CheckDocs(unittest.TestCase):
         readme = "See [here](docs/missing.md) and [web](https://x.example).\n```\n[ignored](nowhere.md)\n```\n"
         root = repo("1. **Point.**\n   Checked by: maintainer review\n", GOOD_PLAYBOOK, readme)
         self.assertEqual(check_docs.run(root), ["README.md:1: link `docs/missing.md` does not resolve"])
+
+    def pin_problems(self, jobs: str, rows: str) -> list[str]:
+        root = repo(DOD, GOOD_PLAYBOOK)
+        (root / ".github/workflows/ci.yml").write_text(f"name: CI\non: push\njobs:\n{jobs}")
+        (root / "crates/tiles-cli/src/proved.rs").write_text(rows)
+        return check_docs.run(root)
+
+    def test_accepts_the_newest_version_of_a_longer_claude_row(self):
+        rows = PI_ROW + CLAUDE_ROW.replace('"2.1.316"', '"2.1.311", "2.1.316"')
+        self.assertEqual(self.pin_problems(ADAPTERS_JOB, rows), [])
+
+    def test_refuses_a_claude_row_that_moved_past_the_adapters_install(self):
+        rows = PI_ROW + CLAUDE_ROW.replace('"2.1.316"', '"2.1.316", "2.1.320"')
+        self.assertEqual(
+            self.pin_problems(ADAPTERS_JOB, rows),
+            ["ci `adapters` installs Claude Code 2.1.316 but crates/tiles-cli/src/proved.rs names 2.1.320 as the newest"],
+        )
+
+    def test_refuses_an_adapters_job_that_installs_claude_code_other_than_once(self):
+        moved = f"{RUST_JOB}      - run: {CLAUDE_INSTALL}\n  adapters:\n    runs-on: x\n"
+        commented = f"  adapters:\n    runs-on: x\n    steps:\n      # - run: {CLAUDE_INSTALL}\n"
+        twice = ADAPTERS_JOB + f"      - run: {CLAUDE_INSTALL}\n"
+        cases = [("in another job", moved, 0), ("commented out", commented, 0), ("twice", twice, 2)]
+        for name, jobs, count in cases:
+            with self.subTest(name):
+                self.assertEqual(
+                    self.pin_problems(jobs, PI_ROW + CLAUDE_ROW),
+                    [f"ci `adapters` installs Claude Code {count} times, not once"],
+                )
+
+    def test_refuses_a_proved_table_without_a_readable_claude_row(self):
+        for name, rows in [("no row", PI_ROW), ("no literal", CLAUDE_ROW.replace('"2.1.316"', "claude::PROVED"))]:
+            with self.subTest(name):
+                self.assertEqual(
+                    self.pin_problems(ADAPTERS_JOB, rows),
+                    ["crates/tiles-cli/src/proved.rs: cannot read Claude's row"],
+                )
 
 
 def metadata(edges: dict[str, list[tuple[str, str | None]]], members: list[str]) -> dict:
