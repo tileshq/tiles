@@ -57,7 +57,7 @@ const USAGE: &str = "usage: tiles render <intent.json|-> -o <out.png> [--theme <
        tiles cache clear
        tiles omni <topics | fields <topic> | rows <intent.json | ->>
        tiles run [--wrapper] [--allow-omni] [--terminal <name>] [--route <name>] [--dry-run] <pi|opencode|claude|codex> [harness arguments]
-       tiles setup [--yes] [--dry-run]
+       tiles setup [--yes] [--dry-run] [--verbose]
        tiles install [--dry-run] <pi|opencode|claude|codex>
        tiles doctor
        tiles check [--tag <release tag>]

@@ -64,6 +64,8 @@ pub struct Copies {
     pub current: String,
     /// The others, in `PATH` order.
     pub others: Vec<Other>,
+    /// Whether the running one is on `PATH`.
+    pub on_path: bool,
 }
 
 /// The version in `answer`, a `tiles --version` output such as `tiles 0.1.2
@@ -153,6 +155,7 @@ pub fn find(
         this: this.to_path_buf(),
         current: current.to_string(),
         others,
+        on_path,
     }
 }
 

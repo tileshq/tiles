@@ -1,23 +1,25 @@
-//! `tiles setup [--yes] [--dry-run]`: one command that sets Tiles up on this
-//! Mac (ADR-035). It finds each harness Tiles supports on `PATH`, the
-//! terminal, and the data logins it can see without reading or copying a
-//! secret, prints one list of what it would change, and asks once, no by
-//! default. On yes it runs the steps `tiles install` runs for each harness
-//! not yet set up, then prints the commands that finish each data source it
-//! found. A harness whose install already matches what `tiles install` would
-//! write is left as it is, so a second run changes nothing. A Claude Code
-//! whose user-scope `tiles` server runs another `tiles` has it removed and
-//! this one added, listed with the other steps before the question
-//! (ADR-039). A server in a project's or a folder's config, one that sets a
-//! variable of the user's, or one that lacks `mcp` and the draw variable, is
-//! reported with the commands that replace it, and left as it is. Each
-//! other `tiles` on `PATH` is named with its version, and an older one ahead
-//! of this one that the user owns is offered to be moved aside after a
-//! question of its own, in a terminal only ([`crate::copies`]). `--yes` answers for a script;
-//! `--dry-run` prints the plan and changes nothing. `tiles doctor` gets a
-//! hint from the same plan, reading Claude Code's registration from
-//! `~/.claude.json` so it starts no server.
+//! `tiles setup [--yes] [--dry-run] [--verbose]`: one command that sets Tiles
+//! up on this Mac (ADR-035). It finds each harness Tiles supports on `PATH`,
+//! the terminal, and the data logins it can see without reading or copying a
+//! secret, lists what it would change, and asks once, no by default. Then it
+//! prints one line per step (ADR-060), running the steps `tiles install` runs
+//! for each harness not yet set up, and a data source it found but could not
+//! finish names what finishes it. A harness whose install already matches
+//! what `tiles install` would write is left as it is, so a second run changes
+//! nothing. A Claude Code whose user-scope `tiles` server runs another `tiles`
+//! has it removed and this one added, named before the question (ADR-039). A
+//! server in a project's or a folder's config, one that sets a variable of the
+//! user's, or one that lacks `mcp` and the draw variable, is reported with the
+//! commands that replace it, and left as it is. Each other `tiles` on `PATH`
+//! is named with its version, and an older one ahead of this one that the user
+//! owns is offered to be moved aside after a question of its own, in a
+//! terminal only ([`crate::copies`]). `--yes` answers for a script; `--dry-run`
+//! prints the plan and changes nothing; `--verbose` adds the paths and each
+//! change under its step. `tiles doctor` gets a hint from the same plan,
+//! reading Claude Code's registration from `~/.claude.json` so it starts no
+//! server.
 
+use std::cmp::Ordering;
 use std::fs;
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -27,15 +29,16 @@ use tiles_intent::schema::FormEntry;
 use tiles_mcp::source::{Found, Reach, Source};
 use tiles_omni::{BaseUrl, ENV_API_KEY, ENV_URL, KEYCHAIN_URL, SecretStore, keychain_key_account};
 use tiles_term::sanitize;
+use tiles_term::style::{Mark, Style};
 
 use crate::addons::Spec;
-use crate::copies::{Copies, Other};
+use crate::copies::{Copies, Other, Place};
 use crate::harness::Harness;
 use crate::install::{self, Dirs, Step};
 use crate::proved::title;
 
 /// Usage of `tiles setup`.
-pub const USAGE: &str = "tiles setup [--yes] [--dry-run]";
+pub const USAGE: &str = "tiles setup [--yes] [--dry-run] [--verbose]";
 
 /// The longest `claude mcp get tiles` may take; it starts the server it
 /// finds to check it.
@@ -48,6 +51,8 @@ pub struct Args {
     pub yes: bool,
     /// `--dry-run`: print the plan and change nothing.
     pub dry_run: bool,
+    /// `--verbose`: add the paths and each change under its step.
+    pub verbose: bool,
 }
 
 /// Parses the arguments after `tiles setup`.
@@ -61,6 +66,7 @@ pub fn parse(args: &[String]) -> Result<Args, String> {
         match a.as_str() {
             "--yes" => out.yes = true,
             "--dry-run" => out.dry_run = true,
+            "--verbose" => out.verbose = true,
             other => {
                 return Err(format!(
                     "tiles setup does not take \"{}\"; usage: {USAGE}",
@@ -446,15 +452,74 @@ fn omni_found(
     }
 }
 
+/// One line of the step list: how the step stands, its label, its state, and
+/// what `--verbose` adds under it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Row {
+    mark: Mark,
+    label: String,
+    state: String,
+    detail: Vec<String>,
+}
+
+impl Row {
+    fn new(mark: Mark, label: &str, state: impl Into<String>) -> Self {
+        Self {
+            mark,
+            label: label.to_string(),
+            state: state.into(),
+            detail: Vec::new(),
+        }
+    }
+
+    fn with(mut self, detail: impl IntoIterator<Item = String>) -> Self {
+        self.detail.extend(detail);
+        self
+    }
+}
+
+/// How the list prints: its style, whether details show, and the label width.
+#[derive(Clone, Copy)]
+struct Printer {
+    style: Style,
+    verbose: bool,
+    width: usize,
+}
+
+impl Printer {
+    fn print(self, row: &Row, out: &mut dyn Write) -> std::io::Result<()> {
+        let line = self
+            .style
+            .step(row.mark, &row.label, self.width, &row.state);
+        writeln!(out, "{line}")?;
+        if self.verbose {
+            for detail in &row.detail {
+                writeln!(out, "{}", self.style.detail(detail))?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The label of the running `tiles`'s own step, the longest fixed one.
+const ON_PATH: &str = "Tiles on PATH";
+
+/// The label of each other `tiles`.
+const OTHER: &str = "Other tiles";
+
 /// Everything setup prints and does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Report {
-    /// What it found, one line each.
-    pub found: Vec<String>,
+    /// The terminal's step.
+    pub terminal: Row,
+    /// The step saying cards will not draw inline here, on the text route.
+    pub pictures: Option<Row>,
+    /// Each harness with its plan.
+    pub plans: Vec<(Harness, Plan)>,
+    /// One step per data source.
+    pub data: Vec<Row>,
     /// The harnesses it would set up, each with its steps.
     pub installs: Vec<(Harness, Vec<Step>)>,
-    /// The commands that finish the data sources, one line each.
-    pub next: Vec<String>,
     /// Whether any harness Tiles supports is on `PATH`.
     pub on_path: bool,
     /// Whether a harness on `PATH` is left for the user: refused, or set
@@ -465,61 +530,57 @@ pub struct Report {
     pub copies: Copies,
 }
 
-/// The report from each harness's plan, the terminal line, a line for each
-/// other `tiles` on `PATH`, and what each data source found.
+/// The step for what a data source found: finished, left for the user with
+/// what finishes it, or skipped.
+fn data_row(found: &Found) -> Row {
+    let (name, said) = found.line.split_once(": ").unwrap_or(("data", &found.line));
+    let mut label = name.to_string();
+    if let Some(first) = label.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
+    let row = if !found.next.is_empty() {
+        Row::new(
+            Mark::Attention,
+            &label,
+            format!(
+                "{said}; to finish: {}; then tiles setup again",
+                found.next.join("; ")
+            ),
+        )
+    } else if said.starts_with("set up for ") {
+        Row::new(Mark::Done, &label, said)
+    } else {
+        Row::new(Mark::Skipped, &label, format!("skipped: {said}"))
+    };
+    row.with([found.line.clone()])
+}
+
+/// The report from each harness's plan, the terminal's step, the other copies
+/// of `tiles` on `PATH`, and what each data source found.
 #[must_use]
 pub fn report(
     plans: Vec<(Harness, Plan)>,
-    terminal: &str,
+    terminal: Row,
     copies: &Copies,
     data: &[Found],
 ) -> Report {
-    let clean = |s: &str| sanitize::line(s, 300);
-    let shown = |p: &Path| clean(&p.display().to_string());
-    let mut found = vec![clean(terminal)];
-    found.extend(copies.found());
-    let mut installs = Vec::new();
+    let installs = plans
+        .iter()
+        .filter_map(|(h, plan)| match plan {
+            Plan::Install(_, steps) | Plan::Replace(_, _, steps) => Some((*h, steps.clone())),
+            _ => None,
+        })
+        .collect();
     let on_path = plans.iter().any(|(_, p)| *p != Plan::Missing);
     let left = plans
         .iter()
         .any(|(_, p)| matches!(p, Plan::Refused(..) | Plan::Other(..)));
-    for (h, plan) in plans {
-        found.push(match plan {
-            Plan::Missing => format!("{}: not on PATH", h.name()),
-            Plan::Current(path) => format!("{}: {}, already set up", h.name(), shown(&path)),
-            Plan::Install(path, steps) => {
-                installs.push((h, steps));
-                format!("{}: {}, not set up", h.name(), shown(&path))
-            }
-            Plan::Refused(path, why) => format!(
-                "{}: {}, not set up; Tiles leaves it: {}",
-                h.name(),
-                shown(&path),
-                clean(&why)
-            ),
-            Plan::Other(path, other) => {
-                format!("{}: {}, {}", h.name(), shown(&path), clean(&other))
-            }
-            Plan::Replace(path, other, steps) => {
-                installs.push((h, steps));
-                format!(
-                    "{}: {}, {}; Tiles will replace it",
-                    h.name(),
-                    shown(&path),
-                    clean(&other)
-                )
-            }
-        });
-    }
-    found.extend(data.iter().map(|f| clean(&f.line)));
-    let next = data
-        .iter()
-        .flat_map(|f| f.next.iter().map(|n| clean(n)))
-        .collect();
     Report {
-        found,
+        terminal,
+        pictures: None,
+        data: data.iter().map(data_row).collect(),
+        plans,
         installs,
-        next,
         on_path,
         left,
         copies: copies.clone(),
@@ -538,124 +599,382 @@ fn listed(names: &[&str]) -> String {
     }
 }
 
-/// Prints the report, asks once unless `args` answers, and installs through
-/// `apply`. Then, with `tty` saying a person can answer, it asks once per
-/// copy of `tiles` it offers to move aside, listed with the installs;
-/// without one, with `--yes` or `--dry-run`, it prints the `mv` command. `answer` reads the user's reply; `None` is no
-/// reply. Returns whether every install and move it ran succeeded.
+/// Where a harness with something to change stands.
+#[derive(Clone, Copy)]
+enum Change<'a> {
+    /// A question is about to ask.
+    Will,
+    /// A dry run.
+    Would,
+    /// The question was not answered yes.
+    Declined,
+    /// It ran.
+    Done,
+    /// It ran and failed, with this error.
+    Failed(&'a str),
+}
+
+/// The step for `harness` with `plan`, where `change` says how far a harness
+/// with something to change has got.
+fn harness_row(harness: Harness, plan: &Plan, change: Change<'_>) -> Row {
+    let label = title(harness);
+    let shown = |p: &Path| p.display().to_string();
+    match plan {
+        Plan::Missing => Row::new(Mark::Skipped, label, "skipped: not on PATH"),
+        Plan::Current(path) => Row::new(Mark::Done, label, "already set up").with([shown(path)]),
+        Plan::Refused(path, why) => {
+            Row::new(Mark::Attention, label, format!("left as it is: {why}")).with([shown(path)])
+        }
+        Plan::Other(path, other) => {
+            Row::new(Mark::Attention, label, format!("left as it is: {other}")).with([shown(path)])
+        }
+        Plan::Install(path, steps) => changing(label, None, change)
+            .with([shown(path)])
+            .with(steps.iter().map(Step::describe)),
+        Plan::Replace(path, other, steps) => changing(label, Some(other), change)
+            .with([shown(path)])
+            .with(steps.iter().map(Step::describe)),
+    }
+}
+
+/// The step for a harness with something to change; `replacing` says what its
+/// old `tiles` server is, when it has one.
+fn changing(label: &str, replacing: Option<&String>, change: Change<'_>) -> Row {
+    match (change, replacing) {
+        (Change::Will, None) => Row::new(Mark::Pending, label, "will configure"),
+        (Change::Will, Some(other)) => Row::new(
+            Mark::Pending,
+            label,
+            format!("{other}; Tiles will replace it"),
+        ),
+        (Change::Would, None) => Row::new(Mark::Pending, label, "would configure"),
+        (Change::Would, Some(other)) => Row::new(
+            Mark::Pending,
+            label,
+            format!("{other}; Tiles would replace it, or {CLAUDE_FIX}"),
+        ),
+        (Change::Declined, None) => Row::new(Mark::Skipped, label, "skipped: not confirmed"),
+        (Change::Declined, Some(other)) => Row::new(
+            Mark::Attention,
+            label,
+            format!("not confirmed; {other}: {CLAUDE_FIX}"),
+        ),
+        (Change::Done, None) => Row::new(Mark::Done, label, "configured"),
+        (Change::Done, Some(other)) => {
+            Row::new(Mark::Done, label, format!("configured; it was {other}"))
+        }
+        (Change::Failed(e), _) => {
+            let again = if e.contains("tiles setup") {
+                ""
+            } else {
+                "; then tiles setup again"
+            };
+            Row::new(Mark::Failed, label, format!("failed: {e}{again}"))
+        }
+    }
+}
+
+/// The step for the running `tiles`: `already` when this machine has nothing
+/// left to do.
+fn binary_row(copies: &Copies, already: bool) -> Row {
+    let row = if copies.on_path {
+        let state = if already {
+            "already set up"
+        } else {
+            "installed"
+        };
+        Row::new(Mark::Done, ON_PATH, state)
+    } else {
+        let dir = copies.this.parent().unwrap_or(&copies.this).display();
+        Row::new(
+            Mark::Attention,
+            ON_PATH,
+            format!("not on PATH: add {dir} to PATH, then open a new terminal tab"),
+        )
+    };
+    row.with([format!(
+        "{}, version {}",
+        copies.this.display(),
+        copies.current
+    )])
+}
+
+/// How a copy offered a move came out.
+enum Moved {
+    /// It stays where it is.
+    Stays,
+    /// It was moved here.
+    To(PathBuf),
+    /// The move failed with this error.
+    Failed(String),
+}
+
+/// `<path>, version <v>`, for the copy `o`.
+fn copy_named(o: &Other) -> String {
+    let path = o.path.display();
+    o.version.as_deref().map_or_else(
+        || format!("{path}, which printed no version"),
+        |v| format!("{path}, version {v}"),
+    )
+}
+
+/// The step for another `tiles`; `first` says it is the one a terminal runs.
+fn copy_row(o: &Other, first: bool, moved: &Moved) -> Row {
+    let path = o.path.display();
+    let mv = o.mv();
+    match moved {
+        Moved::To(to) => {
+            return Row::new(
+                Mark::Done,
+                OTHER,
+                format!(
+                    "moved {path} aside, to {}; open a new terminal tab to run this one",
+                    to.display()
+                ),
+            );
+        }
+        Moved::Failed(e) => {
+            return Row::new(
+                Mark::Failed,
+                OTHER,
+                format!(
+                    "could not move {path}: {e}; run: {}",
+                    mv.unwrap_or_default()
+                ),
+            );
+        }
+        Moved::Stays => {}
+    }
+    let what = copy_named(o);
+    let ahead = if first {
+        "comes first on PATH, so a terminal runs it"
+    } else {
+        "is also ahead of this one on PATH"
+    };
+    let mut row = match (o.place, o.against) {
+        (Place::Ahead, Some(Ordering::Greater)) => Row::new(
+            Mark::Attention,
+            OTHER,
+            format!("{what}, is newer than this one and {ahead}"),
+        ),
+        (Place::Ahead, Some(Ordering::Equal)) => Row::new(
+            Mark::Attention,
+            OTHER,
+            format!("{what}, is the same version as this one and {ahead}"),
+        ),
+        (Place::Ahead, _) => Row::new(Mark::Attention, OTHER, format!("{what}, {ahead}")),
+        (Place::Behind, _) => Row::new(
+            Mark::Skipped,
+            OTHER,
+            format!("{what}, is later on PATH, so a terminal runs this one"),
+        ),
+        (Place::Only, _) => Row::new(
+            Mark::Attention,
+            OTHER,
+            format!("{what}, is on PATH, and this one is not"),
+        ),
+    };
+    let newer = matches!(o.against, Some(Ordering::Equal | Ordering::Greater));
+    match mv {
+        Some(mv) if o.stale() => {
+            row.state = format!("{}; run: {mv}, then open a new terminal tab", row.state);
+        }
+        Some(mv) if o.place == Place::Behind && !newer => {
+            row.state = format!("{}; to move it aside, run: {mv}", row.state);
+        }
+        _ => {}
+    }
+    row
+}
+
+/// Asks `question`, no by default; a reply with no terminal to echo it ends
+/// its own line. Returns whether the reply is a yes.
+fn ask(
+    question: &str,
+    tty: bool,
+    out: &mut dyn Write,
+    answer: &mut dyn FnMut() -> Option<String>,
+) -> std::io::Result<bool> {
+    write!(out, "{question} [y/N] ")?;
+    out.flush()?;
+    let reply = answer();
+    if reply.is_none() || !tty {
+        writeln!(out)?;
+    }
+    Ok(reply.is_some_and(|r| matches!(r.trim().to_ascii_lowercase().as_str(), "y" | "yes")))
+}
+
+/// The widest label in the list.
+fn label_width(report: &Report) -> usize {
+    [ON_PATH, OTHER, report.terminal.label.as_str()]
+        .into_iter()
+        .chain(report.pictures.iter().map(|r| r.label.as_str()))
+        .chain(report.plans.iter().map(|(h, _)| title(*h)))
+        .chain(report.data.iter().map(|r| r.label.as_str()))
+        .map(|l| l.chars().count())
+        .max()
+        .unwrap_or(0)
+}
+
+/// Prints the header, lists what would change and asks unless `args` answers,
+/// then prints one step per line, moving copies aside and installing through
+/// `apply` as it reaches them, and one closing line. With `tty` saying a person
+/// can answer, it asks once per copy of `tiles` it offers to move aside, listed
+/// with the installs; without one, with `--yes` or `--dry-run`, that copy's
+/// step names the `mv` command. `answer` reads the user's reply; `None` is no
+/// reply. `style` says whether the steps carry marks. Returns whether every
+/// install and move it ran succeeded.
 pub fn run(
     args: Args,
     report: &Report,
     tty: bool,
+    style: Style,
     out: &mut dyn Write,
     answer: &mut dyn FnMut() -> Option<String>,
     apply: &Apply<'_>,
 ) -> std::io::Result<bool> {
-    writeln!(out, "Tiles found:")?;
-    for line in &report.found {
-        writeln!(out, "  {line}")?;
-    }
-    let moves = report.copies.moves();
-    let ask = tty && !args.yes && !args.dry_run;
-    let asked: &[&Other] = if ask { &moves } else { &[] };
-    let yes = |r: Option<String>| {
-        r.is_some_and(|r| matches!(r.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+    let printer = Printer {
+        style,
+        verbose: args.verbose,
+        width: label_width(report),
     };
-    let mut ok = true;
-    if !report.installs.is_empty() || !asked.is_empty() {
-        writeln!(out, "Tiles will change:")?;
-        for (h, steps) in &report.installs {
-            for step in steps {
-                writeln!(
-                    out,
-                    "  {}: {}",
-                    h.name(),
-                    sanitize::line(&step.describe(), 400)
-                )?;
+    writeln!(out, "Tiles {} setup", tiles_intent::TILES_VERSION)?;
+    let moves = report.copies.moves();
+    let asked: &[&Other] = if tty && !args.yes && !args.dry_run {
+        &moves
+    } else {
+        &[]
+    };
+    let question = !args.yes && !args.dry_run && !report.installs.is_empty();
+    let asking = question || !asked.is_empty();
+    if asking {
+        for (h, plan) in &report.plans {
+            if matches!(plan, Plan::Install(..) | Plan::Replace(..)) {
+                printer.print(&harness_row(*h, plan, Change::Will), out)?;
             }
         }
         for m in asked {
-            writeln!(out, "  tiles: {}", moving(m))?;
+            printer.print(&Row::new(Mark::Pending, OTHER, moving(m)), out)?;
+        }
+        if !args.verbose {
+            writeln!(out, "tiles setup --dry-run --verbose lists each change.")?;
         }
     }
-    if report.installs.is_empty() {
-        writeln!(out, "{}", unchanged(report, !asked.is_empty()))?;
-    } else {
+    let go = if question {
         let names: Vec<&str> = report.installs.iter().map(|(h, _)| title(*h)).collect();
-        let go = if args.dry_run {
-            writeln!(out, "Dry run: nothing changed.")?;
-            false
-        } else if args.yes {
-            true
-        } else {
-            write!(out, "Set up Tiles for {}? [y/N] ", listed(&names))?;
-            out.flush()?;
-            let reply = answer();
-            if reply.is_none() {
-                writeln!(out)?;
+        let question = format!("Set up Tiles for {}?", listed(&names));
+        ask(&question, tty, out, answer)?
+    } else {
+        args.yes
+    };
+    let mut to_move = Vec::new();
+    for m in asked {
+        let clean = |p: &Path| sanitize::line(&p.display().to_string(), crate::copies::LONGEST);
+        let question = format!(
+            "Move {} aside, to {}?",
+            clean(&m.path),
+            clean(m.aside.as_deref().unwrap_or(&m.path))
+        );
+        if ask(&question, tty, out, answer)? {
+            to_move.push(m.path.clone());
+        }
+    }
+    if asking {
+        writeln!(out)?;
+    }
+
+    let mut ok = true;
+    let already = report.installs.is_empty()
+        && moves.is_empty()
+        && report
+            .plans
+            .iter()
+            .any(|(_, p)| matches!(p, Plan::Current(_)));
+    printer.print(&binary_row(&report.copies, already), out)?;
+    let mut first = true;
+    for (o, line) in report.copies.others.iter().zip(report.copies.found()) {
+        let outcome = if to_move.contains(&o.path) {
+            match o.move_aside() {
+                Ok(to) => Moved::To(to),
+                Err(e) => {
+                    ok = false;
+                    Moved::Failed(e)
+                }
             }
-            yes(reply)
+        } else {
+            Moved::Stays
         };
-        if go {
-            for (h, steps) in &report.installs {
+        let leads = first && o.place == Place::Ahead;
+        first &= !leads;
+        printer.print(&copy_row(o, leads, &outcome).with([line]), out)?;
+    }
+    printer.print(&report.terminal, out)?;
+    if let Some(row) = &report.pictures {
+        printer.print(row, out)?;
+    }
+    for (h, plan) in &report.plans {
+        let row = match plan {
+            Plan::Install(_, steps) | Plan::Replace(_, _, steps) if go && !args.dry_run => {
                 match apply(*h, steps) {
-                    Ok(()) => writeln!(out, "{}", crate::install_done(*h))?,
+                    Ok(()) => harness_row(*h, plan, Change::Done),
                     Err(e) => {
                         ok = false;
-                        writeln!(
-                            out,
-                            "tiles: {} not set up: {}",
-                            h.name(),
-                            sanitize::line(&e, 400)
-                        )?;
+                        harness_row(*h, plan, Change::Failed(&e))
                     }
                 }
             }
-        } else if !args.dry_run {
-            let what = if asked.is_empty() {
-                "Nothing"
-            } else {
-                "No harness"
-            };
-            writeln!(
-                out,
-                "{what} changed. Run tiles setup again to set it up, or tiles install <harness> for one harness."
-            )?;
-        }
+            _ if args.dry_run => harness_row(*h, plan, Change::Would),
+            _ => harness_row(*h, plan, Change::Declined),
+        };
+        printer.print(&row, out)?;
     }
-    for m in &moves {
-        ok &= move_one(m, &report.copies.this, ask, out, answer, &yes)?;
+    for row in &report.data {
+        printer.print(row, out)?;
     }
-    if !report.next.is_empty() {
-        writeln!(out, "To finish the data sources, run:")?;
-        for line in &report.next {
-            writeln!(out, "  {line}")?;
-        }
-        writeln!(
-            out,
-            "Then run tiles setup again, so each harness gets the data tools and asks before each Tiles tool call."
-        )?;
-    }
+    writeln!(out, "{}", closing(args, report, go, ok, !asked.is_empty()))?;
     Ok(ok)
 }
 
-/// The line when no harness needs an install; `moving` says a move is
-/// listed under `Tiles will change:`.
-fn unchanged(report: &Report, moving: bool) -> &'static str {
-    match (report.left, report.on_path, moving) {
-        (true, _, false) => "Nothing for Tiles to change; see the lines above.",
-        (true, _, true) => "Tiles changes no harness; see the lines above.",
-        (false, true, false) => {
-            "Every harness on PATH that Tiles can set up already has it; nothing to change."
-        }
-        (false, true, true) => "Every harness on PATH that Tiles can set up already has it.",
-        (false, false, _) => {
-            "No harness Tiles supports is on PATH; install Claude Code, Codex, OpenCode or Pi, then run tiles setup again."
-        }
+/// The closing line: what to try next, or why not yet. `go` says the harnesses
+/// were to change, `ok` that nothing failed, and `move_asked` that a move was
+/// asked about.
+fn closing(args: Args, report: &Report, go: bool, ok: bool, move_asked: bool) -> String {
+    if !ok {
+        "Some steps failed; each failed line says what to run.".into()
+    } else if args.dry_run {
+        "Dry run: nothing changed.".into()
+    } else if !report.installs.is_empty() && !go {
+        let what = if move_asked { "No harness" } else { "Nothing" };
+        format!(
+            "{what} changed. Run tiles setup again to set it up, or tiles install <harness> for one harness."
+        )
+    } else if !report.on_path {
+        "No harness Tiles supports is on PATH; install Claude Code, Codex, OpenCode or Pi, then run tiles setup again.".into()
+    } else if report.left && report.installs.is_empty() {
+        let what = if move_asked {
+            "Tiles changes no harness"
+        } else {
+            "Nothing for Tiles to change"
+        };
+        format!("{what}; see the lines above.")
+    } else {
+        let set_up = report
+            .plans
+            .iter()
+            .find(|(_, p)| matches!(p, Plan::Current(_) | Plan::Install(..) | Plan::Replace(..)));
+        set_up.map_or_else(
+            || "Next: run tiles check.".into(),
+            |(h, _)| {
+                format!(
+                    "Next: run tiles check, then start a session with tiles run {}.",
+                    h.name()
+                )
+            },
+        )
     }
 }
 
-/// `move <path> aside, to <name> beside it`, for the copy `m`.
+/// The state of a copy setup is about to ask to move aside.
 fn moving(m: &Other) -> String {
     let name = m
         .aside
@@ -663,72 +982,28 @@ fn moving(m: &Other) -> String {
         .and_then(Path::file_name)
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    sanitize::line(
-        &format!("move {} aside, to {name} beside it", m.path.display()),
-        crate::copies::LONGEST,
+    format!(
+        "{}, is ahead of this one on PATH; Tiles will move it aside, to {name} beside it",
+        copy_named(m)
     )
 }
 
-/// What a shell needs to find `tiles` afresh after a move.
-const REHASH: &str = "open a new terminal tab, or run hash -r (rehash in zsh)";
-
-/// Moves `m` aside after a yes when `ask`, else prints the command that
-/// does. Returns whether nothing failed.
-fn move_one(
-    m: &Other,
-    this: &Path,
-    ask: bool,
-    out: &mut dyn Write,
-    answer: &mut dyn FnMut() -> Option<String>,
-    yes: &dyn Fn(Option<String>) -> bool,
-) -> std::io::Result<bool> {
-    let clean = |s: &str| sanitize::line(s, crate::copies::LONGEST);
-    let mv = clean(&m.mv().unwrap_or_default());
-    let from = clean(&m.path.display().to_string());
-    if !ask {
-        writeln!(out, "To move {from} aside, run: {mv}, then {REHASH}.")?;
-        return Ok(true);
-    }
-    let to = clean(&m.aside.as_deref().unwrap_or(&m.path).display().to_string());
-    write!(out, "Move {from} aside, to {to}? [y/N] ")?;
-    out.flush()?;
-    let reply = answer();
-    if reply.is_none() {
-        writeln!(out)?;
-    }
-    if !yes(reply) {
-        writeln!(out, "Left {from} where it is; to move it aside, run: {mv}")?;
-        return Ok(true);
-    }
-    match m.move_aside() {
-        Ok(to) => {
-            writeln!(
-                out,
-                "Moved {from} to {}. To run {} as tiles, {REHASH}.",
-                clean(&to.display().to_string()),
-                clean(&this.display().to_string())
-            )?;
-            Ok(true)
-        }
-        Err(e) => {
-            writeln!(
-                out,
-                "tiles: could not move {from}: {}; run: {mv}",
-                clean(&e)
-            )?;
-            Ok(false)
-        }
-    }
-}
-
-/// The terminal line: its name, and that setup changes nothing there.
-fn terminal(env: &dyn Fn(&str) -> Option<String>) -> String {
+/// The terminal's step: its name, and that setup changes nothing there.
+fn terminal(env: &dyn Fn(&str) -> Option<String>) -> Row {
+    let label = "Terminal";
     match tiles_term::detect::detect(env, None) {
-        Ok(d) => format!(
-            "terminal: {}, nothing to change (tiles doctor shows how cards draw here)",
-            d.terminal.name()
+        Ok(d) if d.terminal == tiles_term::detect::Terminal::Unknown => Row::new(
+            Mark::Done,
+            label,
+            "nothing to set up; tiles check tests how cards draw here",
         ),
-        Err(e) => format!("terminal: {e}"),
+        Ok(d) => Row::new(
+            Mark::Done,
+            label,
+            format!("{}: nothing to set up", d.terminal.name()),
+        )
+        .with(["tiles doctor shows how cards draw here".to_string()]),
+        Err(e) => Row::new(Mark::Skipped, label, format!("skipped: {e}")),
     }
 }
 
@@ -744,12 +1019,17 @@ fn cards(env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
         .flatten()
 }
 
-/// Puts the [`cards`] line under the terminal line, when there is one.
+/// Adds the step for the [`cards`] line, when there is one; the whole line
+/// goes under it for `--verbose`.
 fn add_cards(report: &mut Report, env: &dyn Fn(&str) -> Option<String>) {
-    if let Some(line) = cards(env) {
-        let at = report.found.len().min(1);
-        report.found.insert(at, sanitize::line(&line, 300));
-    }
+    report.pictures = cards(env).map(|line| {
+        Row::new(
+            Mark::Attention,
+            "Pictures",
+            "cards will not draw inline here; tiles doctor says how they open",
+        )
+        .with([line])
+    });
 }
 
 /// Each of `harnesses` with its plan on this machine, for installs that run
@@ -869,7 +1149,7 @@ pub fn main(args: &[String], sources: &[&dyn Source]) -> std::process::ExitCode 
     let copies = crate::copies::here();
     let mut data = vec![omni];
     data.extend(sources.iter().filter_map(|s| s.found()));
-    let mut report = report(plans, &terminal(&crate::serve::env), &copies, &data);
+    let mut report = report(plans, terminal(&crate::serve::env), &copies, &data);
     add_cards(&mut report, &crate::serve::env);
     let mut answer = || {
         let mut line = String::new();
@@ -878,10 +1158,19 @@ pub fn main(args: &[String], sources: &[&dyn Source]) -> std::process::ExitCode 
             Ok(_) => Some(line),
         }
     };
-    let apply = |_: Harness, steps: &[Step]| apply(steps, &install::run_program);
-    let tty = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-    let mut out = std::io::stdout().lock();
-    match run(args, &report, tty, &mut out, &mut answer, &apply) {
+    // With --verbose a harness's own output shows; otherwise it would break
+    // up the step list.
+    let run_step: &install::RunCommand<'_> = if args.verbose {
+        &install::run_program
+    } else {
+        &install::run_quiet
+    };
+    let apply = |_: Harness, steps: &[Step]| apply(steps, run_step);
+    let stdout = std::io::stdout();
+    let tty = std::io::stdin().is_terminal() && stdout.is_terminal();
+    let style = Style::new(stdout.is_terminal(), std::env::var_os("NO_COLOR").is_some());
+    let mut out = stdout.lock();
+    match run(args, &report, tty, style, &mut out, &mut answer, &apply) {
         Ok(true) => ExitCode::SUCCESS,
         _ => ExitCode::FAILURE,
     }

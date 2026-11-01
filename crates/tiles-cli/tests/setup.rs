@@ -2,7 +2,8 @@
 //! `HOME`, with stub `pi`, `opencode`, `claude` and `codex` first on `PATH`
 //! that log every call and write what the real `mcp add` commands write.
 //! No answer, or no, changes nothing; yes sets up every harness through the
-//! steps `tiles install` runs; a second run finds each one set up and
+//! steps `tiles install` runs, printing one line per step (ADR-060) with no
+//! harness output and no path unless `--verbose` adds it; a second run finds each one set up and
 //! changes nothing; a user-scope Claude Code server for another `tiles` is
 //! replaced after the same question (ADR-039), one in a project's config is
 //! named and left, and a failed remove adds nothing; `tiles doctor` offers
@@ -60,8 +61,9 @@ case \"$1 $2\" in
       esac
     done
     [ \"$name\" = tiles ] || exit 1
-    claude_has \"$2\" \"$env\" ;;
-  \"mcp remove\") [ ! -e '{root}/claude-remove-fails' ] && rm '{root}/claude-has-tiles' ;;
+    claude_has \"$2\" \"$env\"
+    echo \"Added stdio MCP server tiles to user config\" ;;
+  \"mcp remove\") if [ -e '{root}/claude-remove-fails' ]; then echo 'cannot write the config' >&2; exit 1; fi; rm '{root}/claude-has-tiles' ;;
 esac",
             root = root.display()
         ),
@@ -192,27 +194,28 @@ fn yes_sets_up_every_harness_and_a_second_run_changes_nothing() {
     let said = text(&out);
     assert!(out.status.success(), "{said}");
     // A build without the warehouse source (ADR-059) says nothing about one.
-    let warehouse = "  warehouse: no gcloud login, dbt project or dbt profiles.yml found";
+    let warehouse = "(skipped: no gcloud login, dbt project or dbt profiles.yml found)";
     if text(&tiles(&root, &["--help"], None)).contains("tiles warehouse") {
         assert!(said.contains(warehouse), "{said}");
     } else {
-        assert!(!said.contains("warehouse"), "{said}");
+        assert!(!said.contains("Warehouse"), "{said}");
     }
     for line in [
-        "  terminal: warp, nothing to change",
-        "  pi: ",
-        "  omni: TILES_OMNI_URL names acme.omniapp.co but TILES_OMNI_API_KEY is not set",
-        &format!(
-            "  claude: run claude mcp add --scope user tiles -e TILES_DRAW=text -- {TILES} mcp"
-        ),
-        "installed Tiles for pi; tiles run pi adds the inline card",
-        "installed Tiles for opencode;",
-        "installed Tiles for claude;",
-        "installed Tiles for codex;",
-        "To finish the data sources, run:",
+        "  Terminal       (warp: nothing to set up)\n",
+        "  Pi             (configured)\n",
+        "  OpenCode       (configured)\n",
+        "  Claude Code    (configured)\n",
+        "  Codex          (configured)\n",
+        "  Omni           (TILES_OMNI_URL names acme.omniapp.co but TILES_OMNI_API_KEY is not set; to finish: ",
+        "then tiles setup again)\n",
+        "Next: run tiles check, then start a session with tiles run pi.\n",
     ] {
         assert!(said.contains(line), "{line}: {said}");
     }
+    assert!(
+        !said.contains("Added stdio MCP server") && !said.contains(TILES),
+        "no harness output and no path: {said}"
+    );
     assert_eq!(installed(&root).len(), 6, "{:?}", installed(&root));
     assert!(log(&root).contains(&format!(
         "claude mcp add --scope user tiles -e TILES_DRAW=text -- {TILES} mcp"
@@ -225,19 +228,25 @@ fn yes_sets_up_every_harness_and_a_second_run_changes_nothing() {
     let again = tiles(&root, &["setup"], None);
     let said = text(&again);
     assert!(again.status.success(), "{said}");
-    for h in ["pi", "opencode", "claude", "codex"] {
+    for h in ["Pi    ", "OpenCode", "Claude Code", "Codex"] {
         assert!(
-            said.contains(&format!("  {h}: ")) && said.contains(", already set up"),
-            "{said}"
+            said.lines()
+                .any(|l| l.starts_with(&format!("  {h}")) && l.ends_with("(already set up)")),
+            "{h}: {said}"
         );
     }
-    assert_eq!(said.matches(", already set up").count(), 4, "{said}");
-    assert!(said.contains("nothing to change."), "{said}");
     assert!(!said.contains("[y/N]"), "{said}");
+    assert!(said.contains("Next: run tiles check"), "{said}");
     assert_eq!(log(&root).matches("mcp add").count(), before);
 
     let doctor = text(&tiles(&root, &["doctor"], None));
     assert!(!doctor.contains("run tiles setup"), "{doctor}");
+
+    let verbose = text(&tiles(&root, &["setup", "--dry-run", "--verbose"], None));
+    assert!(
+        verbose.contains(&format!("      {}", root.join("path/claude").display())),
+        "{verbose}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -258,16 +267,18 @@ fn a_user_scope_claude_server_for_another_tiles_is_replaced_after_the_question()
         old_server("User config (available in all your projects)"),
     )
     .unwrap();
-    let claude = root.join("path/claude");
-    let found = format!(
-        "  claude: {}, set up with another tiles, /old/tiles; Tiles will replace it",
-        claude.display()
-    );
     let out = tiles(&root, &["setup"], Some("n\n"));
     let said = text(&out);
-    assert!(said.contains(&found), "{said}");
     assert!(
-        said.contains("  claude: run claude mcp remove tiles --scope user\n"),
+        said.contains(
+            "  Claude Code    (set up with another tiles, /old/tiles; Tiles will replace it)\n"
+        ),
+        "{said}"
+    );
+    assert!(
+        said.contains(
+            "  Claude Code    (not confirmed; set up with another tiles, /old/tiles: run claude mcp remove tiles --scope user, then tiles setup)\n"
+        ),
         "{said}"
     );
     assert!(said.contains("Nothing changed."), "{said}");
@@ -277,7 +288,12 @@ fn a_user_scope_claude_server_for_another_tiles_is_replaced_after_the_question()
     let out = tiles(&root, &["setup"], Some("y\n"));
     let said = text(&out);
     assert!(out.status.success(), "{said}");
-    assert!(said.contains("installed Tiles for claude;"), "{said}");
+    assert!(
+        said.contains(
+            "  Claude Code    (configured; it was set up with another tiles, /old/tiles)\n"
+        ),
+        "{said}"
+    );
     let log = log(&root);
     let ran: Vec<&str> = log
         .lines()
@@ -292,7 +308,7 @@ fn a_user_scope_claude_server_for_another_tiles_is_replaced_after_the_question()
     );
     let again = text(&tiles(&root, &["setup"], None));
     assert!(
-        again.contains(&format!("  claude: {}, already set up", claude.display())),
+        again.contains("  Claude Code    (already set up)\n"),
         "{again}"
     );
     let _ = std::fs::remove_dir_all(&root);
@@ -307,13 +323,11 @@ fn a_project_scope_claude_server_is_named_and_left() {
     let said = text(&out);
     assert!(out.status.success(), "{said}");
     assert!(
-        said.contains(&format!(
-            "  claude: {}, set up with another tiles, /old/tiles, in Claude Code's project config; Tiles leaves it: run claude mcp remove tiles --scope project, then tiles setup",
-            root.join("path/claude").display()
-        )),
+        said.contains(
+            "  Claude Code    (left as it is: set up with another tiles, /old/tiles, in Claude Code's project config; Tiles leaves it: run claude mcp remove tiles --scope project, then tiles setup)\n"
+        ),
         "{said}"
     );
-    assert!(!said.contains("claude: run claude mcp"), "{said}");
     assert!(!log(&root).contains("claude mcp add"), "{}", log(&root));
     assert!(!log(&root).contains("claude mcp remove"), "{}", log(&root));
     assert_eq!(
@@ -334,7 +348,7 @@ fn a_failed_remove_leaves_claude_code_as_it_was() {
     assert!(!out.status.success(), "{said}");
     assert!(
         said.contains(
-            "tiles: claude not set up: claude exited with exit status: 1; Claude Code keeps its old tiles server: run claude mcp remove tiles --scope user, then tiles setup"
+            "  Claude Code    (failed: claude exited with exit status: 1: cannot write the config; Claude Code keeps its old tiles server: run claude mcp remove tiles --scope user, then tiles setup)\n"
         ),
         "{said}"
     );
@@ -451,19 +465,13 @@ fn an_older_tiles_ahead_on_path_is_named_and_without_a_terminal_left_with_its_mv
     let setup = run(&["setup"]);
     assert!(
         setup.contains(&format!(
-            "  tiles: {}, version 0.1.2, comes first on PATH, so a terminal runs it, not this one (",
+            "  Other tiles    ({}, version 0.1.2, comes first on PATH, so a terminal runs it; run: {mv}, then open a new terminal tab)\n",
             old.display()
         )),
         "{setup}"
     );
-    assert!(!setup.contains("tiles: move "), "{setup}");
-    assert!(
-        setup.contains(&format!(
-            "To move {} aside, run: {mv}, then ",
-            old.display()
-        )),
-        "{setup}"
-    );
+    assert!(setup.contains("  Tiles on PATH  (installed)\n"), "{setup}");
+    assert!(!setup.contains("Tiles will move"), "{setup}");
     assert!(!setup.contains("? [y/N] y"), "{setup}");
     assert!(old.exists() && !aside.exists(), "moved without a terminal");
     let doctor = run(&["doctor"]);

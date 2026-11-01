@@ -606,6 +606,34 @@ pub fn run_program(program: &str, args: &[String]) -> Result<(), String> {
     }
 }
 
+/// Runs `program` with `args` as [`run_program`] does, holding its output back
+/// so `tiles setup` keeps to its step list (ADR-060); what it wrote to stderr
+/// joins the error.
+///
+/// # Errors
+///
+/// When it cannot start or exits unsuccessfully.
+pub fn run_quiet(program: &str, args: &[String]) -> Result<(), String> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("cannot run {program}: {e}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let said = String::from_utf8_lossy(&output.stderr)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let status = output.status;
+    if said.is_empty() {
+        Err(format!("{program} exited with {status}"))
+    } else {
+        Err(format!("{program} exited with {status}: {said}"))
+    }
+}
+
 /// Carries out the steps, running commands through `run`.
 ///
 /// # Errors
