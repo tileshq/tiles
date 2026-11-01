@@ -63,7 +63,7 @@ case \"$1 $2\" in
     [ \"$name\" = tiles ] || exit 1
     claude_has \"$2\" \"$env\"
     echo \"Added stdio MCP server tiles to user config\" ;;
-  \"mcp remove\") if [ -e '{root}/claude-remove-fails' ]; then echo 'cannot write the config' >&2; exit 1; fi; rm '{root}/claude-has-tiles' ;;
+  \"mcp remove\") if [ -e '{root}/claude-remove-fails' ]; then echo 'cannot write the config' >&2; cat '{root}/claude-remove-fails' >&2; exit 1; fi; rm '{root}/claude-has-tiles' ;;
 esac",
             root = root.display()
         ),
@@ -95,7 +95,11 @@ fn tiles(root: &Path, args: &[&str], stdin: Option<&str>) -> Output {
         .env("HOME", root.join("home"))
         .env(
             "PATH",
-            format!("{}:/usr/bin:/bin", root.join("path").display()),
+            format!(
+                "{}:{}:/usr/bin:/bin",
+                root.join("path").display(),
+                Path::new(TILES).parent().unwrap().display()
+            ),
         )
         .env("TILES_CONFIG_DIR", root.join("config"))
         .env("TILES_STATE_DIR", root.join("config"))
@@ -362,6 +366,29 @@ fn a_failed_remove_leaves_claude_code_as_it_was() {
 }
 
 #[test]
+fn a_harness_that_prints_pages_of_stderr_leaves_the_fix_on_its_line() {
+    let root = machine("claude-remove-long");
+    let server = old_server("User config (available in all your projects)");
+    std::fs::write(root.join("claude-has-tiles"), &server).unwrap();
+    std::fs::write(root.join("claude-remove-fails"), "x".repeat(20_000)).unwrap();
+    let out = tiles(&root, &["setup", "--yes"], None);
+    let said = text(&out);
+    assert!(!out.status.success(), "{said}");
+    let row = said
+        .lines()
+        .find(|l| l.starts_with("  Claude Code    (failed: "))
+        .unwrap_or_else(|| panic!("{said}"));
+    assert!(
+        row.ends_with(
+            "…; Claude Code keeps its old tiles server: run claude mcp remove tiles --scope user, then tiles setup)"
+        ),
+        "{row}"
+    );
+    assert!(row.chars().count() < 500, "{row}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn yes_answers_for_a_script() {
     let root = machine("scripted");
     let out = tiles(&root, &["setup", "--yes"], None);
@@ -474,6 +501,12 @@ fn an_older_tiles_ahead_on_path_is_named_and_without_a_terminal_left_with_its_mv
     assert!(!setup.contains("Tiles will move"), "{setup}");
     assert!(!setup.contains("? [y/N] y"), "{setup}");
     assert!(old.exists() && !aside.exists(), "moved without a terminal");
+    assert!(
+        setup.ends_with(
+            "Nothing changed. To set it up, see the Other tiles line, then run tiles setup again, or tiles install <harness> for one harness.\n"
+        ),
+        "{setup}"
+    );
     let doctor = run(&["doctor"]);
     assert!(
         doctor.lines().nth(1).is_some_and(|l| l

@@ -664,7 +664,7 @@ fn changing(label: &str, replacing: Option<&String>, change: Change<'_>) -> Row 
             Row::new(Mark::Done, label, format!("configured; it was {other}"))
         }
         (Change::Failed(e), _) => {
-            let again = if e.contains("tiles setup") {
+            let again = if e.ends_with("tiles setup") || e.ends_with("tiles setup again") {
                 ""
             } else {
                 "; then tiles setup again"
@@ -774,15 +774,8 @@ fn copy_row(o: &Other, first: bool, moved: &Moved) -> Row {
             format!("{what}, is on PATH, and this one is not"),
         ),
     };
-    let newer = matches!(o.against, Some(Ordering::Equal | Ordering::Greater));
-    match mv {
-        Some(mv) if o.stale() => {
-            row.state = format!("{}; run: {mv}, then open a new terminal tab", row.state);
-        }
-        Some(mv) if o.place == Place::Behind && !newer => {
-            row.state = format!("{}; to move it aside, run: {mv}", row.state);
-        }
-        _ => {}
+    if let Some(mv) = mv.filter(|_| o.stale()) {
+        row.state = format!("{}; run: {mv}, then open a new terminal tab", row.state);
     }
     row
 }
@@ -814,6 +807,37 @@ fn label_width(report: &Report) -> usize {
         .map(|l| l.chars().count())
         .max()
         .unwrap_or(0)
+}
+
+/// Prints a step per other copy, moving aside those in `to_move`. Returns whether
+/// every move succeeded and whether a stale copy stays ahead of this one.
+fn copy_rows(
+    copies: &Copies,
+    to_move: &[PathBuf],
+    printer: Printer,
+    out: &mut dyn Write,
+) -> std::io::Result<(bool, bool)> {
+    let mut ok = true;
+    let mut stale_left = false;
+    let mut first = true;
+    for (o, line) in copies.others.iter().zip(copies.found()) {
+        let outcome = if to_move.contains(&o.path) {
+            match o.move_aside() {
+                Ok(to) => Moved::To(to),
+                Err(e) => {
+                    ok = false;
+                    Moved::Failed(e)
+                }
+            }
+        } else {
+            Moved::Stays
+        };
+        stale_left |= o.stale() && !matches!(outcome, Moved::To(_));
+        let leads = first && o.place == Place::Ahead;
+        first &= !leads;
+        printer.print(&copy_row(o, leads, &outcome).with([line]), out)?;
+    }
+    Ok((ok, stale_left))
 }
 
 /// Prints the header, lists what would change and asks unless `args` answers,
@@ -891,23 +915,8 @@ pub fn run(
             .iter()
             .any(|(_, p)| matches!(p, Plan::Current(_)));
     printer.print(&binary_row(&report.copies, already), out)?;
-    let mut first = true;
-    for (o, line) in report.copies.others.iter().zip(report.copies.found()) {
-        let outcome = if to_move.contains(&o.path) {
-            match o.move_aside() {
-                Ok(to) => Moved::To(to),
-                Err(e) => {
-                    ok = false;
-                    Moved::Failed(e)
-                }
-            }
-        } else {
-            Moved::Stays
-        };
-        let leads = first && o.place == Place::Ahead;
-        first &= !leads;
-        printer.print(&copy_row(o, leads, &outcome).with([line]), out)?;
-    }
+    let (copies_ok, stale_left) = copy_rows(&report.copies, &to_move, printer, out)?;
+    ok &= copies_ok;
     printer.print(&report.terminal, out)?;
     if let Some(row) = &report.pictures {
         printer.print(row, out)?;
@@ -931,14 +940,31 @@ pub fn run(
     for row in &report.data {
         printer.print(row, out)?;
     }
-    writeln!(out, "{}", closing(args, report, go, ok, !asked.is_empty()))?;
+    let blocked = if !report.copies.on_path {
+        Some(ON_PATH)
+    } else if stale_left {
+        Some(OTHER)
+    } else {
+        None
+    };
+    let last = closing(args, report, go, ok, !asked.is_empty(), blocked);
+    writeln!(out, "{last}")?;
     Ok(ok)
 }
 
 /// The closing line: what to try next, or why not yet. `go` says the harnesses
-/// were to change, `ok` that nothing failed, and `move_asked` that a move was
-/// asked about.
-fn closing(args: Args, report: &Report, go: bool, ok: bool, move_asked: bool) -> String {
+/// were to change, `ok` that nothing failed, `move_asked` that a move was asked
+/// about, and `blocked` names the step to see first, while `tiles` in a terminal
+/// would not start this one.
+fn closing(
+    args: Args,
+    report: &Report,
+    go: bool,
+    ok: bool,
+    move_asked: bool,
+    blocked: Option<&str>,
+) -> String {
+    let first = blocked.map_or_else(String::new, |row| format!("see the {row} line, then "));
     if !ok {
         "Some steps failed; each failed line says what to run.".into()
     } else if args.dry_run {
@@ -946,10 +972,12 @@ fn closing(args: Args, report: &Report, go: bool, ok: bool, move_asked: bool) ->
     } else if !report.installs.is_empty() && !go {
         let what = if move_asked { "No harness" } else { "Nothing" };
         format!(
-            "{what} changed. Run tiles setup again to set it up, or tiles install <harness> for one harness."
+            "{what} changed. To set it up, {first}run tiles setup again, or tiles install <harness> for one harness."
         )
     } else if !report.on_path {
-        "No harness Tiles supports is on PATH; install Claude Code, Codex, OpenCode or Pi, then run tiles setup again.".into()
+        format!(
+            "No harness Tiles supports is on PATH; {first}install Claude Code, Codex, OpenCode or Pi, then run tiles setup again."
+        )
     } else if report.left && report.installs.is_empty() {
         let what = if move_asked {
             "Tiles changes no harness"
@@ -962,11 +990,16 @@ fn closing(args: Args, report: &Report, go: bool, ok: bool, move_asked: bool) ->
             .plans
             .iter()
             .find(|(_, p)| matches!(p, Plan::Current(_) | Plan::Install(..) | Plan::Replace(..)));
+        let next = if blocked.is_some() {
+            format!("Not yet: {first}")
+        } else {
+            "Next: ".to_string()
+        };
         set_up.map_or_else(
-            || "Next: run tiles check.".into(),
+            || format!("{next}run tiles check."),
             |(h, _)| {
                 format!(
-                    "Next: run tiles check, then start a session with tiles run {}.",
+                    "{next}run tiles check, then start a session with tiles run {}.",
                     h.name()
                 )
             },

@@ -607,8 +607,8 @@ pub fn run_program(program: &str, args: &[String]) -> Result<(), String> {
 }
 
 /// Runs `program` with `args` as [`run_program`] does, holding its output back
-/// so `tiles setup` keeps to its step list (ADR-060); what it wrote to stderr
-/// joins the error.
+/// so `tiles setup` keeps to its step list (ADR-060); the start of what it wrote
+/// to stderr joins the error, short enough that a fix after it stays on the line.
 ///
 /// # Errors
 ///
@@ -626,6 +626,7 @@ pub fn run_quiet(program: &str, args: &[String]) -> Result<(), String> {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
+    let said = tiles_term::sanitize::line(&said, 300);
     let status = output.status;
     if said.is_empty() {
         Err(format!("{program} exited with {status}"))

@@ -63,7 +63,7 @@ Move /Users/<you>/.local/bin/tiles aside, to /Users/<you>/.local/bin/tiles-0.1.2
   ...
 ```
 
-It renames the old copy and never deletes it; delete `tiles-0.1.2-old` yourself once the new one works. It offers only for a copy older than itself, or one whose version it cannot read; a newer copy that comes first is named as newer and left. It asks only in a terminal and only for a file you own: without a terminal, with `--yes` or `--dry-run`, or when you answer `n`, it prints the `mv -n` command to run yourself, and a copy owned by another user is named with `sudo mv -n`. `tiles doctor` prints the same command on one line while the old copy comes first.
+It renames the old copy and never deletes it; delete `tiles-0.1.2-old` yourself once the new one works. It offers only for a copy older than itself, or one whose version it cannot read; a newer copy that comes first is named as newer and left. It asks only in a terminal and only for a file you own: without a terminal, with `--yes` or `--dry-run`, or when you answer `n`, it prints the `mv -n` command to run yourself, and a copy owned by another user is named with `sudo mv -n`. While that copy stays ahead, the closing line reads `Not yet: see the Other tiles line, then run tiles check, ...`. `tiles doctor` prints the same command on one line while the old copy comes first.
 
 ## `install.sh`: no administrator, or a script
 

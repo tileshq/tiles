@@ -7,8 +7,8 @@ use tiles_omni::{ConfigError, SecretStore};
 use tiles_term::style::{Mark, Style};
 
 use super::{
-    Args, Inputs, Plan, Registered, Report, Row, add_cards, apply, hints, omni, parse, plan,
-    report, run,
+    Args, CLAUDE_FIX, Change, Inputs, Plan, Registered, Report, Row, add_cards, apply, harness_row,
+    hints, omni, parse, plan, report, run,
 };
 use crate::copies::{Copies, Other, Place};
 use crate::harness::Harness;
@@ -742,7 +742,7 @@ Set up Tiles for Claude Code and Codex? [y/N]\u{20}
   Claude Code    (skipped: not confirmed)
   Codex          (skipped: not confirmed)
   Warehouse      (not set up; found a gcloud login at /h/adc.json; to finish: tiles warehouse setup --billing-project <id> --project <id>; then tiles setup again)
-Nothing changed. Run tiles setup again to set it up, or tiles install <harness> for one harness.
+Nothing changed. To set it up, see the Tiles on PATH line, then run tiles setup again, or tiles install <harness> for one harness.
 ",
             header(),
             "Claude Code",
@@ -869,6 +869,69 @@ fn yes_installs_each_harness_and_reports_a_failure_without_stopping() {
             "{text}"
         );
     }
+}
+
+#[test]
+fn a_failed_line_gets_the_fix_unless_it_already_ends_with_one() {
+    let plan = Plan::Install(on_path("codex"), Vec::new());
+    let state = |e: &str| harness_row(Harness::Codex, &plan, Change::Failed(e)).state;
+    assert_eq!(
+        state("codex said: run tiles setup with care"),
+        "failed: codex said: run tiles setup with care; then tiles setup again"
+    );
+    let fixed = format!("claude failed; {CLAUDE_FIX}");
+    assert_eq!(state(&fixed), format!("failed: {fixed}"));
+}
+
+#[test]
+fn the_closing_line_sends_no_one_to_a_tiles_that_will_not_start_this_one() {
+    let current = || vec![(Harness::Pi, Plan::Current(PathBuf::from("/bin/pi")))];
+    let install = || {
+        vec![(
+            Harness::Pi,
+            Plan::Install(PathBuf::from("/bin/pi"), Vec::new()),
+        )]
+    };
+    let none = || vec![(Harness::Pi, Plan::Missing)];
+    let last = |plans: Vec<(Harness, Plan)>, copies: &Copies| {
+        let r = report(plans, warp(), copies, &[]);
+        let (text, _, ok) = drive(Args::default(), &r, None);
+        assert!(ok, "{text}");
+        text.lines().last().unwrap().to_string()
+    };
+    let (root, _old, stale) = shadowed("closing", "0.1.2");
+    let unfound = Copies::default();
+    for (copies, row) in [(&stale, "Other tiles"), (&unfound, "Tiles on PATH")] {
+        assert_eq!(
+            last(current(), copies),
+            format!(
+                "Not yet: see the {row} line, then run tiles check, then start a session with tiles run pi."
+            )
+        );
+        assert_eq!(
+            last(install(), copies),
+            format!(
+                "Nothing changed. To set it up, see the {row} line, then run tiles setup again, or tiles install <harness> for one harness."
+            )
+        );
+        assert_eq!(
+            last(none(), copies),
+            format!(
+                "No harness Tiles supports is on PATH; see the {row} line, then install Claude Code, Codex, OpenCode or Pi, then run tiles setup again."
+            )
+        );
+    }
+    assert_eq!(
+        last(
+            vec![(
+                Harness::Pi,
+                Plan::Refused(PathBuf::from("/bin/pi"), "holds settings of yours".into())
+            )],
+            &stale
+        ),
+        "Nothing for Tiles to change; see the lines above."
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -1109,7 +1172,7 @@ Move {} aside, to {}? [y/N] {}
   Other tiles    ({}, version 0.1.2, comes first on PATH, so a terminal runs it; run: {mv}, then open a new terminal tab)
   Terminal       (warp: nothing to set up)
   Pi             (already set up)
-Next: run tiles check, then start a session with tiles run pi.
+Not yet: see the Other tiles line, then run tiles check, then start a session with tiles run pi.
 ",
                 header(),
                 old.display(),
@@ -1129,6 +1192,10 @@ Next: run tiles check, then start a session with tiles run pi.
             old.display(),
             aside.display(),
         )),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("Next: run tiles check, then start a session with tiles run pi.\n"),
         "{text}"
     );
     // Moved already: the name it wanted is taken, so the move fails, says
@@ -1282,18 +1349,20 @@ Next: run tiles check, then start a session with tiles run pi.
 }
 
 #[test]
-fn an_older_tiles_later_on_path_is_skipped_with_the_command_that_moves_it() {
+fn an_older_tiles_later_on_path_is_only_named_and_blocks_nothing() {
     let (root, old, mut copies) = shadowed("behind", "0.1.2");
     copies.others[0].place = Place::Behind;
     let (text, asked, ok) = drive_copies(Args::default(), &copies, true, Some("y\n"));
     assert!(!asked && ok && old.exists());
     assert!(
         text.contains(&format!(
-            "  Other tiles    ({}, version 0.1.2, is later on PATH, so a terminal runs this one; to move it aside, run: mv -n {} {})\n",
+            "  Other tiles    ({}, version 0.1.2, is later on PATH, so a terminal runs this one)\n",
             old.display(),
-            old.display(),
-            root.join("local/tiles-0.1.2-old").display()
         )),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("Next: run tiles check, then start a session with tiles run pi.\n"),
         "{text}"
     );
     let _ = std::fs::remove_dir_all(&root);
