@@ -67,3 +67,16 @@ export function cardFrom(output: unknown): CardRef | null {
     alt: clean(`${title} (chart saved at ${png})`),
   };
 }
+
+export const TOOL = "mcp__tiles__tiles_chart";
+
+/** The cards a folded run of tool calls holds, in the order the model made them. */
+export function cardsIn(
+  calls: ReadonlyArray<{ tool: string; isErrored: boolean; isInterrupted: boolean; output?: unknown }>,
+): CardRef[] {
+  return calls.flatMap((call) => {
+    if (call.tool !== TOOL || call.isErrored || call.isInterrupted) return [];
+    const card = cardFrom(call.output);
+    return card === null ? [] : [card];
+  });
+}
