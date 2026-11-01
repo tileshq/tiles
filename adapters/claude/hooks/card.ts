@@ -1,9 +1,9 @@
 // Reads the card a tiles_chart result describes, for the mod's Image.
 //
 // The result's text says `(id a1b2c3, 52x12 cells)` and, last,
-// `PNG: <cache>/cards/a1b2c3.png`; the MCP server's text result carries both. The output the ToolResult row
-// carries may be the content blocks, a result object holding them, or the
-// joined text, so all three are read.
+// `PNG: <cache>/cards/a1b2c3.png`; the MCP server's text result carries both. The output a ToolResult row
+// or a ToolGroup call carries may be the content blocks, a result object
+// holding them, or the joined text, so all three are read.
 
 export interface CardRef {
   id: string;
