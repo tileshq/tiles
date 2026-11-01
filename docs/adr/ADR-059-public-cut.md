@@ -1,6 +1,6 @@
 # ADR-059: This repository is cut from a private repository as one root commit, builds without the warehouse, and releases from its own tags with the design pack fetched from the private design repository
 
-- Status: Accepted; carries out [ADR-038](ADR-038-open-core-split.md)'s fresh root commit; supersedes [ADR-038](ADR-038-open-core-split.md)'s and [ADR-022](ADR-022-sealed-assets-and-releases-only-channel.md)'s releases-only repository and [ADR-056](ADR-056-signed-sums-and-weekly-advisories.md)'s release key
+- Status: Accepted; carries out [ADR-038](ADR-038-open-core-split.md)'s fresh root commit; supersedes [ADR-038](ADR-038-open-core-split.md)'s and [ADR-022](ADR-022-sealed-assets-and-releases-only-channel.md)'s releases-only repository and [ADR-056](ADR-056-signed-sums-and-weekly-advisories.md)'s release key; the `release` environment holds a third secret, the tap's deploy key ([ADR-061](ADR-061-release-job-owns-the-formula-bump.md))
 - Date: 2026-10-22
 
 ## Context

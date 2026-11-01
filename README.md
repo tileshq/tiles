@@ -14,7 +14,7 @@ macOS on Apple Silicon or Intel:
 curl -fsSL https://github.com/tileshq/tiles/releases/latest/download/install.sh | sh
 ```
 
-The script downloads the release for your Mac, checks its signed checksums, puts `tiles` in `~/.local/bin` and runs `tiles setup`, which finds the coding tools on your `PATH` and asks once before it changes anything. Each [release](https://github.com/tileshq/tiles/releases) also ships an installer package, `tiles-<version>-macos.pkg`; it is not signed by Apple yet, so macOS asks you to allow it once under System Settings, Privacy & Security. [docs/install.md](docs/install.md) has both routes in detail and shows how to check a download by hand.
+The script downloads the release for your Mac, checks its signed checksums, puts `tiles` in `~/.local/bin` and runs `tiles setup`, which finds the coding tools on your `PATH` and asks once before it changes anything. Each [release](https://github.com/tileshq/tiles/releases) also ships an installer package, `tiles-<version>-macos.pkg`; it is not signed by Apple yet, so macOS asks you to allow it once under System Settings, Privacy & Security. With Homebrew, run `brew install tileshq/tap/tiles` and then `tiles setup`. [docs/install.md](docs/install.md) has every route in detail and shows how to check a download by hand.
 
 ## Use
 

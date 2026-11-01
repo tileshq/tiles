@@ -1,4 +1,4 @@
-# Release builds (ADR-007, ADR-009, ADR-014, ADR-036, ADR-056, ADR-059): a
+# Release builds (ADR-007, ADR-009, ADR-014, ADR-036, ADR-056, ADR-059, ADR-061): a
 # `v*` tag builds `tiles` on GitHub's macOS arm64 and Intel runners from this
 # repository's source and design pack 1, which the build job fetches from
 # the private design repository at the commit DESIGN_COMMIT names with a
@@ -11,9 +11,10 @@
 # those hashes and creates the release in this repository, with the package,
 # the tarballs, a SHA256SUMS made from the jobs' own hashes and signed with
 # the release key, and scripts/install.sh, which checks that signature and
-# then SHA256SUMS. Every secret lives in the `release` environment, which
-# only `v*` tags may deploy to. Binaries are built only here, never on a
-# laptop.
+# then SHA256SUMS. A last job checks that signature on the published release
+# and pins the Homebrew formula in the tap repository to it (ADR-061). Every
+# secret lives in the `release` environment, which only `v*` tags may deploy
+# to. Binaries are built only here, never on a laptop.
 name: Release
 
 on:
@@ -29,10 +30,12 @@ env:
   # The design repository's commit whose packs/tiles-design-1.pack this
   # release seals in; scripts/design-pack.sha256 pins the pack's hash.
   DESIGN_COMMIT: c4225257b4ee10681729c920da584f082e1afca3
+  TAP_REPO: tileshq/homebrew-tap
 
 jobs:
   # Fails in seconds, before forty minutes of macOS builds, when a secret the
-  # release needs is missing (ADR-056, ADR-059).
+  # release needs is missing (ADR-056, ADR-059, ADR-061). Only whether each
+  # secret is set reaches this job, as a true or false.
   preflight:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -42,6 +45,7 @@ jobs:
         env:
           HAS_SIGNING_KEY: ${{ secrets.TILES_SIGNING_KEY != '' }}
           HAS_DESIGN_KEY: ${{ secrets.TILES_DESIGN_DEPLOY_KEY != '' }}
+          HAS_TAP_KEY: ${{ secrets.TAP_DEPLOY_KEY != '' }}
         run: |
           if [ "$HAS_SIGNING_KEY" != true ]; then
             echo "::error::The TILES_SIGNING_KEY secret is missing, so SHA256SUMS cannot be signed and install.sh would refuse the release. Add the release key's private half to the release environment (ADR-056)."
@@ -49,6 +53,10 @@ jobs:
           fi
           if [ "$HAS_DESIGN_KEY" != true ]; then
             echo "::error::The TILES_DESIGN_DEPLOY_KEY secret is missing, so design pack 1 cannot be fetched from $DESIGN_REPO. Add the private half of that repository's read-only deploy key to the release environment (ADR-059)."
+            exit 1
+          fi
+          if [ "$HAS_TAP_KEY" != true ]; then
+            echo "::error::The TAP_DEPLOY_KEY secret is missing, so the Homebrew formula cannot be pinned to this release. Add the private half of $TAP_REPO's deploy key to the release environment (ADR-061)."
             exit 1
           fi
 
@@ -243,3 +251,69 @@ jobs:
           gh release create "$TAG" --repo "$RELEASES_REPO" --title "Tiles $TAG" \
             --notes "Tiles $TAG for macOS. Install in a terminal: curl -fsSL https://github.com/$RELEASES_REPO/releases/download/$TAG/install.sh | sh. Or download tiles-$TAG-macos.pkg and open it; Terminal then runs tiles setup. Or by hand: download install.sh, tiles-$TAG-aarch64-apple-darwin.tar.gz (Apple Silicon) or tiles-$TAG-x86_64-apple-darwin.tar.gz (Intel), SHA256SUMS and SHA256SUMS.sig from this page, then run TILES_ARCHIVE=~/Downloads/<tarball> TILES_SUMS=~/Downloads/SHA256SUMS sh ~/Downloads/install.sh. SHA256SUMS is signed with the Tiles release key; https://github.com/$RELEASES_REPO/blob/$TAG/docs/install.md shows how to check it by hand." \
             tiles-*-macos.pkg tiles-*.tar.gz SHA256SUMS SHA256SUMS.sig install.sh
+
+  # Runs once the release exists. No dependency code runs here, and the tap's
+  # deploy key can write only to the tap. The key's value is read in one step,
+  # after the published sums and their signature check out, and the formula's new
+  # hashes come from those sums, never from a download of the tarballs. A re-run
+  # finds the formula already pinned and succeeds with no commit (ADR-061).
+  bump-formula:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the published release and its signed sums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          state="$(gh release view "$TAG" --repo "$RELEASES_REPO" --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"')"
+          [ "$state" = "false false" ] || { echo "::error::The release $TAG is a draft or a prerelease (draft, prerelease: $state), so the formula stays as it is."; exit 1; }
+          sums="$RUNNER_TEMP/sums"
+          mkdir "$sums"
+          gh release download "$TAG" --repo "$RELEASES_REPO" --dir "$sums" --pattern SHA256SUMS --pattern SHA256SUMS.sig
+          pinned="$(sed -n "s/^signing_key='\(.*\)'\$/\1/p" scripts/install.sh)"
+          [ -n "$pinned" ] || { echo "::error::install.sh pins no release key."; exit 1; }
+          printf 'tiles-release namespaces="tiles-release" %s\n' "$pinned" > "$RUNNER_TEMP/allowed_signers"
+          ssh-keygen -Y verify -f "$RUNNER_TEMP/allowed_signers" -I tiles-release -n tiles-release -s "$sums/SHA256SUMS.sig" < "$sums/SHA256SUMS" || {
+            echo "::error::The published SHA256SUMS is not signed by the key install.sh pins, so the formula stays as it is (ADR-056)."
+            exit 1
+          }
+          python3 scripts/bump-formula.py "$TAG" "$sums/SHA256SUMS"
+      # The only step that reads the secret's value. GitHub's host key is pinned, not
+      # learned.
+      - name: Write the tap's deploy key
+        env:
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
+        run: |
+          set -eu
+          ssh_dir="$RUNNER_TEMP/tap-ssh"
+          mkdir -m 700 "$ssh_dir"
+          (umask 077 && printf '%s\n' "$TAP_DEPLOY_KEY" > "$ssh_dir/key")
+          chmod 600 "$ssh_dir/key"
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$ssh_dir/known_hosts"
+      - name: Pin the formula to this release and push it to the tap
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          ssh_dir="$RUNNER_TEMP/tap-ssh"
+          tap="$RUNNER_TEMP/tap"
+          export GIT_SSH_COMMAND="ssh -F /dev/null -i $ssh_dir/key -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=$ssh_dir/known_hosts -o StrictHostKeyChecking=yes"
+          git clone --quiet --depth 1 --branch main "git@github.com:$TAP_REPO.git" "$tap"
+          python3 scripts/bump-formula.py "$TAG" "$RUNNER_TEMP/sums/SHA256SUMS" "$tap/Formula/tiles.rb"
+          if git -C "$tap" diff --quiet; then
+            exit 0
+          fi
+          git -C "$tap" -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit --quiet -m "tiles ${TAG#v}" Formula/tiles.rb
+          git -C "$tap" push --quiet origin HEAD:main
+      - name: Delete the tap's deploy key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/tap-ssh"
