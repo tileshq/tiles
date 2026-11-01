@@ -21,7 +21,8 @@ The [definition of done](docs/definition-of-done.md) lists what every pull reque
 - `cargo test --workspace --locked`
 - `cargo deny check` and `cargo audit`
 - `python3 scripts/check-docs.py`, `python3 scripts/check-network-owners.py` and `python3 -m unittest scripts/test_policy_scripts.py`
-- `node --test adapters/pi/index.test.ts adapters/claude/card.test.ts`
+- `node --test adapters/pi/index.test.ts adapters/claude/card.spec.ts`
+- `claude plugin test adapters/claude`
 - `sh scripts/test_install.sh` and `sh scripts/test_package.sh`
 - `scripts/check-release-binary.py` on a release build made with `RUSTFLAGS="$(sh scripts/release-rustflags.sh)"`
 - gitleaks, fetched by `scripts/fetch-gitleaks.sh`

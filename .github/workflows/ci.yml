@@ -125,7 +125,13 @@ jobs:
         with:
           node-version: 22.22.0
       - name: Harness add-on tests
-        run: node --test adapters/pi/index.test.ts adapters/claude/card.test.ts
+        run: node --test adapters/pi/index.test.ts adapters/claude/card.spec.ts
+      # The mod's hooks need Claude Code's own test kit, which ships in its
+      # binary. Pinned to the newest version in crates/tiles-cli/src/proved.rs.
+      - name: Claude Code mod tests
+        run: |
+          npm install --prefix "$RUNNER_TEMP/claude" --no-audit --no-fund @anthropic-ai/claude-code@2.1.316
+          "$RUNNER_TEMP/claude/node_modules/.bin/claude" plugin test adapters/claude
 
   # The add-ons' tests and the release-binary job's tiles drawing the repo's
   # own intents, with no network: a network namespace that drops every
@@ -158,7 +164,7 @@ jobs:
       - name: The sandbox fails a probe that connects out, a name lookup and the daily update check
         run: TILES_NO_NETWORK_REQUIRED=1 python3 -m unittest scripts/test_policy_scripts.py -k NoNetwork -v
       - name: Harness add-on tests, with no network
-        run: python3 scripts/no-network.py "$RUNNER_TEMP/trace-addons" node --test adapters/pi/index.test.ts adapters/claude/card.test.ts
+        run: python3 scripts/no-network.py "$RUNNER_TEMP/trace-addons" node --test adapters/pi/index.test.ts adapters/claude/card.spec.ts
       - name: tiles card, tiles theme and tiles mcp on the repo's intents, with no network
         run: python3 scripts/no-network.py "$RUNNER_TEMP/trace-cards" python3 scripts/drive-addon-paths.py "$TILES_BIN"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

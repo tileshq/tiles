@@ -1,9 +1,9 @@
 // Reads the card a tiles_chart result describes, for the mod's Image.
 //
 // The result's text says `(id a1b2c3, 52x12 cells)` and, last,
-// `PNG: <cache>/cards/a1b2c3.png`; the MCP server's text result carries both. The output the ToolResult row
-// carries may be the content blocks, a result object holding them, or the
-// joined text, so all three are read.
+// `PNG: <cache>/cards/a1b2c3.png`; the MCP server's text result carries both. The output a ToolResult row
+// or a ToolGroup call carries may be the content blocks, a result object
+// holding them, or the joined text, so all three are read.
 
 export interface CardRef {
   id: string;
@@ -66,4 +66,17 @@ export function cardFrom(output: unknown): CardRef | null {
     rows: clamp(Number(cells[3])),
     alt: clean(`${title} (chart saved at ${png})`),
   };
+}
+
+export const TOOL = "mcp__tiles__tiles_chart";
+
+/** The cards a folded run of tool calls holds, in the order the model made them. */
+export function cardsIn(
+  calls: ReadonlyArray<{ tool: string; isErrored: boolean; isInterrupted: boolean; output?: unknown }>,
+): CardRef[] {
+  return calls.flatMap((call) => {
+    if (call.tool !== TOOL || call.isErrored || call.isInterrupted) return [];
+    const card = cardFrom(call.output);
+    return card === null ? [] : [card];
+  });
 }

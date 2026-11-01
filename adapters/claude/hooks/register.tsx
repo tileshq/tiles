@@ -7,12 +7,15 @@
 // file itself, and where the terminal shows no pixels it draws `alt` dim in
 // the picture's place. Image shows pixels in kitty and Ghostty today, so
 // `tiles run claude` loads this mod there and uses the wrapper elsewhere.
+//
+// The default view can fold a tiles_chart call into a `ToolGroup` line
+// (`Called tiles`), which raises no `ToolResult`; the group's hook draws the
+// cards under that line. Ctrl+O expands the group into rows, and the
+// `ToolResult` hook draws there.
 
 import type { Register } from 'claude-code'
 
-import { cardFrom } from './card'
-
-const TOOL = 'mcp__tiles__tiles_chart'
+import { TOOL, cardFrom, cardsIn } from './card'
 
 export const register: Register = on => {
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
@@ -33,6 +36,29 @@ export const register: Register = on => {
           rows={card.rows}
           alt={card.alt}
         />
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
+    const cards = e.props.isExpanded ? [] : cardsIn(e.props.calls)
+    if (cards.length === 0) {
+      return next(e)
+    }
+    const line = await next(e)
+    const { Box, Image } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        {line}
+        {cards.map((card, i) => (
+          <Image
+            key={`${card.id}-${i}`}
+            source={{ file: card.png, format: 'png' }}
+            columns={card.cols}
+            rows={card.rows}
+            alt={card.alt}
+          />
+        ))}
       </Box>
     )
   })
