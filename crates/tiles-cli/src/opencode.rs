@@ -27,7 +27,7 @@ const NAMES: u32 = 8;
 static ASKED: AtomicU32 = AtomicU32::new(0);
 
 /// The `OpenCode` versions Tiles was proved on, per command line.
-pub const PROVED_PUBLIC: &str = "1.19.3";
+pub const PROVED_PUBLIC: &str = "1.19.5";
 /// See [`PROVED_PUBLIC`]: the launcher, with `--standalone`, on 2026-10-19.
 pub const PROVED_LAUNCHER: &str = "2.0.32";
 
@@ -290,13 +290,13 @@ Options:
             found(Some(Cli::Public), Some("1.20.0")).describe(),
             (
                 true,
-                "OpenCode 1.20.0, sst/opencode's CLI: each TUI starts its own server, which loads the session's tiles server from OPENCODE_CONFIG_CONTENT; proved on 1.19.3".into()
+                "OpenCode 1.20.0, sst/opencode's CLI: each TUI starts its own server, which loads the session's tiles server from OPENCODE_CONFIG_CONTENT; proved on 1.19.5".into()
             )
         );
         let (ok, said) = found(Some(Cli::Public), Some("2.1.0")).describe();
         assert!(!ok);
         assert!(
-            said.ends_with("not the major version Tiles was proved on, 1.19.3"),
+            said.ends_with("not the major version Tiles was proved on, 1.19.5"),
             "{said}"
         );
         let (ok, said) = found(Some(Cli::Launcher), None).describe();
