@@ -592,8 +592,17 @@ impl Engine {
         pane::overlay(&self.tokens, &self.fonts, scene, hit, scale)
     }
 
+    /// The legend entries of `scene` at device `scale`, each with its label
+    /// as drawn, for a surface that toggles a series by its legend
+    /// (ADR-065).
+    #[must_use]
+    pub fn legend(&self, scene: &Scene, scale: f32) -> Vec<pane::LegendHit> {
+        pane::legend(&self.fonts, scene, scale)
+    }
+
     /// A card of `header` over `rows` of text in equal columns, the table
-    /// stress scene of the pane prototype (ADR-063).
+    /// stress scene `tiles pane` draws in builds with debug assertions
+    /// (ADR-063, ADR-065).
     ///
     /// # Errors
     ///

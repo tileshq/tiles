@@ -12,8 +12,7 @@ name = "tiles"
 path = "src/main.rs"
 
 [dependencies]
-# zlib for the raw pixels `tiles pane` sends (ADR-063); only builds with
-# debug assertions compile the pane.
+# zlib for the raw pixels `tiles pane` sends (ADR-063, ADR-065).
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 pty-process = "0.5.3"
 ring = { version = "0.17.14", default-features = false }

@@ -101,7 +101,7 @@ pub struct Placement {
 
 /// Sends `width` by `height` pixels of RGBA, zlib-compressed (`f=32,o=z`),
 /// as image `id`, and places it at the cursor (`a=T`, `C=1` leaves the
-/// cursor where it was). The `tiles pane` prototype's transport (ADR-063):
+/// cursor where it was). The `tiles pane` transport (ADR-063):
 /// raw pixels skip a PNG encode on our side and a PNG decode on the
 /// terminal's.
 #[must_use]

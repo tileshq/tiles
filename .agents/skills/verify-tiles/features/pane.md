@@ -1,6 +1,6 @@
-# The pane prototype
+# The pane
 
-`tiles pane <fixture> [--trace <file>]` takes the whole terminal and shows a fixture dashboard as separate kitty pictures: hovering a mark draws its outline and tooltip over the card, clicking a mark filters the other cards to its value, a resize lays everything out again, and `q` gives the screen back. It exists only in builds with debug assertions (a debug build, or `cargo build --profile pane -p tiles-cli`) and decides whether the interactive pane goes ahead (ADR-063). `--trace` writes the timings `scripts/pane-trace.py` turns into the go or no-go table.
+`tiles pane <intent.json | card id> [--trace <file>]` takes the whole terminal and shows a chart call's cards, or a drawn card's, as separate kitty pictures, with rows the call holds or rows fetched from Omni or a warehouse and kept in memory. Hovering a mark draws its outline and tooltip over the card; clicking a mark filters the other cards to its value; clicking a legend entry hides that series; `s` sorts the card under the pointer; `d` drills an Omni date card one timeframe finer and `u` goes back; `r` clears everything picked; a resize lays everything out again, and `q` gives the screen back. It is in every build (ADR-063, ADR-065). `--trace` writes the timings `scripts/pane-trace.py` turns into the gate table.
 
 ## Sub-features
 
@@ -10,12 +10,17 @@
 - `pane-resize` lays out and draws everything again when the window changes size.
 - `pane-stress` draws `fixtures/pane/table-stress.json`, a grid of 40 rows by 8 columns of text, one row further down per wheel step or arrow.
 - `pane-exit` gives the screen back on `q`, Control-C, Control-D, SIGINT, SIGTERM, SIGHUP, SIGQUIT and a panic: no mode left on, no picture left, the shell's screen as it was.
-- `pane-hidden` is absent from `tiles --help` and from a release build (`tiles pane` there is an unknown command).
+- `pane-legend` hides the series of a clicked legend entry on its card alone and sends only that card; the status line counts it; `r` brings it back. A card's last series stays.
+- `pane-sort` steps the card under the pointer through largest first, smallest first and its own order with `s`, skipping a step that changes nothing; a bar chart, lollipop or time chart says it keeps its own order.
+- `pane-drill` asks Omni, on `d` over a period of a card drawn from an Omni date field, for the next finer timeframe and draws only that period's rows; `u` goes back up; a card with rows of its own says what a drill needs.
+- `pane-card` opens a card the chart tool drew, by its six-hex id; a missing id is refused in one line.
+- `pane-release` is in `tiles --help` and in a release build.
 - `pane-trace` writes the trace, and `scripts/pane-trace.py` prints the table.
 
 ## How to get to it (user POV)
 
-- A developer runs `./target/pane/tiles pane fixtures/pane/dashboard.json` in Ghostty or kitty, full window. No harness, no multiplexer.
+- A user runs `tiles pane call.json`, or `tiles pane <id>` with an id a chart result named, in Ghostty or kitty, full window. No harness, no multiplexer.
+- A developer measuring runs `./target/pane/tiles pane fixtures/pane/dashboard.json`.
 
 ## Driving it with drive.sh
 
@@ -24,7 +29,8 @@ Preconditions:
 - `drive.sh` cannot drive the pane: its tmux session shows no kitty pictures and sends no pixel mouse reports. Drive it by hand in Ghostty or kitty, or through the pseudo-terminal tests.
 - Build the measured binary: `cargo build --profile pane -p tiles-cli --locked`. A debug build runs the same code too slowly to measure.
 
-- **Pseudo-terminal.** `cargo test -p tiles-cli --test pane` drives `pane-first-frame`, `pane-hover`, `pane-click`, `pane-resize`, `pane-stress`, `pane-exit` (SIGINT and a panic) and a run with no terminal, answering the probe as a terminal with pixel mouse reports does. Nothing draws the pictures there, so it proves bytes and timings, never the look.
+- **Pseudo-terminal.** `cargo test -p tiles-cli --test pane` drives `pane-first-frame`, `pane-hover`, `pane-click`, `pane-legend`, `pane-sort`, the refused drill of `pane-drill`, `pane-card`, `pane-resize`, `pane-stress`, `pane-exit` (SIGINT and a panic) and a run with no terminal, answering the probe as a terminal with pixel mouse reports does. Nothing draws the pictures there, so it proves bytes and timings, never the look. `cargo test -p tiles-cli --lib pane` drives a drill through the Omni replay server.
+- **Interaction by hand** (`pane-legend`, `pane-sort`, `pane-drill`). In Ghostty or kitty, run `tiles pane fixtures/pane/dashboard.json`. Click "Card" in the stacked bars' legend: Card's segments go and the status line says `1 hidden`. Point at the column chart and press `s` twice, then a third time: smallest first, then the order it came in. Press `r`. For a drill, with Omni configured, draw a column chart of a topic's `created_at[month]` and a count, then `tiles pane <its id>`, point at a month and press `d`: its weeks, subtitled `<month> by week`; `u` goes back.
 - **Go or no-go in Ghostty** (`pane-trace`). In Ghostty, in a window half the width of a Retina screen, run:
 
   ```sh
@@ -46,7 +52,7 @@ Preconditions:
   Use `--machine intel` on the 2017 Intel Mac. Every row says go, miss or recorded. While moving the pointer, record the screen at 60 fps (QuickTime, a screen recording of the window) and step through it frame by frame: the tooltip follows the pointer within 2 frames and no card flickers. The shell's screen comes back after `q` with the prompt where it was.
 - **Warp.** In Warp, open a split by hand (Cmd-D), run the dashboard command with `--trace /tmp/pane-warp.trace`, hover and click as above, and run the script with `--label Warp`. Record whether hover draws, whether a click replaces cards cleanly, and the hover row.
 - **Orca's terminal.** On an Orca release whose terminal draws inline images (v1.4.197 does not; the current tags do), run `orca terminal split` and then `orca terminal create --command "$PWD/target/pane/tiles pane $PWD/fixtures/pane/dashboard.json --trace /tmp/pane-orca.trace"`, and check the same things with `--label Orca`.
-- **Hidden.** `./target/debug/tiles --help` names no `pane`; `cargo build --release -p tiles-cli && ./target/release/tiles pane x` exits 2 with `unknown command "pane"`.
+- **Release** (`pane-release`). `cargo build --release -p tiles-cli && ./target/release/tiles --help` names `tiles pane`, and `./target/release/tiles pane x` exits 1 with `tiles pane: cannot open x: ...`.
 - **Fuzz.** `cargo +nightly-2026-10-01 fuzz run pane_input <copy of fuzz/corpus/pane_input> -- -max_total_time=60` ends with `Done` and no crash ([fuzz/README.md](../../../../fuzz/README.md)).
 
 ## Gotchas

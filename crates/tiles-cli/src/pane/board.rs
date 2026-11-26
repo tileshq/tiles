@@ -1,9 +1,11 @@
-//! The pane's cards and what a click does to them (ADR-063): which column
-//! a clicked mark selects, the other cards' rows filtered to it in memory,
-//! and which card and mark sit under a pixel. Pure logic, no terminal.
+//! The pane's cards and what a click does to them (ADR-063, ADR-065):
+//! which column a clicked mark selects, the other cards' rows filtered to
+//! it in memory, and which card, mark and legend entry sit under a pixel.
+//! Pure logic, no terminal.
 
 use tiles_engine::Scene;
 use tiles_engine::hit::Hit;
+use tiles_engine::pane::LegendHit;
 use tiles_intent::{Cell, Intent};
 
 /// The roles whose column a click selects by, in the order tried: a
@@ -39,6 +41,8 @@ pub struct Slot {
     pub scene: Scene,
     /// Its hover targets, in device pixels from its top left.
     pub hits: Vec<Hit>,
+    /// Its legend entries, in device pixels from its top left.
+    pub legend: Vec<LegendHit>,
 }
 
 /// The column a click on `row` of `intent` selects by: the first of
@@ -164,9 +168,15 @@ pub fn hit_index(hits: &[Hit], x: i32, y: i32) -> Option<usize> {
     hits.iter().position(|h| std::ptr::eq(h, found))
 }
 
+/// The index of the legend entry under `x`, `y`.
+#[must_use]
+pub fn legend_index(legend: &[LegendHit], x: i32, y: i32) -> Option<usize> {
+    legend.iter().position(|l| l.contains(x, y))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Selection, Slot, apply, choose, filtered, hit_index, pick, slot_at};
+    use super::{Selection, Slot, apply, choose, filtered, hit_index, legend_index, pick, slot_at};
     use tiles_engine::hit::Hit;
     use tiles_intent::Intent;
 
@@ -269,6 +279,7 @@ mod tests {
                 &tiles_engine::Options::default(),
             ),
             hits: Vec::new(),
+            legend: Vec::new(),
         }
     }
 
@@ -295,5 +306,19 @@ mod tests {
         assert_eq!(hit_index(&hits, 45, 45), Some(1));
         assert_eq!(hit_index(&hits, 5, 5), Some(0));
         assert_eq!(hit_index(&hits, 200, 5), None);
+    }
+
+    #[test]
+    fn a_pixel_finds_its_legend_entry() {
+        let entry = |left, label: &str| tiles_engine::pane::LegendHit {
+            left,
+            top: 0,
+            right: left + 40,
+            bottom: 20,
+            label: label.into(),
+        };
+        let legend = [entry(0, "Espresso"), entry(50, "Filter")];
+        assert_eq!(legend_index(&legend, 60, 10), Some(1));
+        assert_eq!(legend_index(&legend, 45, 10), None, "between entries");
     }
 }
