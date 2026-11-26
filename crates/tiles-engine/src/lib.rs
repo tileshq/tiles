@@ -601,7 +601,8 @@ impl Engine {
     }
 
     /// A card of `header` over `rows` of text in equal columns, the table
-    /// stress scene of the pane prototype (ADR-063).
+    /// stress scene `tiles pane` draws in builds with debug assertions
+    /// (ADR-063, ADR-065).
     ///
     /// # Errors
     ///
