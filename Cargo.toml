@@ -35,3 +35,9 @@ debug = false
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# An optimized build with debug assertions on, the one `tiles pane` is
+# measured in (ADR-063): `cargo build --profile pane -p tiles-cli`.
+[profile.pane]
+inherits = "release"
+debug-assertions = true

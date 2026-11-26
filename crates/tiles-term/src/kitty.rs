@@ -85,6 +85,42 @@ pub fn show_png_over(
     command(&keys, png)
 }
 
+/// Where and how [`show_rgba_zlib`] places a picture: at the cursor, at
+/// its own pixel size, so the terminal never scales it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Placement {
+    /// The placement's id, so the same picture can be placed again.
+    pub placement: u32,
+    /// Pixels right of the cursor cell's left edge, below the cell's width.
+    pub x_px: u16,
+    /// Pixels below the cursor cell's top edge, below the cell's height.
+    pub y_px: u16,
+    /// Stacking order: 0 or more draws above the text.
+    pub z: i32,
+}
+
+/// Sends `width` by `height` pixels of RGBA, zlib-compressed (`f=32,o=z`),
+/// as image `id`, and places it at the cursor (`a=T`, `C=1` leaves the
+/// cursor where it was). The `tiles pane` prototype's transport (ADR-063):
+/// raw pixels skip a PNG encode on our side and a PNG decode on the
+/// terminal's.
+#[must_use]
+pub fn show_rgba_zlib(id: u32, width: u32, height: u32, zlib: &[u8], at: Placement) -> Vec<u8> {
+    let Placement {
+        placement,
+        x_px,
+        y_px,
+        z,
+    } = at;
+    command(
+        &format!(
+            "a=T,f=32,o=z,t=d,q=2,C=1,i={id},p={placement},s={width},v={height},\
+             X={x_px},Y={y_px},z={z}"
+        ),
+        zlib,
+    )
+}
+
 /// Sends a PNG with a virtual placement of `cols` by `rows` cells, drawn
 /// wherever [`placeholder_rows`] cells for `id` appear (`U=1`).
 #[must_use]
@@ -282,6 +318,20 @@ mod tests {
             b"\x1b_Ga=p,q=2,C=1,i=4,p=2,c=40,r=3,z=2,x=0,y=0,w=640,h=96\x1b\\"
         );
         assert_eq!(delete_placement(4, 2), b"\x1b_Ga=d,d=i,q=2,i=4,p=2\x1b\\");
+    }
+
+    #[test]
+    fn raw_pixels_name_their_size_compression_and_place() {
+        let at = super::Placement {
+            placement: 2,
+            x_px: 3,
+            y_px: 5,
+            z: 4,
+        };
+        assert_eq!(
+            commands(&super::show_rgba_zlib(7, 640, 384, b"x", at)),
+            ["a=T,f=32,o=z,t=d,q=2,C=1,i=7,p=2,s=640,v=384,X=3,Y=5,z=4,m=0;eA=="]
+        );
     }
 
     #[test]

@@ -147,3 +147,37 @@ fn random_replies_never_panic_the_reply_parser() {
         }
     }
 }
+
+#[test]
+fn random_input_never_panics_the_pane_parser_and_reads_the_same_in_any_split() {
+    use tiles_term::input::Parser;
+    for seed in 1..=3_000u64 {
+        let mut rng = XorShift(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        let pieces: [&[u8]; 12] = [
+            b"\x1b[<35;1200;700M",
+            b"\x1b[<0;1;1m",
+            b"\x1b[<64;3;3M",
+            b"\x1b[?1016;2$y",
+            b"\x1b[6;32;16t",
+            b"\x1b[?62;22c",
+            b"\x1b_Gi=31;OK\x1b\\",
+            b"\x1b]11;rgb:0/0/0\x07",
+            b"\x1b",
+            b"\x03q",
+            b"\xff\xfe\x9b",
+            b"99999999999999;",
+        ];
+        let bytes: Vec<u8> = (0..rng.below(16))
+            .flat_map(|_| {
+                let p = pieces[rng.below(pieces.len())];
+                p[..rng.below(p.len() + 1)].to_vec()
+            })
+            .collect();
+        let whole = Parser::new().parse(&bytes);
+        let cut = rng.below(bytes.len() + 1);
+        let mut split = Parser::new();
+        let mut events = split.parse(&bytes[..cut]);
+        events.extend(split.parse(&bytes[cut..]));
+        assert_eq!(whole, events, "seed {seed}");
+    }
+}

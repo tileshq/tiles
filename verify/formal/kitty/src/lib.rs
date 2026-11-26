@@ -164,6 +164,18 @@ mod tests {
         assert!(carries(&kitty::transmit_png(4, &png), b"a=t,", &png));
         assert!(carries(&kitty::show_png(4, b"", 1, 1, None), b"a=T,", b""));
         assert!(bare(&kitty::place(4, 2, 40, 3, -1, None)));
+        let at = kitty::Placement {
+            placement: 1,
+            x_px: 3,
+            y_px: 5,
+            z: 2,
+        };
+        let zlib = vec![9u8; kitty::CHUNK * 2 + 1];
+        assert!(carries(
+            &kitty::show_rgba_zlib(6, 64, 32, &zlib, at),
+            b"a=T,f=32,o=z,",
+            &zlib
+        ));
         let mut leak = kitty::transmit_png(4, b"x");
         leak.extend_from_slice(b"\x1b]52;c;eA==\x07");
         assert!(frames(&leak).is_none());

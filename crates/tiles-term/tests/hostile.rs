@@ -3,7 +3,7 @@
 
 use tiles_intent::text::is_unsafe_char;
 use tiles_term::style::{Mark, Style};
-use tiles_term::{block, detect, fallback, sanitize};
+use tiles_term::{block, detect, fallback, pane, sanitize};
 
 fn corpus() -> Vec<String> {
     let path = concat!(
@@ -60,6 +60,15 @@ fn a_step_line_holds_only_its_own_mark_sequences() {
         assert!(plain(&words.detail(&e)), "{e:?}");
         let line = Style::new(true, false).step(Mark::Failed, &e, 12, &e);
         let rest = line.strip_prefix("  \x1b[31m\u{2717}\x1b[0m ").unwrap();
+        assert!(plain(rest), "{e:?}");
+    }
+}
+
+#[test]
+fn the_pane_status_line_holds_only_its_own_moves() {
+    for e in corpus() {
+        let line = pane::status(23, 80, &e);
+        let rest = line.strip_prefix("\x1b[24;1H\x1b[2K").unwrap();
         assert!(plain(rest), "{e:?}");
     }
 }

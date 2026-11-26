@@ -12,10 +12,16 @@ name = "tiles"
 path = "src/main.rs"
 
 [dependencies]
+# zlib for the raw pixels `tiles pane` sends (ADR-063); only builds with
+# debug assertions compile the pane.
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 pty-process = "0.5.3"
 ring = { version = "0.17.14", default-features = false }
-rustix = { version = "1.1.5", features = ["event", "fs", "process", "termios", "stdio"] }
+rustix = { version = "1.1.6", features = ["event", "fs", "process", "termios", "stdio"] }
 serde_json.workspace = true
+# Routes SIGINT, SIGTERM, SIGHUP, SIGQUIT and SIGWINCH to a pipe so `tiles
+# pane` gives the screen back on each (ADR-063).
+signal-hook = { version = "0.4.6", default-features = false }
 skia-safe.workspace = true
 tiles-engine.workspace = true
 tiles-intent.workspace = true

@@ -24,6 +24,13 @@ impl EnginePainter {
             .map_err(|e| e.to_string())
     }
 
+    /// The engine itself, for a surface that draws each card on its own
+    /// (the `tiles pane` prototype, ADR-063).
+    #[must_use]
+    pub fn engine(&self) -> &tiles_engine::Engine {
+        &self.engine
+    }
+
     /// Lays out one card, lined up with its row by `align`, and describes
     /// it.
     fn face(
@@ -88,16 +95,33 @@ impl EnginePainter {
 }
 
 impl EnginePainter {
-    /// Lays out one row's cards so their parts line up across it: alone
-    /// first, then each with the row's most title and subtitle lines, then
-    /// each as tall as the tallest. A card among others (`among`) has no
-    /// default subtitle, and a scorecard among them is compact.
+    /// [`EnginePainter::row_layout`] without the aligns.
+    #[cfg(test)]
     pub(super) fn row_faces(
         &self,
         row: &[Tile<'_>],
         look: &Look,
         among: bool,
     ) -> Result<Vec<(tiles_engine::Scene, Face)>, Refusal> {
+        Ok(self
+            .row_layout(row, look, among)?
+            .into_iter()
+            .map(|(scene, face, _)| (scene, face))
+            .collect())
+    }
+
+    /// Lays out one row's cards so their parts line up across it: alone
+    /// first, then each with the row's most title and subtitle lines, then
+    /// each as tall as the tallest. A card among others (`among`) has no
+    /// default subtitle, and a scorecard among them is compact. Each card
+    /// comes with the [`tiles_engine::Align`] it was laid out with, so it
+    /// can be laid out again the same way.
+    fn row_layout(
+        &self,
+        row: &[Tile<'_>],
+        look: &Look,
+        among: bool,
+    ) -> Result<Vec<(tiles_engine::Scene, Face, tiles_engine::Align)>, Refusal> {
         let mut align: Vec<tiles_engine::Align> = row
             .iter()
             .map(|t| tiles_engine::Align {
@@ -113,7 +137,7 @@ impl EnginePainter {
         let lay = |align: &[tiles_engine::Align]| {
             row.iter()
                 .zip(align)
-                .map(|(t, a)| self.face(t, look, *a))
+                .map(|(t, a)| self.face(t, look, *a).map(|(s, f)| (s, f, *a)))
                 .collect::<Result<Vec<_>, Refusal>>()
         };
         let faces = lay(&align)?;
@@ -123,7 +147,7 @@ impl EnginePainter {
         let lines = |part: tiles_engine::scene::Part| {
             faces
                 .iter()
-                .map(|(s, _)| s.items.iter().filter(|i| i.part == part).count())
+                .map(|(s, _, _)| s.items.iter().filter(|i| i.part == part).count())
                 .max()
                 .unwrap_or(0)
         };
@@ -136,14 +160,128 @@ impl EnginePainter {
             a.subtitle_lines = subtitle;
         }
         let faces = lay(&align)?;
-        let tallest = faces.iter().map(|(s, _)| s.height).fold(0.0, f32::max);
-        if faces.iter().all(|(s, _)| tallest - s.height < 0.5) {
+        let tallest = faces.iter().map(|(s, _, _)| s.height).fold(0.0, f32::max);
+        if faces.iter().all(|(s, _, _)| tallest - s.height < 0.5) {
             return Ok(faces);
         }
         for a in &mut align {
             a.min_height = tallest;
         }
         lay(&align)
+    }
+}
+
+/// One card of a call laid out and placed, not yet drawn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LaidCard {
+    /// The card's scene.
+    pub scene: tiles_engine::Scene,
+    /// How it lined up with its row; `None` for the dashboard's heading.
+    pub align: Option<tiles_engine::Align>,
+    /// What it shows, for the result text; `None` for the heading.
+    pub face: Option<Face>,
+    /// Its left edge in CSS pixels.
+    pub x: f32,
+    /// Its top edge in CSS pixels.
+    pub y: f32,
+    /// Its top-left cell: column, row.
+    pub at: (u16, u16),
+    /// Columns and rows it covers.
+    pub cells: (u16, u16),
+}
+
+/// A call's cards laid out and placed: the heading first when there is
+/// one, then row by row, left to right.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Laid {
+    /// The cards.
+    pub cards: Vec<LaidCard>,
+    /// Columns and rows the whole picture covers.
+    pub cells: (u16, u16),
+}
+
+impl EnginePainter {
+    /// Lays out one card again as it was laid out among its row, with
+    /// `align` from [`LaidCard::align`].
+    ///
+    /// # Errors
+    ///
+    /// The intent breaks a form rule.
+    pub fn lay_card(
+        &self,
+        tile: &Tile<'_>,
+        look: &Look,
+        align: tiles_engine::Align,
+    ) -> Result<tiles_engine::Scene, Refusal> {
+        self.face(tile, look, align).map(|(scene, _)| scene)
+    }
+
+    /// Lays out and places a call's cards as [`Painter::paint`] does, without
+    /// drawing them, for a surface that draws each card on its own.
+    ///
+    /// # Errors
+    ///
+    /// An intent breaks a form rule.
+    pub fn lay_out(
+        &self,
+        rows: &[Vec<Tile<'_>>],
+        heading: Option<&Heading>,
+        look: &Look,
+    ) -> Result<Laid, Refusal> {
+        let cell = (look.width_css(1), look.cell_height_css());
+        let theme = look.theme;
+        let mut cards = Vec::new();
+        let mut sizes = Vec::new();
+        let among = rows.iter().map(Vec::len).sum::<usize>() > 1;
+        // The engine snaps a height to whole cells.
+        let cell_rows = |height: f32| {
+            let rows = whole(
+                f64::from(height / cell.1 - 0.01).ceil(),
+                u32::from(u16::MAX),
+            );
+            u16::try_from(rows).unwrap_or(u16::MAX)
+        };
+        if let Some(h) = heading {
+            let cols = rows
+                .iter()
+                .map(|r| board::span(&r.iter().map(|t| t.cols).collect::<Vec<_>>()))
+                .max()
+                .unwrap_or(0);
+            let opts = tiles_engine::Options {
+                width: look
+                    .width_css(cols)
+                    .clamp(tiles_engine::MIN_WIDTH, tiles_engine::MAX_WIDTH),
+                theme,
+                cell_height: Some(look.cell_height_css().clamp(1.0, 200.0)),
+            };
+            let scene = self.engine.heading(&h.title, h.note.as_deref(), &opts);
+            sizes.push(vec![(cols, cell_rows(scene.height))]);
+            cards.push((scene, None, None));
+        }
+        for row in rows {
+            let mut size = Vec::new();
+            for (tile, (scene, face, align)) in row.iter().zip(self.row_layout(row, look, among)?) {
+                size.push((tile.cols, cell_rows(scene.height)));
+                cards.push((scene, Some(face), Some(align)));
+            }
+            sizes.push(size);
+        }
+        let (at, cells) = board::place(&sizes);
+        let cards = cards
+            .into_iter()
+            .zip(at.into_iter().flatten())
+            .zip(sizes.into_iter().flatten())
+            .map(|(((scene, face, align), (col, row)), size)| LaidCard {
+                x: f32::from(col) * cell.0,
+                y: f32::from(row) * cell.1,
+                scene,
+                align,
+                face,
+                at: (col, row),
+                cells: size,
+            })
+            .collect();
+        Ok(Laid { cards, cells })
     }
 }
 
@@ -199,54 +337,16 @@ impl Painter for EnginePainter {
         heading: Option<&Heading>,
         look: &Look,
     ) -> Result<Painted, Refusal> {
-        let cell = (look.width_css(1), look.cell_height_css());
-        let theme = look.theme;
-        let mut scenes = Vec::new();
-        let mut sizes = Vec::new();
-        let mut faces = Vec::new();
-        let among = rows.iter().map(Vec::len).sum::<usize>() > 1;
-        // The engine snaps a height to whole cells.
-        let cell_rows = |height: f32| {
-            let rows = whole(
-                f64::from(height / cell.1 - 0.01).ceil(),
-                u32::from(u16::MAX),
-            );
-            u16::try_from(rows).unwrap_or(u16::MAX)
-        };
-        if let Some(h) = heading {
-            let cols = rows
-                .iter()
-                .map(|r| board::span(&r.iter().map(|t| t.cols).collect::<Vec<_>>()))
-                .max()
-                .unwrap_or(0);
-            let opts = tiles_engine::Options {
-                width: look
-                    .width_css(cols)
-                    .clamp(tiles_engine::MIN_WIDTH, tiles_engine::MAX_WIDTH),
-                theme,
-                cell_height: Some(look.cell_height_css().clamp(1.0, 200.0)),
-            };
-            let scene = self.engine.heading(&h.title, h.note.as_deref(), &opts);
-            sizes.push(vec![(cols, cell_rows(scene.height))]);
-            scenes.push(scene);
-        }
-        for row in rows {
-            let mut size = Vec::new();
-            for (tile, (scene, face)) in row.iter().zip(self.row_faces(row, look, among)?) {
-                size.push((tile.cols, cell_rows(scene.height)));
-                scenes.push(scene);
-                faces.push(face);
-            }
-            sizes.push(size);
-        }
-        let (at, cells) = board::place(&sizes);
-        let tiles: Vec<tiles_engine::Placed> = scenes
+        let laid = self.lay_out(rows, heading, look)?;
+        let cells = laid.cells;
+        let faces = laid.cards.iter().filter_map(|c| c.face.clone()).collect();
+        let tiles: Vec<tiles_engine::Placed> = laid
+            .cards
             .into_iter()
-            .zip(at.into_iter().flatten())
-            .map(|(scene, (col, row))| tiles_engine::Placed {
-                scene,
-                x: f32::from(col) * cell.0,
-                y: f32::from(row) * cell.1,
+            .map(|c| tiles_engine::Placed {
+                scene: c.scene,
+                x: c.x,
+                y: c.y,
             })
             .collect();
         let board = tiles_engine::Board {

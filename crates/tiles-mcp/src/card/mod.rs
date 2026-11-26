@@ -28,7 +28,7 @@ use crate::cache::Cache;
 
 pub use tiles_engine::Theme;
 
-pub use painter::EnginePainter;
+pub use painter::{EnginePainter, Laid, LaidCard};
 pub use redraw::{
     Rethemed, Shown, needs_its_session, needs_its_session_note, redraw, reopen, retheme, shown,
 };
@@ -252,6 +252,78 @@ pub trait Painter {
         heading: Option<&Heading>,
         look: &Look,
     ) -> Result<Painted, Refusal>;
+}
+
+/// A call read for the `tiles pane` prototype (ADR-063): its intents in
+/// the order asked, mended, with the rows the call holds. A call that
+/// names an Omni topic or a warehouse query is refused, since the pane
+/// reaches no data source.
+#[derive(Debug, Clone)]
+pub struct Call {
+    /// The intents, in the order asked.
+    pub intents: Vec<Intent>,
+    /// The dashboard heading, when the call asks for one.
+    pub heading: Option<Heading>,
+    keys: Vec<String>,
+    shape: Vec<usize>,
+}
+
+impl Call {
+    /// Reads a call as the chart tool does, refusing any data source.
+    ///
+    /// # Errors
+    ///
+    /// The call breaks a rule, or names a data source.
+    pub fn read(json: &str, painter: &dyn Painter) -> Result<Self, Refusal> {
+        let mut asked = request::requests(json).map_err(Refusal::Intent)?;
+        let shape: Vec<usize> = asked.rows.iter().map(Vec::len).collect();
+        let rows = std::mem::take(&mut asked.rows);
+        let refuse: &Fetch<'_> =
+            &|_, _| Err("the pane draws only the rows its call holds".to_string());
+        let (keys, intents, tables) = request::load(rows, painter, refuse)?;
+        let mut intents = intents;
+        request::label(&mut intents, asked.heading.as_mut(), &tables);
+        Ok(Self {
+            intents,
+            heading: asked.heading,
+            keys,
+            shape,
+        })
+    }
+
+    /// Lays out and places every card for `look`, as the chart tool would
+    /// with these `intents` (the call's own, or the same cards with their
+    /// rows filtered): the cards, and for each one after the heading the
+    /// index of its intent.
+    ///
+    /// # Errors
+    ///
+    /// An intent breaks a form rule.
+    pub fn lay_out(
+        &self,
+        intents: &[Intent],
+        painter: &EnginePainter,
+        look: &Look,
+    ) -> Result<(Laid, Vec<usize>), Refusal> {
+        let asks = request::asks(intents, &self.keys, &self.shape, painter)?;
+        let plan = crate::board::plan(&asks, look);
+        let rows: Vec<Vec<Tile<'_>>> = plan
+            .rows
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|(i, cols)| Tile {
+                        intent: &intents[*i],
+                        cols: *cols,
+                        key: &self.keys[*i],
+                    })
+                    .collect()
+            })
+            .collect();
+        let laid = painter.lay_out(&rows, self.heading.as_ref(), look)?;
+        let order = plan.rows.iter().flatten().map(|(i, _)| *i).collect();
+        Ok((laid, order))
+    }
 }
 
 /// The query an intent's rows come from.

@@ -29,6 +29,7 @@ network = load("check-network-owners")
 release_binary = load("check-release-binary")
 ci_main_gate = load("ci-main-gate")
 no_network = load("no-network")
+pane_trace = load("pane-trace")
 
 
 CLAUDE_INSTALL = "npm install --no-fund @anthropic-ai/claude-code@2.1.316"
@@ -1117,6 +1118,79 @@ class NoNetwork(unittest.TestCase):
         off = self.wrapped(tiles, "doctor", env={**env, "TILES_STATE_DIR": str(home / "off"), "TILES_UPDATE_CHECK": "off"})
         self.assertEqual(off.returncode, 0, off.stdout + off.stderr)
         self.assertNotIn("no-network:", off.stderr)
+
+
+PANE_TRACE = """\
+5.0 start terminal=ghostty pixels=yes cell=16x34 scale=2
+5.5 begin update=1 kind=first
+40.0 draw update=1 kind=first card=0
+90.0 write update=1 kind=first bytes=400000 cards=8
+1000.0 rss kb=40960
+1000.1 cpu ms=300.0
+2000.0 rss kb=51200
+2000.1 cpu ms=300.0
+3000.0 rss kb=51200
+3000.1 cpu ms=305.0
+4000.0 read bytes=14 reports=1
+4000.2 begin update=2 kind=hover
+4006.0 draw update=2 kind=hover card=overlay
+4010.0 write update=2 kind=hover bytes=20480 cards=0
+4100.0 read bytes=28 reports=2
+4100.1 begin update=3 kind=click
+4120.0 draw update=3 kind=click card=4
+4150.0 draw update=3 kind=click card=5
+4151.0 write update=3 kind=click bytes=300000 cards=2
+4200.0 begin update=4 kind=resize
+4280.0 write update=4 kind=resize bytes=500000 cards=9
+5000.0 rss kb=51200
+5000.1 cpu ms=400.0
+6000.0 rss kb=51200
+6000.1 cpu ms=402.0
+garbage line
+7000.0 write update=99 kind=hover bytes=1 cards=0
+"""
+
+
+class PaneTrace(unittest.TestCase):
+    def setUp(self):
+        self.got = pane_trace.measures(pane_trace.parse(PANE_TRACE))
+
+    def test_updates_are_timed_from_the_read_that_caused_them(self):
+        self.assertAlmostEqual(self.got["hover_p95_ms"][0], 10.0)
+        self.assertAlmostEqual(self.got["hover_bytes_kb"][0], 20.0)
+        # Card 4 from the read, card 5 from card 4.
+        self.assertAlmostEqual(self.got["card_click_ms"][0], 30.0)
+
+    def test_a_resize_prices_the_eight_card_redraw_and_the_start_counts_from_zero(self):
+        self.assertAlmostEqual(self.got["eight_cards_ms"][0], 80.0)
+        self.assertAlmostEqual(self.got["first_frame_ms"][0], 90.0)
+        self.assertIsNone(self.got["scroll_p95_ms"][0])
+
+    def test_memory_is_steady_after_two_seconds_and_cpu_idle_only_between_events(self):
+        self.assertAlmostEqual(self.got["rss_mb"][0], 50.0)
+        # 3000 to 4000 holds a read; 1000 to 3000 and 5000 to 6000 are idle.
+        self.assertAlmostEqual(self.got["idle_cpu_pct"][0], 100 * 7.0 / 3000.0, places=3)
+
+    def test_the_table_says_go_or_miss_for_one_machine(self):
+        text = pane_trace.table(pane_trace.parse(PANE_TRACE), "intel", None)
+        self.assertIn("| Hover, mouse report read to bytes written, p95 | 10.0 ms | 33 ms or less | go |", text)
+        self.assertIn("| Table stress scene (40 rows by 8 columns), one scroll step, p95 | not measured | recorded | recorded |", text)
+        work = pane_trace.table(pane_trace.parse(PANE_TRACE), "work", None)
+        self.assertIn("| Eight-card dashboard redrawn | 80.0 ms | 50 ms or less | miss |", work)
+        self.assertIn("Terminal: ghostty", work)
+
+    def test_two_traces_make_one_table(self):
+        stress = "1.0 begin update=1 kind=first\n2.0 write update=1 kind=first bytes=9 cards=1\n" \
+            "10.0 read bytes=7 reports=1\n10.1 begin update=2 kind=scroll\n30.0 write update=2 kind=scroll bytes=9 cards=1\n"
+        both = [pane_trace.parse(PANE_TRACE), pane_trace.parse(stress)]
+        got = pane_trace.merged(both)
+        self.assertAlmostEqual(got["scroll_p95_ms"][0], 20.0)
+        self.assertAlmostEqual(got["first_frame_ms"][0], 90.0, msg="the first trace wins")
+
+    def test_p95_is_the_nearest_rank(self):
+        self.assertEqual(pane_trace.p95(list(range(1, 101))), 95)
+        self.assertEqual(pane_trace.p95([7.0]), 7.0)
+        self.assertIsNone(pane_trace.p95([]))
 
 
 if __name__ == "__main__":

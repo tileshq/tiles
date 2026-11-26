@@ -1,7 +1,8 @@
 # Fuzz targets for every parser of untrusted input (ADR-009, ADR-024):
 # the harness's terminal stream through the wrapper's painter, the
-# terminal's replies, chart intents, placeholder blocks on screen, and
-# warehouse sources with their dbt model references.
+# terminal's replies, chart intents, placeholder blocks on screen,
+# warehouse sources with their dbt model references, and what the terminal
+# sends `tiles pane`.
 # CI runs each for 60 s with `cargo +nightly fuzz run <target>`; see
 # fuzz/README.md. Its own workspace, so the main build never compiles it.
 
@@ -57,6 +58,13 @@ bench = false
 [[bin]]
 name = "warehouse_source"
 path = "fuzz_targets/warehouse_source.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pane_input"
+path = "fuzz_targets/pane_input.rs"
 test = false
 doc = false
 bench = false

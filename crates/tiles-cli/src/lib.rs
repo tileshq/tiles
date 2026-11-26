@@ -42,6 +42,8 @@ mod install;
 mod motion;
 mod omni;
 mod opencode;
+#[cfg(debug_assertions)]
+mod pane;
 mod proved;
 mod run;
 mod serve;
@@ -136,6 +138,9 @@ enum Command {
     /// A registered source's command: its index and the arguments after
     /// its name.
     Source(usize, Vec<String>),
+    /// The pane prototype (ADR-063), only with debug assertions on.
+    #[cfg(debug_assertions)]
+    Pane(Vec<String>),
     Version,
     Licence,
     Help,
@@ -176,6 +181,8 @@ fn parse(args: &[String], sources: &[&str]) -> Result<Command, String> {
         "open" if args.len() == 2 => Ok(Command::Open(args[1].clone())),
         "cache" if args.len() == 2 && args[1] == "clear" => Ok(Command::CacheClear),
         "cache" => Err(format!("usage: {}", serve::CACHE_USAGE)),
+        #[cfg(debug_assertions)]
+        "pane" => Ok(Command::Pane(args[1..].to_vec())),
         "doctor" | "check" | "mcp" | "card" | "theme" | "open" => {
             Err(format!("wrong arguments for {first}"))
         }
@@ -688,6 +695,8 @@ pub fn main(sources: &[&dyn Source]) -> ExitCode {
         Ok(Command::Theme(name)) => serve::theme(name.as_deref()),
         Ok(Command::Open(id)) => serve::open(&id, sources),
         Ok(Command::CacheClear) => serve::cache_clear(),
+        #[cfg(debug_assertions)]
+        Ok(Command::Pane(rest)) => return pane::main(&rest),
         Ok(Command::Source(i, rest)) => source_command(
             sources[i],
             &rest,
