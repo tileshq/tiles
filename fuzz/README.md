@@ -1,6 +1,6 @@
 # Fuzz targets
 
-One libFuzzer target per parser of untrusted input ([ADR-024](../docs/adr/ADR-024-security-baseline-in-ci.md)): `terminal_stream` (the wrapper's painter, compiled from `crates/tiles-cli/src/wrap/`), `terminal_replies`, `intent`, `block` and `warehouse_source` (a warehouse source's SQL with its `{{ ref(...) }}` model references, through `crates/tiles-intent`'s reader and renderer; its first byte picks the target). CI's `fuzz` job runs each target in `fuzz_targets/` for 60 seconds from the seed corpus in `corpus/<target>/`.
+One libFuzzer target per parser of untrusted input ([ADR-024](../docs/adr/ADR-024-security-baseline-in-ci.md)): `terminal_stream` (the wrapper's painter, compiled from `crates/tiles-cli/src/wrap/`), `terminal_replies`, `intent`, `block` and `warehouse_source` (a warehouse source's SQL with its `{{ ref(...) }}` model references, through `crates/tiles-intent`'s reader and renderer; its first byte picks the target) and `pane_input` (what the terminal sends `tiles pane`, through `tiles_term::input::Parser`; its first byte picks where the input is split in two, and the events must not change with the split). CI's `fuzz` job runs each target in `fuzz_targets/` for 60 seconds from the seed corpus in `corpus/<target>/`.
 
 To run one locally, from the repository root, on a copy of its corpus so the committed seeds stay small:
 
