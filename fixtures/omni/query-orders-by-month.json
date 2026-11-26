@@ -1,0 +1,5 @@
+[
+  { "orders.created_at[month]": "2026-06-01", "orders.count": 1604 },
+  { "orders.created_at[month]": "2026-07-01", "orders.count": 1712 },
+  { "orders.created_at[month]": "2026-08-01", "orders.count": 1596 }
+]

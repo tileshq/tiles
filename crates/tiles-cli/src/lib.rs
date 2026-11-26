@@ -1,7 +1,8 @@
 //! The `tiles` command line: `tiles render` draws an intent to a PNG,
 //! `tiles forms` lists the chart forms and their roles, `tiles omni` reads
 //! Omni topics (ADR-008), `tiles mcp` is the MCP server, `tiles card` draws
-//! one card for an add-on, `tiles run` launches a harness with Tiles loaded,
+//! one card for an add-on, `tiles pane` shows a call's cards as an
+//! interactive dashboard (ADR-065), `tiles run` launches a harness with Tiles loaded,
 //! `tiles install` adds Tiles to a harness for good, `tiles setup` runs
 //! that install for every harness on `PATH` after one question, `tiles doctor`
 //! reports the terminal, route, harnesses and Omni setup (ADR-004), and
@@ -42,7 +43,6 @@ mod install;
 mod motion;
 mod omni;
 mod opencode;
-#[cfg(debug_assertions)]
 mod pane;
 mod proved;
 mod run;
@@ -66,6 +66,7 @@ const USAGE: &str = "usage: tiles render <intent.json|-> -o <out.png> [--theme <
        tiles update [--check] [--allow-older] [vX.Y.Z]
        tiles mcp
        tiles card <intent.json|->
+       tiles pane <intent.json | card id> [--trace <file>]
        tiles --version
        tiles --licence";
 
@@ -138,8 +139,7 @@ enum Command {
     /// A registered source's command: its index and the arguments after
     /// its name.
     Source(usize, Vec<String>),
-    /// The pane prototype (ADR-063), only with debug assertions on.
-    #[cfg(debug_assertions)]
+    /// The interactive dashboard pane (ADR-063, ADR-065).
     Pane(Vec<String>),
     Version,
     Licence,
@@ -181,7 +181,6 @@ fn parse(args: &[String], sources: &[&str]) -> Result<Command, String> {
         "open" if args.len() == 2 => Ok(Command::Open(args[1].clone())),
         "cache" if args.len() == 2 && args[1] == "clear" => Ok(Command::CacheClear),
         "cache" => Err(format!("usage: {}", serve::CACHE_USAGE)),
-        #[cfg(debug_assertions)]
         "pane" => Ok(Command::Pane(args[1..].to_vec())),
         "doctor" | "check" | "mcp" | "card" | "theme" | "open" => {
             Err(format!("wrong arguments for {first}"))
@@ -695,8 +694,7 @@ pub fn main(sources: &[&dyn Source]) -> ExitCode {
         Ok(Command::Theme(name)) => serve::theme(name.as_deref()),
         Ok(Command::Open(id)) => serve::open(&id, sources),
         Ok(Command::CacheClear) => serve::cache_clear(),
-        #[cfg(debug_assertions)]
-        Ok(Command::Pane(rest)) => return pane::main(&rest),
+        Ok(Command::Pane(rest)) => return pane::main(&rest, sources),
         Ok(Command::Source(i, rest)) => source_command(
             sources[i],
             &rest,

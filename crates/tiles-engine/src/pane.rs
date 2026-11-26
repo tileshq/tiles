@@ -1,8 +1,9 @@
-//! What the `tiles pane` prototype draws beyond a card (ADR-063): the hover
-//! overlay, one small picture holding a mark's outline and its tooltip,
-//! placed above the card so the card itself is never sent again on hover;
-//! and a grid of text, the stress scene that prices a table before a table
-//! form exists. Neither touches how a card is laid out or drawn.
+//! What `tiles pane` reads and draws beyond a card (ADR-063, ADR-065): the
+//! hover overlay, one small picture holding a mark's outline and its
+//! tooltip, placed above the card so the card itself is never sent again on
+//! hover; the legend entries a click toggles; and a grid of text, the
+//! stress scene that prices a table before a table form exists. None of
+//! them touches how a card is laid out or drawn.
 
 use skia_safe::Rect;
 
@@ -209,6 +210,80 @@ fn shifted(mut item: Item, dx: f32, dy: f32) -> Item {
         }
     }
     item
+}
+
+/// One legend entry a click can toggle: its swatch and label in device
+/// pixels from the card's top left, and the label as drawn, which a long
+/// name ends with an ellipsis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegendHit {
+    /// Left edge in device pixels.
+    pub left: i32,
+    /// Top edge in device pixels.
+    pub top: i32,
+    /// Right edge in device pixels.
+    pub right: i32,
+    /// Bottom edge in device pixels.
+    pub bottom: i32,
+    /// The label as drawn.
+    pub label: String,
+}
+
+impl LegendHit {
+    /// Whether a device pixel falls inside.
+    #[must_use]
+    pub fn contains(&self, x: i32, y: i32) -> bool {
+        x >= self.left && x < self.right && y >= self.top && y < self.bottom
+    }
+}
+
+/// The legend entries of `card` at device `scale`: each legend label's box,
+/// widened to the swatch drawn just before it. A line chart's direct labels
+/// count, since they are its legend.
+#[allow(clippy::cast_possible_truncation)] // Card coordinates are far below i32::MAX.
+pub(crate) fn legend(fonts: &Fonts, card: &Scene, scale: f32) -> Vec<LegendHit> {
+    let mut out = Vec::new();
+    let mut swatch: Option<Rect> = None;
+    for item in &card.items {
+        if item.part != Part::Legend {
+            swatch = None;
+            continue;
+        }
+        let Shape::Text {
+            text,
+            x,
+            y,
+            style,
+            anchor,
+        } = &item.shape
+        else {
+            swatch = Some(item.bounds());
+            continue;
+        };
+        let w = fonts.width(text, *style);
+        let left = match anchor {
+            Anchor::Start => *x,
+            Anchor::Middle => x - w / 2.0,
+            Anchor::End => x - w,
+        };
+        let mut b = Rect::from_ltrb(left, y - style.size, left + w, y + style.size * 0.3);
+        if let Some(s) = swatch.take() {
+            b = Rect::from_ltrb(
+                b.left.min(s.left),
+                b.top.min(s.top),
+                b.right.max(s.right),
+                b.bottom.max(s.bottom),
+            );
+        }
+        out.push(LegendHit {
+            left: (b.left * scale).floor() as i32,
+            top: (b.top * scale).floor() as i32,
+            right: (b.right * scale).ceil() as i32,
+            bottom: (b.bottom * scale).ceil() as i32,
+            label: text.clone(),
+        });
+    }
+    out
 }
 
 /// Space between a grid's rows, in CSS pixels.

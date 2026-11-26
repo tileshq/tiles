@@ -1,0 +1,16 @@
+[
+  { "orders.created_at[month]": "2026-06-01", "orders.created_at[week]": "2026-06-01", "orders.count": 371 },
+  { "orders.created_at[month]": "2026-06-01", "orders.created_at[week]": "2026-06-08", "orders.count": 402 },
+  { "orders.created_at[month]": "2026-06-01", "orders.created_at[week]": "2026-06-15", "orders.count": 388 },
+  { "orders.created_at[month]": "2026-06-01", "orders.created_at[week]": "2026-06-22", "orders.count": 443 },
+  { "orders.created_at[month]": "2026-07-01", "orders.created_at[week]": "2026-06-29", "orders.count": 116 },
+  { "orders.created_at[month]": "2026-07-01", "orders.created_at[week]": "2026-07-06", "orders.count": 397 },
+  { "orders.created_at[month]": "2026-07-01", "orders.created_at[week]": "2026-07-13", "orders.count": 420 },
+  { "orders.created_at[month]": "2026-07-01", "orders.created_at[week]": "2026-07-20", "orders.count": 389 },
+  { "orders.created_at[month]": "2026-07-01", "orders.created_at[week]": "2026-07-27", "orders.count": 390 },
+  { "orders.created_at[month]": "2026-08-01", "orders.created_at[week]": "2026-07-27", "orders.count": 113 },
+  { "orders.created_at[month]": "2026-08-01", "orders.created_at[week]": "2026-08-03", "orders.count": 412 },
+  { "orders.created_at[month]": "2026-08-01", "orders.created_at[week]": "2026-08-10", "orders.count": 431 },
+  { "orders.created_at[month]": "2026-08-01", "orders.created_at[week]": "2026-08-17", "orders.count": 298 },
+  { "orders.created_at[month]": "2026-08-01", "orders.created_at[week]": "2026-08-24", "orders.count": 342 }
+]

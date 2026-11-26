@@ -30,7 +30,8 @@ pub use tiles_engine::Theme;
 
 pub use painter::{EnginePainter, Laid, LaidCard};
 pub use redraw::{
-    Rethemed, Shown, needs_its_session, needs_its_session_note, redraw, reopen, retheme, shown,
+    Rethemed, Shown, needs_its_session, needs_its_session_note, redraw, reopen, retheme,
+    saved_call, shown,
 };
 pub use result::text_result;
 
@@ -254,14 +255,20 @@ pub trait Painter {
     ) -> Result<Painted, Refusal>;
 }
 
-/// A call read for the `tiles pane` prototype (ADR-063): its intents in
-/// the order asked, mended, with the rows the call holds. A call that
-/// names an Omni topic or a warehouse query is refused, since the pane
-/// reaches no data source.
+/// A call read for `tiles pane` (ADR-063, ADR-065): its intents in the
+/// order asked, mended, with their rows: the rows the call holds, or the
+/// rows `fetch` read from Omni or a warehouse, which stay in this
+/// process's memory (ADR-027).
 #[derive(Debug, Clone)]
 pub struct Call {
     /// The intents, in the order asked.
     pub intents: Vec<Intent>,
+    /// Each card's request as asked, before its rows were fetched, so the
+    /// pane can ask its source again for a drill.
+    pub requests: Vec<Request>,
+    /// Where each card's rows came from (`Omni`, `BigQuery`), or `None`
+    /// for rows the call holds.
+    pub origins: Vec<Option<String>>,
     /// The dashboard heading, when the call asks for one.
     pub heading: Option<Heading>,
     keys: Vec<String>,
@@ -269,22 +276,24 @@ pub struct Call {
 }
 
 impl Call {
-    /// Reads a call as the chart tool does, refusing any data source.
+    /// Reads a call as the chart tool does, fetching the rows of each card
+    /// that names an Omni topic or a warehouse query through `fetch`.
     ///
     /// # Errors
     ///
-    /// The call breaks a rule, or names a data source.
-    pub fn read(json: &str, painter: &dyn Painter) -> Result<Self, Refusal> {
+    /// The call breaks a rule, or a source refused or failed.
+    pub fn read(json: &str, painter: &dyn Painter, fetch: &Fetch<'_>) -> Result<Self, Refusal> {
         let mut asked = request::requests(json).map_err(Refusal::Intent)?;
         let shape: Vec<usize> = asked.rows.iter().map(Vec::len).collect();
         let rows = std::mem::take(&mut asked.rows);
-        let refuse: &Fetch<'_> =
-            &|_, _| Err("the pane draws only the rows its call holds".to_string());
-        let (keys, intents, tables) = request::load(rows, painter, refuse)?;
+        let requests = rows.iter().flatten().map(|(_, r)| r.clone()).collect();
+        let (keys, intents, tables) = request::load(rows, painter, fetch)?;
         let mut intents = intents;
         request::label(&mut intents, asked.heading.as_mut(), &tables);
         Ok(Self {
             intents,
+            requests,
+            origins: tables.into_iter().map(|t| t.map(|f| f.origin)).collect(),
             heading: asked.heading,
             keys,
             shape,

@@ -46,6 +46,29 @@ pub fn needs_its_session(cache: &Cache, id: &str) -> bool {
         && cache.read_call(id).is_some_and(|c| from_fetched(&c))
 }
 
+/// The tool arguments card `id` was drawn from, as JSON text, for `tiles
+/// pane <id>`. The call file holds no fetched row (ADR-027), so a card drawn
+/// from Omni or a warehouse is fetched again by whoever reads it.
+///
+/// # Errors
+///
+/// `id` is not a card id, or the cache has no call for it.
+pub fn saved_call(cache: &Cache, id: &str) -> Result<String, String> {
+    if !tiles_term::block::is_card_id(id) {
+        return Err(format!(
+            "\"{}\" is not a card id (six hex digits)",
+            tiles_term::sanitize::line(id, 40)
+        ));
+    }
+    cache
+        .read_call(id)
+        .and_then(|saved| saved.get("call").filter(|c| c.is_object()).cloned())
+        .map(|call| call.to_string())
+        .ok_or_else(|| {
+            format!("no card {id} in the cache, or it was drawn before Tiles kept calls")
+        })
+}
+
 /// The line that says card `id`, drawn from rows fetched from `origin`, can
 /// be drawn again only by the session that fetched them, for a user who
 /// asked for `theme`.

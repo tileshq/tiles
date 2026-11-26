@@ -151,6 +151,34 @@ impl Omni {
     }
 }
 
+/// Fetches a query's rows as `tiles card` does: an Omni topic with the
+/// user's own configuration, the client made on first use, and a warehouse
+/// query from the first configured source that runs one. `tiles pane`
+/// fetches through it too, so its rows stay in its own memory (ADR-027).
+pub(crate) struct Fetcher<'a> {
+    omni: Omni,
+    offered: Vec<(&'a dyn Source, Offer)>,
+}
+
+impl<'a> Fetcher<'a> {
+    /// A fetcher over Omni and each configured source of `sources`.
+    pub(crate) fn new(sources: &[&'a dyn Source]) -> Self {
+        Self {
+            omni: Omni(OnceCell::new()),
+            offered: offered(sources),
+        }
+    }
+
+    /// The rows `query` names; `started` is when the call began, so a
+    /// call's cards share one time budget.
+    pub(crate) fn fetch(&self, query: Query<'_>, started: Instant) -> Result<Fetched, String> {
+        match query {
+            Query::Omni(source) => self.omni.fetch(source).map(Fetched::omni),
+            Query::Warehouse(source) => fetch_warehouse(&self.offered, source, started),
+        }
+    }
+}
+
 impl Browse for Omni {
     fn topics(&self) -> Result<String, String> {
         let mut out = Vec::new();
@@ -214,11 +242,8 @@ pub fn card(input: &str, sources: &[&dyn Source]) -> ExitCode {
     let outcome = (|| {
         let json = crate::read_input(input)?;
         let painter = EnginePainter::new()?;
-        let omni = Omni(OnceCell::new());
-        let fetch = |query: Query<'_>, started: Instant| match query {
-            Query::Omni(source) => omni.fetch(source).map(Fetched::omni),
-            Query::Warehouse(source) => fetch_warehouse(&offered, source, started),
-        };
+        let fetcher = Fetcher::new(sources);
+        let fetch = |query: Query<'_>, started: Instant| fetcher.fetch(query, started);
         let cache = open_cache()?;
         let draw = draw();
         card::make(&json, &painter, &fetch, &cache, &look())

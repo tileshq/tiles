@@ -6,7 +6,7 @@
 //! the placeholder block a tool result carries and the wrapper finds again;
 //! [`fallback`] is the text a terminal without images shows; [`style`] is the
 //! step list `tiles setup` prints; [`pane`] and [`input`] are what the
-//! `tiles pane` prototype writes and reads (ADR-063). Each terminal rule
+//! `tiles pane` writes and reads (ADR-063). Each terminal rule
 //! lives here once, never in adapter code.
 
 pub mod b64;

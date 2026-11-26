@@ -25,7 +25,7 @@ impl EnginePainter {
     }
 
     /// The engine itself, for a surface that draws each card on its own
-    /// (the `tiles pane` prototype, ADR-063).
+    /// (`tiles pane`, ADR-063).
     #[must_use]
     pub fn engine(&self) -> &tiles_engine::Engine {
         &self.engine

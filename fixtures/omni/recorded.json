@@ -35,5 +35,39 @@
       "formatResults": false
     },
     "file": "query-orders-by-week.json"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/query/run",
+    "request": {
+      "query": {
+        "modelId": "4f8c2a1e-0b7d-4c55-9a3e-2d1f6b8e9c01",
+        "table": "orders",
+        "join_paths_from_topic_name": "orders",
+        "fields": ["orders.created_at[month]", "orders.count"],
+        "sorts": [{ "column_name": "orders.created_at[month]", "sort_descending": false }],
+        "limit": 6
+      },
+      "resultType": "json",
+      "formatResults": false
+    },
+    "file": "query-orders-by-month.json"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/query/run",
+    "request": {
+      "query": {
+        "modelId": "4f8c2a1e-0b7d-4c55-9a3e-2d1f6b8e9c01",
+        "table": "orders",
+        "join_paths_from_topic_name": "orders",
+        "fields": ["orders.created_at[month]", "orders.created_at[week]", "orders.count"],
+        "sorts": [{ "column_name": "orders.created_at[week]", "sort_descending": false }],
+        "limit": 5000
+      },
+      "resultType": "json",
+      "formatResults": false
+    },
+    "file": "query-orders-by-month-and-week.json"
   }
 ]

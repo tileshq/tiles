@@ -1,9 +1,9 @@
-//! `tiles pane` through a real pseudo-terminal (ADR-063): the test answers
-//! the pane's probe as a terminal with pixel mouse reports does, moves the
-//! pointer onto a bar it finds with the same layout code, clicks it, and
-//! reads every byte the pane writes and the trace it keeps. The pane exists
-//! only with debug assertions on.
-#![cfg(debug_assertions)]
+//! `tiles pane` through a real pseudo-terminal (ADR-063, ADR-065): the test
+//! answers the pane's probe as a terminal with pixel mouse reports does,
+//! moves the pointer onto a mark or a legend entry it finds with the same
+//! layout code, clicks it or presses a key, and reads every byte the pane
+//! writes and the trace it keeps. The panic and the stress grid exist only
+//! with debug assertions on.
 
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
@@ -57,16 +57,20 @@ impl Pane {
             ROWS * CELL.1,
         ))
         .unwrap();
+        let cache = env
+            .iter()
+            .find(|(k, _)| *k == "TILES_CACHE_DIR")
+            .map_or_else(|| dir.join("cache"), |(_, v)| PathBuf::from(v));
         let mut cmd = pty_process::blocking::Command::new(TILES)
             .args(["pane", fixture.to_str().unwrap(), "--trace"])
             .arg(&trace)
-            .env("TILES_CACHE_DIR", dir.join("cache"))
+            .env("TILES_CACHE_DIR", cache)
             .env("TILES_THEME", tiles_engine::Theme::default().name())
             .env("TERM", "xterm-256color")
             .env_remove("TERM_PROGRAM")
             .env_remove("TILES_SCALE")
             .env_remove("TMUX");
-        for (k, v) in env {
+        for (k, v) in env.iter().filter(|(k, _)| *k != "TILES_CACHE_DIR") {
             cmd = cmd.env(k, v);
         }
         let child = cmd.spawn(pts).unwrap();
@@ -113,9 +117,10 @@ impl Pane {
             }
             assert!(
                 Instant::now() < deadline,
-                "no {:?} in {} bytes",
+                "no {:?} in {} bytes, ending {:?}",
                 String::from_utf8_lossy(needle),
-                self.seen.len()
+                self.seen.len(),
+                String::from_utf8_lossy(&self.seen[self.seen.len().saturating_sub(300)..])
             );
             if let Ok(chunk) = self.chunks.recv_timeout(Duration::from_millis(100)) {
                 self.seen.extend_from_slice(&chunk);
@@ -178,7 +183,10 @@ impl Dashboard {
     fn new() -> Self {
         let json = std::fs::read_to_string(fixture("dashboard.json")).unwrap();
         let painter = tiles_mcp::card::EnginePainter::new().unwrap();
-        let call = tiles_mcp::card::Call::read(&json, &painter).unwrap();
+        let refuse = |_: tiles_mcp::card::Query<'_>, _: Instant| -> Result<_, String> {
+            Err("the fixture holds its rows".into())
+        };
+        let call = tiles_mcp::card::Call::read(&json, &painter, &refuse).unwrap();
         let look = tiles_mcp::card::Look {
             theme: tiles_engine::Theme::default(),
             term_cols: COLS,
@@ -255,6 +263,24 @@ fn first_bar() -> (u32, u32) {
         i32::midpoint(hit.left, hit.right),
         i32::midpoint(hit.top, hit.bottom),
     )
+}
+
+/// The middle of the first mark of the card drawn as `form`, in device
+/// pixels on the pane.
+fn first_mark(board: &Dashboard, form: &str) -> (u32, u32) {
+    let (_, card) = board.card(form);
+    let hit = &tiles_engine::hit::hit_map(&card.scene, board.look.scale)[0];
+    on_pane(
+        card,
+        i32::midpoint(hit.left, hit.right),
+        i32::midpoint(hit.top, hit.bottom),
+    )
+}
+
+/// The update lines of kind `kind` in a trace.
+fn updates<'a>(trace: &'a str, kind: &str) -> Vec<&'a str> {
+    let needle = format!("kind={kind} bytes=");
+    trace.lines().filter(|l| l.contains(&needle)).collect()
 }
 
 /// A pointer an SGR pixel report places at `x`, `y`; the report is 1-based.
@@ -430,6 +456,7 @@ fn sigint_gives_the_screen_back() {
     assert!(out.ends_with(LEAVE));
 }
 
+#[cfg(debug_assertions)]
 #[test]
 fn a_panic_gives_the_screen_back_before_its_message() {
     let mut pane = Pane::start(
@@ -453,6 +480,7 @@ fn a_panic_gives_the_screen_back_before_its_message() {
     );
 }
 
+#[cfg(debug_assertions)]
 #[test]
 fn the_stress_grid_redraws_one_picture_per_scroll_step() {
     let mut pane = Pane::start("stress", &fixture("table-stress.json"), &[]);
@@ -514,4 +542,153 @@ fn a_resize_lays_every_card_out_again_and_draws_it_from_nothing() {
         .find(|l| l.contains("kind=resize bytes"))
         .unwrap();
     assert!(resize.ends_with("cards=9"), "{resize}");
+}
+
+// ADR-065: a click on a legend entry hides its series on that card only,
+// and `r` shows it again.
+#[test]
+fn a_legend_click_hides_its_series_and_r_brings_it_back() {
+    let board = Dashboard::new();
+    let (stacked, card) = board.card("stacked-bar");
+    let legend = board.painter.engine().legend(&card.scene, board.look.scale);
+    let entry = legend
+        .iter()
+        .find(|l| l.label == "Card")
+        .unwrap_or_else(|| panic!("a legend entry for Card in {legend:?}"));
+    let method = stacked.table.index("method").unwrap();
+    assert!(
+        stacked
+            .table
+            .rows
+            .iter()
+            .any(|r| r[method].label() == "Card")
+    );
+    let (x, y) = on_pane(
+        card,
+        i32::midpoint(entry.left, entry.right),
+        i32::midpoint(entry.top, entry.bottom),
+    );
+    let mut pane = Pane::start("legend", &fixture("dashboard.json"), &[]);
+    pane.first_frame();
+    pane.send(&[report(0, x, y, 'M'), report(0, x, y, 'm')].concat());
+    pane.wait_trace("kind=click bytes", 1);
+    pane.send(b"r");
+    pane.wait_trace("kind=reset bytes", 1);
+    pane.send(b"q");
+    let (status, out, trace) = pane.finish();
+    assert!(status.success(), "{status:?}");
+    let clicks = updates(&trace, "click");
+    assert!(
+        clicks[0].ends_with("cards=1"),
+        "only the stacked bars: {trace}"
+    );
+    assert!(has(&out, b"1 hidden"), "the status line counts it");
+    assert!(updates(&trace, "reset")[0].ends_with("cards=1"), "{trace}");
+}
+
+// ADR-065: `s` steps the order of the card under the pointer, sending that
+// card alone; a card that ranks itself says so and sends nothing.
+#[test]
+fn s_sorts_the_card_under_the_pointer_and_a_ranked_card_says_it_keeps_its_order() {
+    let board = Dashboard::new();
+    let column = first_mark(&board, "column");
+    let bar = first_mark(&board, "bar");
+    let mut pane = Pane::start("sort", &fixture("dashboard.json"), &[]);
+    let first = pane.first_frame();
+    pane.send(&report(35, column.0, column.1, 'M'));
+    let hovered = pane.wait_from(first, b"\x1b[?2026l");
+    pane.send(b"s");
+    pane.wait_trace("kind=sort bytes", 1);
+    // The fixture's columns stand largest first already, so the first step
+    // is smallest first.
+    let sorted = pane.wait_from(hovered, b"smallest first");
+    pane.send(&report(35, bar.0, bar.1, 'M'));
+    pane.wait_from(sorted, b"\x1b[?2026l");
+    pane.send(b"s");
+    pane.wait_trace("kind=sort bytes", 2);
+    pane.send(b"q");
+    let (status, out, trace) = pane.finish();
+    assert!(status.success(), "{status:?}");
+    let sorts = updates(&trace, "sort");
+    assert!(sorts[0].ends_with("cards=1"), "{trace}");
+    assert!(sorts[1].ends_with("cards=0"), "{trace}");
+    assert!(has(&out, b"a bar keeps its own order"));
+}
+
+// ADR-065: `d` on a card whose rows came with the call names what a drill
+// needs and asks no source.
+#[test]
+fn d_on_a_card_with_rows_of_its_own_says_what_a_drill_needs() {
+    let board = Dashboard::new();
+    let (x, y) = first_mark(&board, "column");
+    let mut pane = Pane::start("drill", &fixture("dashboard.json"), &[]);
+    let first = pane.first_frame();
+    pane.send(&report(35, x, y, 'M'));
+    pane.wait_from(first, b"\x1b[?2026l");
+    pane.send(b"d");
+    pane.wait_trace("kind=drill bytes", 1);
+    pane.send(b"q");
+    let (status, out, trace) = pane.finish();
+    assert!(status.success(), "{status:?}");
+    assert!(updates(&trace, "drill")[0].ends_with("cards=0"), "{trace}");
+    assert!(has(&out, b"Omni date field"));
+}
+
+// ADR-065: a card id opens the call the chart tool drew it from.
+#[test]
+fn a_card_id_opens_the_call_its_card_was_drawn_from() {
+    let dir = std::env::temp_dir().join(format!("tiles-pane-saved-card-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let cache = dir.join("cache");
+    let call = dir.join("call.json");
+    std::fs::write(
+        &call,
+        r#"{"v":1,"form":"column","title":"Germany places the most orders",
+        "claim":{"kind":"rank","tone":"good"},"fields":{"x":"region","y":"orders"},
+        "highlight":["Germany"],"data":{"rows":[{"region":"Germany","orders":5},
+        {"region":"France","orders":3},{"region":"Spain","orders":2}]}}"#,
+    )
+    .unwrap();
+    let drawn = std::process::Command::new(TILES)
+        .args(["card", call.to_str().unwrap()])
+        .env("TILES_CACHE_DIR", &cache)
+        .env_remove("TILES_OMNI_URL")
+        .env_remove("TILES_OMNI_API_KEY")
+        .output()
+        .unwrap();
+    assert!(drawn.status.success(), "{drawn:?}");
+    let reply: serde_json::Value = serde_json::from_slice(&drawn.stdout).unwrap();
+    let id = reply["card"].as_str().unwrap().to_string();
+    let cache = cache.to_str().unwrap().to_string();
+    let mut pane = Pane::start(
+        "card-id",
+        Path::new(&id),
+        &[("TILES_CACHE_DIR", cache.as_str())],
+    );
+    pane.first_frame();
+    pane.send(b"q");
+    let (status, out, trace) = pane.finish();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(status.success(), "{status:?}");
+    assert!(has(&out, format!("card {id}").as_bytes()));
+    assert!(trace.contains("kind=first bytes="), "{trace}");
+    assert!(trace.contains("cards=1"), "{trace}");
+}
+
+#[test]
+fn a_missing_card_id_is_refused_in_one_line() {
+    let dir = std::env::temp_dir().join(format!("tiles-pane-no-card-{}", std::process::id()));
+    let out = std::process::Command::new(TILES)
+        .args(["pane", "abc123"])
+        .env("TILES_CACHE_DIR", &dir)
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(out.stdout, b"");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr),
+        "tiles pane: no card abc123 in the cache, or it was drawn before Tiles kept calls\n"
+    );
 }
