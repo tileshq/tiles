@@ -29,6 +29,8 @@ The [definition of done](docs/definition-of-done.md) lists what every pull reque
 - the fuzz targets ([fuzz/README.md](fuzz/README.md))
 - the formal proofs, `sh verify/formal/painter/check.sh` and `sh verify/formal/kitty/check.sh` ([ADR-026](docs/adr/ADR-026-formal-verification.md))
 
+A push to any branch other than main runs rustfmt, clippy and the add-ons' node tests (`.github/workflows/branch.yml`); a pull request runs every gate. On a pull request from a fork whose author has no write access, CI runs only `policy` and `secrets` at first, and the `full suite` check fails, naming the `full-ci` label, until a maintainer adds that label when they pick the pull request up for review. That failure is expected and needs nothing from you. Adding the label runs every gate, and every later push runs them again ([ADR-064](docs/adr/ADR-064-ci-runs-in-parallel-and-skips-what-a-change-cannot-reach.md)).
+
 Every byte Tiles writes to a terminal comes from `crates/tiles-term`; a new output path joins the hostile-corpus tests over `fixtures/hostile/text.json`. A change to a chart form or the engine is also driven through the real `tiles` CLI with the `verify-tiles` skill in `.agents/skills/`.
 
 ## Decisions

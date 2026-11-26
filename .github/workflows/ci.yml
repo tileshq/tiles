@@ -1,16 +1,32 @@
-# The merge gates (ADR-007). Every job must pass before a PR merges.
+# The merge gates (ADR-007, ADR-064). Every gate must pass before a PR merges.
+# A gate split into parallel jobs reports under its own check name through a
+# final job that fails when any of its parts failed or was cancelled, so the
+# ruleset's required names stay the same.
 name: CI
 
 on:
   pull_request:
+    # labeled lets a maintainer's full-ci label start an outside pull
+    # request's full suite (ADR-064). Any other label runs the whole workflow
+    # again, as a push would: a run that skipped its jobs would publish
+    # skipped checks over the ones it replaced and hide a failure.
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
+  # Once a day every job runs on main and saves its cache, the only caches a
+  # pull request can restore; a push to main skips the heavy jobs (ADR-055)
+  # and saves none (ADR-064).
+  schedule:
+    - cron: "37 4 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A newer push to the same branch or pull request cancels the older run. The
+# event name keeps the daily run on main apart from pushes to main.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -50,15 +66,75 @@ jobs:
           BEFORE: ${{ github.event.before }}
         run: python3 scripts/ci-main-gate.py
 
-  rust:
-    name: rust (${{ matrix.os }})
-    needs: main-gate
-    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+  # Decides which jobs this run may skip (ADR-064): a change to docs text
+  # alone skips the build, fuzz and formal jobs, a change to docs text and
+  # add-ons alone skips fuzz and formal, and an outside pull request without
+  # the full-ci label runs only policy and secrets. Only an output of `true`
+  # skips a job, so a crash, which leaves no output, runs everything.
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      outside: ${{ steps.decide.outputs.outside }}
+      skip-build: ${{ steps.decide.outputs.skip-build }}
+      skip-deep: ${{ steps.decide.outputs.skip-deep }}
+    steps:
+      # Two commits: a pull request's merge commit and main, its first parent.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - id: decide
+        name: Skip only what the changed files cannot reach
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci-plan.py
+
+  # The rust gate runs as two jobs on each system, at once: rustfmt and
+  # clippy, and the tests. macOS runs only these, as before; its rustfmt and
+  # installer steps are the ones it ran before the split (ADR-064).
+  rust-lint:
+    name: rust lint (${{ matrix.os }})
+    needs: [main-gate, plan]
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' && needs.plan.outputs.skip-build != 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        # macOS minutes cost ten times Linux minutes on a private repository,
-        # so macOS runs only this job.
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - name: Install Skia's system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libfontconfig1-dev libfreetype-dev
+      # Caches the registry, build output and the downloaded Skia archive.
+      # Only main saves, so pull requests restore the daily run's cache.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: clippy
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy, warnings as errors
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  rust-test:
+    name: rust test (${{ matrix.os }})
+    needs: [main-gate, plan]
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' && needs.plan.outputs.skip-build != 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
         os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
@@ -69,12 +145,10 @@ jobs:
       - name: Install Skia's system libraries
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libfontconfig1-dev libfreetype-dev
-      # Caches the registry, build output and the downloaded Skia archive.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - name: rustfmt
-        run: cargo fmt --all --check
-      - name: clippy, warnings as errors
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        with:
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: tests
         run: cargo test --workspace --locked
       - name: installer (macOS only; skips on Linux)
@@ -82,11 +156,41 @@ jobs:
       - name: installer package (macOS only; skips on Linux)
         run: sh scripts/test_package.sh
 
+  # The rust gate's check on each system, the name the ruleset requires. It
+  # runs even when its jobs skip, since a skipped matrix job publishes no
+  # check under its system's name, and fails when either job failed or was
+  # cancelled on either system.
+  rust:
+    name: rust (${{ matrix.os }})
+    needs: [rust-lint, rust-test]
+    if: ${{ always() }}
+    strategy:
+      # Each system's check reports its own verdict; without this a failing
+      # leg cancels the other and leaves its required check cancelled.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: rust lint and rust test passed or skipped
+        env:
+          LINT: ${{ needs.rust-lint.result }}
+          TEST: ${{ needs.rust-test.result }}
+        run: |
+          echo "rust lint: $LINT; rust test: $TEST (on both systems; their own checks name the system)."
+          for result in "$LINT" "$TEST"; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::A rust lint or rust test job did not pass."; exit 1 ;;
+            esac
+          done
+
   # The release job's build and binary check (ADR-022), on Linux so every PR
   # proves the forms and tokens stay sealed and no source path leaks.
   release-binary:
-    needs: main-gate
-    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+    needs: [main-gate, plan]
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' && needs.plan.outputs.skip-build != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -98,6 +202,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: release-binary
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # A release stamps its tag's version; any version but 0.0.0 turns on
       # the daily update check (ADR-032), which the no-network job needs live.
       - name: Build as the release job does
@@ -111,10 +216,9 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-
   adapters:
-    needs: main-gate
-    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+    needs: [main-gate, plan]
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' && needs.plan.outputs.outside != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -197,46 +301,71 @@ jobs:
       - name: The policy scripts catch what they exist to catch
         run: python3 -m unittest scripts/test_policy_scripts.py
 
-  # Every parser of untrusted input under libFuzzer for 60 s each, from the
-  # committed seed corpus (ADR-009, ADR-024). A crash fails the job and its
+  # Every parser of untrusted input under libFuzzer and AddressSanitizer for
+  # 60 s, from the committed seed corpus (ADR-009, ADR-024), one job per
+  # target at once (ADR-064). The list is every file in fuzz/fuzz_targets/,
+  # which scripts/test_policy_scripts.py checks. A crash fails the job and its
   # input is kept as an artifact.
-  fuzz:
-    needs: main-gate
-    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+  fuzz-target:
+    name: fuzz (${{ matrix.target }})
+    needs: [main-gate, plan]
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' && needs.plan.outputs.skip-deep != 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [block, intent, pane_input, terminal_replies, terminal_stream, warehouse_source]
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     env:
       NIGHTLY: nightly-2026-10-01
+      TARGET: ${{ matrix.target }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the pinned toolchain and a dated nightly for the sanitizer
         run: rustup toolchain install && rustup toolchain install "$NIGHTLY" --profile minimal
+      # One cache for every target: the sanitized dependencies and cargo-fuzz
+      # itself, in ~/.cargo/bin.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          key: fuzz
+          shared-key: fuzz
           workspaces: fuzz
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install cargo-fuzz
         run: command -v cargo-fuzz >/dev/null || cargo install cargo-fuzz --version 0.13.2 --locked
-      - name: Fuzz each parser for 60 seconds
-        run: |
-          for file in fuzz/fuzz_targets/*.rs; do
-            target="$(basename "$file" .rs)"
-            cargo "+$NIGHTLY" fuzz run "$target" "fuzz/corpus/$target" -- -max_total_time=60
-          done
+      - name: Fuzz the parser for 60 seconds
+        run: cargo "+$NIGHTLY" fuzz run "$TARGET" "fuzz/corpus/$TARGET" -- -max_total_time=60
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
-          name: fuzz-crashes
+          name: fuzz-crashes-${{ matrix.target }}
           path: fuzz/artifacts
           if-no-files-found: ignore
+
+  # The fuzz gate's check, the name the ruleset requires: fails when any
+  # target's job failed or was cancelled.
+  fuzz:
+    needs: fuzz-target
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every fuzz target passed or skipped
+        env:
+          RESULT: ${{ needs.fuzz-target.result }}
+        run: |
+          echo "fuzz targets: $RESULT"
+          case "$RESULT" in
+            success|skipped) ;;
+            *) echo "::error::A fuzz target's job did not pass; its own check names the target."; exit 1 ;;
+          esac
 
   # The formal proofs (ADR-026): the painter's TLA+ model under TLC, which
   # fails the job on a counterexample, and the Kani proofs of the kitty
   # payload encoder, whose install and run may fail without blocking a PR
   # until two green runs show their runtime.
   formal:
-    needs: main-gate
-    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' }}
+    needs: [main-gate, plan]
+    if: ${{ !cancelled() && needs.main-gate.outputs.skip != 'true' && needs.plan.outputs.skip-deep != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -302,3 +431,56 @@ jobs:
       - name: The tree
         run: '"$GITLEAKS" dir --no-banner --redact --exit-code 1 .'
 
+  # The outside pull request gate (ADR-064): one check that fails until an
+  # outside pull request has the full-ci label, and fails whenever a job
+  # failed or was cancelled. Every other job skips on an outside pull request
+  # but policy and secrets, and a skipped job satisfies a required check, so
+  # the ruleset requires this one too. It reads the pull request itself
+  # rather than the plan job's output, so a plan that fails cannot open it.
+  full-suite:
+    name: full suite
+    needs: [plan, rust-lint, rust-test, rust, release-binary, adapters, no-network, policy, fuzz-target, fuzz, formal, secrets]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require the full-ci label on an outside pull request, and passing jobs
+        env:
+          FULL: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'MEMBER' || github.event.pull_request.author_association == 'COLLABORATOR' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          if [ "$FULL" != true ]; then
+            echo "::error::An outside pull request runs the full suite only after a maintainer adds the full-ci label (CONTRIBUTING.md)."
+            exit 1
+          fi
+          if [ "$FAILED" = true ]; then
+            echo "::error::A job failed or was cancelled; see the failed jobs in this run."
+            exit 1
+          fi
+          echo "Every job passed or skipped by plan."
+
+  # Warns, never fails, when a job ran longer than the budget (ADR-064): three
+  # minutes, above the slowest job measured before the split but fuzz, so a
+  # warning marks a job that has grown and should be split or sped up.
+  budget:
+    name: time budget
+    needs: [plan, rust-lint, rust-test, release-binary, adapters, no-network, policy, fuzz-target, formal, secrets]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci-budget.py
+          sparse-checkout-cone-mode: false
+      - name: Warn about any job over three minutes
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUDGET_SECONDS: "180"
+        run: python3 scripts/ci-budget.py
