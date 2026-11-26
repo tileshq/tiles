@@ -31,6 +31,7 @@ use std::time::{Duration, Instant};
 use tiles_engine::{Moment, Scene};
 use tiles_intent::{Intent, one_line};
 use tiles_mcp::card::{Call, EnginePainter, Look, Tile};
+use tiles_term::detect::Terminal;
 use tiles_term::input::{Event, Key, MouseKind, Parser};
 use tiles_term::{kitty, pane};
 
@@ -161,6 +162,8 @@ struct App {
     painter: EnginePainter,
     content: Content,
     look: Look,
+    /// The terminal detected at start, for reading a new cell size.
+    terminal: Terminal,
     /// One cell in device pixels.
     cell: (u16, u16),
     /// The terminal's rows and columns.
@@ -338,7 +341,7 @@ impl App {
                     text,
                     " · rows {}–{} of {}, wheel scrolls",
                     offset + 1,
-                    offset + STRESS_ROWS.min(rows.len()),
+                    (offset + STRESS_ROWS.min(rows.len()) - 1) % rows.len() + 1,
                     rows.len()
                 );
             }
@@ -475,7 +478,9 @@ impl App {
     /// scene changed.
     fn click(&mut self, x: u32, y: u32) -> Result<Option<Update>, String> {
         let Content::Dashboard {
-            call, selection, ..
+            call,
+            intents: shown,
+            selection,
         } = &self.content
         else {
             return Ok(None);
@@ -485,25 +490,16 @@ impl App {
             let hit = board::hit_index(&slot.hits, dx, dy)?;
             Some((slot.intent?, slot.hits[hit].row?))
         });
-        let picked = target.and_then(|(card, row)| {
-            let others: Vec<&Intent> = call
-                .intents
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| *i != card)
-                .map(|(_, i)| i)
-                .collect();
-            board::choose(&call.intents[card], row, &others, card)
-        });
+        let picked = target.and_then(|(card, row)| board::pick(shown, card, row));
         let next = if picked == *selection { None } else { picked };
         if next.is_none() && selection.is_none() {
             return Ok(None);
         }
-        let intents = board::apply(&call.intents, next.as_ref());
+        let wanted = board::apply(&call.intents, next.as_ref());
         self.begin("click");
         let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
         self.drop_overlay(&mut bytes);
-        let cards = self.relay(&intents, &mut bytes)?;
+        let (intents, cards) = self.relay(wanted, &mut bytes)?;
         if let Content::Dashboard {
             intents: shown,
             selection,
@@ -520,10 +516,16 @@ impl App {
 
     /// Lays out again each card whose intent `intents` changes, in its own
     /// slot, and sends those whose scene changed. A card that refuses its
-    /// filtered rows keeps its picture and names itself on the status line.
-    fn relay(&mut self, intents: &[Intent], bytes: &mut Vec<u8>) -> Result<usize, String> {
+    /// filtered rows keeps its picture and its intent, and names itself on
+    /// the status line. Returns the intents the cards now show, and how
+    /// many cards it sent.
+    fn relay(
+        &mut self,
+        mut intents: Vec<Intent>,
+        bytes: &mut Vec<u8>,
+    ) -> Result<(Vec<Intent>, usize), String> {
         let Content::Dashboard { intents: shown, .. } = &self.content else {
-            return Ok(0);
+            return Ok((intents, 0));
         };
         let look = self.look;
         let mut changed = Vec::new();
@@ -547,9 +549,16 @@ impl App {
             match self.painter.lay_card(&tile, &look, align) {
                 Ok(scene) if scene != slot.scene => changed.push((i, scene)),
                 Ok(_) => {}
-                Err(_) => refused.push(intents[k].title.clone()),
+                Err(_) => refused.push(k),
             }
         }
+        let refused: Vec<String> = refused
+            .into_iter()
+            .map(|k| {
+                intents[k] = shown[k].clone();
+                intents[k].title.clone()
+            })
+            .collect();
         self.note = (!refused.is_empty()).then(|| {
             format!(
                 "{} kept its rows: they cannot be drawn filtered",
@@ -562,7 +571,7 @@ impl App {
             self.slots[i].scene = scene;
             self.replace(i, "click", bytes)?;
         }
-        Ok(cards)
+        Ok((intents, cards))
     }
 
     /// The stress grid moved `by` rows.
@@ -650,9 +659,13 @@ impl App {
                     }
                 }
                 Event::Key(Key::Char('q') | Key::Interrupt | Key::EndOfInput) => return Ok(false),
-                Event::CellSize { width, height } if (width, height) != self.cell => {
-                    self.cell = (width, height);
-                    self.resize()?;
+                Event::CellSize { width, height } => {
+                    let cell = cell_of(self.terminal, Some((width, height)), self.look.scale)
+                        .unwrap_or(self.cell);
+                    if cell != self.cell {
+                        self.cell = cell;
+                        self.resize()?;
+                    }
                 }
                 _ => {}
             }
@@ -683,6 +696,12 @@ impl App {
         let u = self.draw_all("resize")?;
         self.send("resize", &u)
     }
+}
+
+/// One cell in device pixels, from the terminal's `CSI 16 t` reply or the
+/// window size, read as start-up reads it.
+fn cell_of(terminal: Terminal, reply: Option<(u16, u16)>, scale: f32) -> Option<(u16, u16)> {
+    tiles_term::detect::cell_px(terminal, reply, screen::window_cell(), scale).map(|(c, _)| c)
 }
 
 /// The cells a height in CSS pixels covers, for cells `cell` CSS pixels
@@ -722,11 +741,8 @@ fn run(args: &[String], started: Instant) -> Result<(), String> {
     let look = tiles_mcp::look_from_env(&crate::serve::env);
     let size = screen::size();
     let env = |k: &str| std::env::var(k).ok();
-    let terminal = tiles_term::detect::detect(&env, None)
-        .map_or(tiles_term::detect::Terminal::Unknown, |d| d.terminal);
-    let cell =
-        tiles_term::detect::cell_px(terminal, probed.cell, screen::window_cell(), look.scale)
-            .map_or((16, 32), |(c, _)| c);
+    let terminal = tiles_term::detect::detect(&env, None).map_or(Terminal::Unknown, |d| d.terminal);
+    let cell = cell_of(terminal, probed.cell, look.scale).unwrap_or((16, 32));
     let mut setup = pane::MOUSE.to_string();
     if probed.pixels {
         setup.push_str(pane::PIXEL_MOUSE);
@@ -752,6 +768,7 @@ fn run(args: &[String], started: Instant) -> Result<(), String> {
         painter,
         content,
         look,
+        terminal,
         cell,
         size,
         pixels: probed.pixels,
@@ -794,7 +811,7 @@ fn serve(app: &mut App, signals: &screen::Signals, probed: screen::Probed) -> Re
                 screen::write(pane::CELL_SIZE.as_bytes())?;
                 app.cell
             } else {
-                screen::window_cell().unwrap_or(app.cell)
+                cell_of(app.terminal, None, app.look.scale).unwrap_or(app.cell)
             };
             if (now, cell) != (app.size, app.cell) {
                 app.size = now;

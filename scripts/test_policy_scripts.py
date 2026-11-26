@@ -1120,10 +1120,6 @@ class NoNetwork(unittest.TestCase):
         self.assertNotIn("no-network:", off.stderr)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 PANE_TRACE = """\
 5.0 start terminal=ghostty pixels=yes cell=16x34 scale=2
 5.5 begin update=1 kind=first
@@ -1195,3 +1191,7 @@ class PaneTrace(unittest.TestCase):
         self.assertEqual(pane_trace.p95(list(range(1, 101))), 95)
         self.assertEqual(pane_trace.p95([7.0]), 7.0)
         self.assertIsNone(pane_trace.p95([]))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -70,6 +70,20 @@ pub fn choose(intent: &Intent, row: usize, others: &[&Intent], card: usize) -> O
     first
 }
 
+/// What a click on `row` of card `card` selects, read from `shown`, the
+/// intents the cards were last drawn from: a hit's row counts into the
+/// card's table as drawn, filtered or not.
+#[must_use]
+pub fn pick(shown: &[Intent], card: usize, row: usize) -> Option<Selection> {
+    let others: Vec<&Intent> = shown
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != card)
+        .map(|(_, i)| i)
+        .collect();
+    choose(shown.get(card)?, row, &others, card)
+}
+
 /// `intent` with only the rows whose `column` reads `value`, and only the
 /// highlights those rows still hold; `None` when it has no such column,
 /// so the card stays as it is.
@@ -152,7 +166,7 @@ pub fn hit_index(hits: &[Hit], x: i32, y: i32) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Selection, Slot, apply, choose, filtered, hit_index, slot_at};
+    use super::{Selection, Slot, apply, choose, filtered, hit_index, pick, slot_at};
     use tiles_engine::hit::Hit;
     use tiles_intent::Intent;
 
@@ -225,6 +239,22 @@ mod tests {
         assert_eq!(out[1].table.rows.len(), 2);
         assert_eq!(out[2], base[2]);
         assert_eq!(apply(&base, None), base);
+    }
+
+    #[test]
+    fn a_click_on_a_filtered_card_reads_the_row_it_drew() {
+        let base = vec![by_region(), by_month(), quarters()];
+        let france = pick(&base, 0, 1).unwrap();
+        assert_eq!(france.value, "France");
+        let shown = apply(&base, Some(&france));
+        // The lines now hold France's rows only; their first is France, Jan.
+        let s = pick(&shown, 1, 0).unwrap();
+        assert_eq!(
+            (s.card, s.column.as_str(), s.value.as_str()),
+            (1, "region", "France")
+        );
+        assert_eq!(pick(&shown, 1, 2), None, "past the drawn rows");
+        assert_eq!(pick(&shown, 9, 0), None);
     }
 
     fn slot(at: (u16, u16), cells: (u16, u16)) -> Slot {
