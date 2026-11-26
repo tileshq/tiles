@@ -692,3 +692,64 @@ fn a_missing_card_id_is_refused_in_one_line() {
         "tiles pane: no card abc123 in the cache, or it was drawn before Tiles kept calls\n"
     );
 }
+
+// Definition of done 20: a refusal before the pane takes the screen goes
+// to stderr in one clean line, whatever hostile text it echoes.
+#[test]
+fn a_refusal_that_echoes_hostile_text_is_one_clean_line() {
+    let dir = std::env::temp_dir().join(format!("tiles-pane-hostile-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let corpus: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/hostile/text.json"
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    let call = dir.join("call.json");
+    // A NUL can be neither an argument nor a path.
+    for e in corpus["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e.as_str().unwrap())
+        .filter(|e| !e.contains('\0'))
+    {
+        std::fs::write(
+            &call,
+            serde_json::json!({
+                "v": 1, "form": "column", "title": "Orders by region",
+                "fields": {"x": e, "y": "orders"},
+                "data": {"rows": [{"region": "Germany", "orders": 5}]}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let flag = format!("-{e}");
+        for arg in [e, flag.as_str(), call.to_str().unwrap()] {
+            let out = std::process::Command::new(TILES)
+                .args(["pane", arg])
+                .env("TILES_CACHE_DIR", dir.join("cache"))
+                .env_remove("TILES_OMNI_URL")
+                .env_remove("TILES_OMNI_API_KEY")
+                .stdin(std::process::Stdio::null())
+                .output()
+                .unwrap();
+            let err = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(out.status.code(), Some(1), "{e:?} {arg:?}: {err:?}");
+            assert_eq!(out.stdout, b"", "{e:?} {arg:?}");
+            assert!(err.starts_with("tiles pane: "), "{e:?} {arg:?}: {err:?}");
+            assert_eq!(err.matches('\n').count(), 1, "{e:?} {arg:?}: {err:?}");
+            assert!(err.ends_with('\n'), "{e:?} {arg:?}: {err:?}");
+            assert!(
+                !err.trim_end_matches('\n')
+                    .chars()
+                    .any(tiles_intent::forbidden),
+                "{e:?} {arg:?}: {err:?}"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
