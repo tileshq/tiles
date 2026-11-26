@@ -722,17 +722,33 @@ impl App<'_> {
             return Err("not a dashboard".into());
         };
         next.redrilled(state);
+        let asked = next.filter.clone();
         let wanted = next.apply(&call.intents);
         self.begin(kind);
         let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
-        let (intents, cards, refused) = self.relay(wanted, &mut bytes)?;
+        let (mut intents, mut cards, refused) = self.relay(wanted, &mut bytes)?;
+        let Content::Dashboard {
+            call, shown, state, ..
+        } = &mut self.content
+        else {
+            return Err("not a dashboard".into());
+        };
+        next.keep(state, &refused);
+        if next.filter != asked {
+            let wanted = next.apply(&call.intents);
+            *shown = intents;
+            let refusal = self.note.take();
+            let (again, more, _) = self.relay(wanted, &mut bytes)?;
+            self.note = refusal.or(self.note.take());
+            intents = again;
+            cards += more;
+        }
         if self.note.is_none() {
             self.note = note;
         }
         let target = self.pointer.and_then(|(x, y)| self.target(x, y));
         self.set_overlay(target, kind, &mut bytes)?;
         if let Content::Dashboard { shown, state, .. } = &mut self.content {
-            next.keep(state, &refused);
             *shown = intents;
             *state = next;
         }
@@ -1313,8 +1329,12 @@ mod tests {
                 .is_err(),
             "the month's highlight is no week of the drilled card"
         );
+        refused.redrilled(&clicked);
         refused.keep(&clicked, &[0]);
-        assert_eq!(refused, clicked, "a refused card keeps its level");
+        assert_eq!(
+            refused, clicked,
+            "a refused drill keeps its level and the selection made on its card"
+        );
 
         next.redrilled(&clicked);
         assert_eq!(next.filter, None, "the drilled period is the whole card");
