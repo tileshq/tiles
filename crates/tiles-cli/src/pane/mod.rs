@@ -664,7 +664,7 @@ impl App<'_> {
             within: within.pop().unwrap_or_default(),
             intent,
         });
-        self.restate(next, "drill", Some(note)).map(Some)
+        self.redraw_drill(next, card, Some(note))
     }
 
     /// `u`: takes the card under the pointer one drill level back up.
@@ -685,7 +685,29 @@ impl App<'_> {
                 next.drills.remove(&card);
             }
         }
-        self.restate(next, "drill", None).map(Some)
+        self.redraw_drill(next, card, None)
+    }
+
+    /// Draws `next`, in which card `card` went one drill level down or up,
+    /// when the card lays out at that level in its slot; else says so on
+    /// the status line and changes nothing.
+    fn redraw_drill(
+        &mut self,
+        next: State,
+        card: usize,
+        note: Option<String>,
+    ) -> Result<Option<Update>, String> {
+        let Content::Dashboard { call, state, .. } = &self.content else {
+            return Ok(None);
+        };
+        let slot = self.slots.iter().find(|s| s.intent == Some(card));
+        let laid = redrill(call, state, next, card, |i| {
+            slot.is_none_or(|s| self.lay(s, i).is_some())
+        });
+        match laid {
+            Ok(next) => self.restate(next, "drill", note).map(Some),
+            Err(e) => Ok(Some(self.say("drill", e))),
+        }
     }
 
     /// `r`: clears everything picked.
@@ -718,43 +740,42 @@ impl App<'_> {
         kind: &str,
         note: Option<String>,
     ) -> Result<Update, String> {
-        let Content::Dashboard { call, state, .. } = &self.content else {
+        let Content::Dashboard { call, .. } = &self.content else {
             return Err("not a dashboard".into());
         };
-        next.redrilled(state);
-        let asked = next.filter.clone();
         let wanted = next.apply(&call.intents);
         self.begin(kind);
         let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
-        let (mut intents, mut cards, refused) = self.relay(wanted, &mut bytes)?;
-        let Content::Dashboard {
-            call, shown, state, ..
-        } = &mut self.content
-        else {
-            return Err("not a dashboard".into());
-        };
-        next.keep(state, &refused);
-        if next.filter != asked {
-            let wanted = next.apply(&call.intents);
-            *shown = intents;
-            let refusal = self.note.take();
-            let (again, more, _) = self.relay(wanted, &mut bytes)?;
-            self.note = refusal.or(self.note.take());
-            intents = again;
-            cards += more;
-        }
+        let (intents, cards, refused) = self.relay(wanted, &mut bytes)?;
         if self.note.is_none() {
             self.note = note;
         }
         let target = self.pointer.and_then(|(x, y)| self.target(x, y));
         self.set_overlay(target, kind, &mut bytes)?;
         if let Content::Dashboard { shown, state, .. } = &mut self.content {
+            next.keep(state, &refused);
             *shown = intents;
             *state = next;
         }
         bytes.extend(self.status_bytes());
         bytes.extend(pane::END_UPDATE.as_bytes());
         Ok(Update { bytes, cards })
+    }
+
+    /// `intent` laid out in `slot` as the pane placed it there, or `None`
+    /// when the engine refuses it or the slot holds no card.
+    fn lay(&self, slot: &Slot, intent: &Intent) -> Option<Scene> {
+        let look = self.look;
+        let tile = Tile {
+            intent,
+            cols: slot.cells.0,
+            key: "",
+        };
+        let align = tiles_engine::Align {
+            min_height: f32::from(slot.cells.1) * look.cell_height_css(),
+            ..slot.align?
+        };
+        self.painter.lay_card(&tile, &look, align).ok()
     }
 
     /// Lays out again each card whose intent `intents` changes, in its own
@@ -774,25 +795,16 @@ impl App<'_> {
         let mut changed = Vec::new();
         let mut refused = Vec::new();
         for (i, slot) in self.slots.iter().enumerate() {
-            let (Some(k), Some(align)) = (slot.intent, slot.align) else {
+            let (Some(k), Some(_)) = (slot.intent, slot.align) else {
                 continue;
             };
             if intents[k] == shown[k] {
                 continue;
             }
-            let tile = Tile {
-                intent: &intents[k],
-                cols: slot.cells.0,
-                key: "",
-            };
-            let align = tiles_engine::Align {
-                min_height: f32::from(slot.cells.1) * look.cell_height_css(),
-                ..align
-            };
-            match self.painter.lay_card(&tile, &look, align) {
-                Ok(scene) if scene != slot.scene => changed.push((i, scene)),
-                Ok(_) => {}
-                Err(_) => refused.push(k),
+            match self.lay(slot, &intents[k]) {
+                Some(scene) if scene != slot.scene => changed.push((i, scene)),
+                Some(_) => {}
+                None => refused.push(k),
             }
         }
         let titles: Vec<String> = refused
@@ -975,6 +987,29 @@ fn drilled(
     intent.notes.extend(fetched.notes);
     painter.mend(&mut intent);
     Ok(intent)
+}
+
+/// `next`, in which card `card` went one drill level down or up from
+/// `state`, without the selection made on that card, when `draws` accepts
+/// the card it then draws; else the note that the card cannot be drawn.
+fn redrill(
+    call: &Call,
+    state: &State,
+    mut next: State,
+    card: usize,
+    draws: impl FnOnce(&Intent) -> bool,
+) -> Result<State, String> {
+    next.redrilled(state);
+    let cards = next.apply(&call.intents);
+    let intent = cards.get(card).ok_or("no such card")?;
+    if draws(intent) {
+        Ok(next)
+    } else {
+        Err(format!(
+            "{} kept its picture: it cannot be drawn at that period",
+            intent.title
+        ))
+    }
 }
 
 /// A planned drill: the request, the periods, the card's title.
@@ -1283,7 +1318,8 @@ mod tests {
     fn a_drill_after_a_click_draws_the_drilled_period_and_a_refusal_keeps_the_level() {
         use super::board;
         use super::state::{Drilled, State};
-        use super::{drilled, plan_drill};
+        use super::{drilled, plan_drill, redrill};
+        use tiles_intent::Intent;
         use tiles_mcp::card::{Call, EnginePainter, Fetched, Look, Query};
         use tiles_omni::replay::{ReplayServer, recorded};
 
@@ -1323,25 +1359,34 @@ mod tests {
             intent: weeks.clone(),
         });
 
-        let mut refused = next.clone();
+        let draws = |i: &Intent| {
+            let mut all = call.intents.clone();
+            all[0] = i.clone();
+            call.lay_out(&all, &painter, &look).is_ok()
+        };
         assert!(
-            call.lay_out(&refused.apply(&call.intents), &painter, &look)
-                .is_err(),
+            !draws(&next.apply(&call.intents)[0]),
             "the month's highlight is no week of the drilled card"
         );
-        refused.redrilled(&clicked);
-        refused.keep(&clicked, &[0]);
-        assert_eq!(
-            refused, clicked,
-            "a refused drill keeps its level and the selection made on its card"
-        );
+        let deeper = redrill(&call, &clicked, next.clone(), 0, draws).unwrap();
+        assert_eq!(deeper.filter, None, "the drilled period is the whole card");
+        assert_eq!(deeper.drills[&0].len(), 1);
+        assert_eq!(deeper.apply(&call.intents), std::slice::from_ref(&weeks));
 
-        next.redrilled(&clicked);
-        assert_eq!(next.filter, None, "the drilled period is the whole card");
-        assert_eq!(next.drills[&0].len(), 1);
-        let drawn = next.apply(&call.intents);
-        assert_eq!(drawn, [weeks]);
-        assert!(call.lay_out(&drawn, &painter, &look).is_ok());
+        let mut undrilled = State {
+            filter: board::pick(&deeper.apply(&call.intents), 0, 1),
+            ..deeper.clone()
+        };
+        assert!(undrilled.filter.is_some());
+        let picked = undrilled.clone();
+        undrilled.drills.clear();
+        let up = redrill(&call, &picked, undrilled, 0, draws).unwrap();
+        assert_eq!(up, State::default(), "going up drops the week picked");
+
+        let mut refused = next;
+        refused.drills.get_mut(&0).unwrap()[0].intent.highlight = vec!["1999-01-01".into()];
+        let err = redrill(&call, &clicked, refused, 0, draws).unwrap_err();
+        assert!(err.contains("cannot be drawn at that period"), "{err}");
         assert!(server.unrecorded().is_empty(), "{:?}", server.unrecorded());
     }
 

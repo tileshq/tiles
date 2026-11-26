@@ -168,15 +168,9 @@ impl State {
 
     /// Gives each card in `refused`, the cards that kept their picture,
     /// its drill levels, hidden series and sort from `prev`, so the state
-    /// records only what the cards draw. A card whose drill level goes
-    /// back also gets back the selection `prev` made on it.
+    /// records only what the cards draw.
     pub fn keep(&mut self, prev: &Self, refused: &[usize]) {
         for &card in refused {
-            if self.depth(card) != prev.depth(card)
-                && prev.filter.as_ref().is_some_and(|f| f.card == card)
-            {
-                self.filter.clone_from(&prev.filter);
-            }
             restore(&mut self.drills, &prev.drills, card);
             restore(&mut self.hidden, &prev.hidden, card);
             restore(&mut self.sorts, &prev.sorts, card);
@@ -565,13 +559,7 @@ mod tests {
                 ..State::default()
             });
             assert_eq!(back.filter.is_some(), kept, "undrill, selection on {card}");
-            next.keep(&prev, &[0]);
-            assert_eq!(next, prev, "a refused drill, selection on {card}");
         }
-        let prev = selected(0);
-        let mut unclicked = State::default();
-        unclicked.keep(&prev, &[0]);
-        assert_eq!(unclicked.filter, None, "a refused click keeps its own pick");
     }
 
     #[test]
