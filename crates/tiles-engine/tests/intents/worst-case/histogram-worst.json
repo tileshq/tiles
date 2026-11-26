@@ -1,0 +1,55 @@
+{
+  "v": 1,
+  "form": "histogram",
+  "title": "Senior Product Design Engineer, Platform Infrastructure, leads every team on hires in 2026",
+  "claim": {
+    "kind": "distribution",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "value",
+    "threshold": "limit"
+  },
+  "unit": "usd",
+  "axis": "Benachrichtigungseinstellungen in USD",
+  "data": {
+    "rows": [
+      {
+        "value": 12345678.9,
+        "limit": 1000000
+      },
+      {
+        "value": 1284000.5,
+        "limit": 1000000
+      },
+      {
+        "value": 1000000,
+        "limit": 1000000
+      },
+      {
+        "value": 1284,
+        "limit": 1000000
+      },
+      {
+        "value": 1,
+        "limit": 1000000
+      },
+      {
+        "value": -1284,
+        "limit": 1000000
+      },
+      {
+        "value": -42.5,
+        "limit": 1000000
+      },
+      {
+        "value": 2500000,
+        "limit": 1000000
+      },
+      {
+        "value": 9000000,
+        "limit": 1000000
+      }
+    ]
+  }
+}

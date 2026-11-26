@@ -1,6 +1,6 @@
 {
   "name": "bullet",
-  "summary": "A value against its target per row: a bar on a track with a target tick.",
+  "summary": "A value against its target per row: a bar on a track with a target tick. Takes an axis title.",
   "layout": "bullet",
   "width": { "min": 44, "max": 64, "per_label_char": 1.2 },
   "roles": [

@@ -1,0 +1,20 @@
+{
+  "name": "box-plot",
+  "summary": "How values spread in each group: a box from the 25th to the 75th percentile with the median across it, whiskers to the furthest values within 1.5 boxes, and dots past them. Send one row per value; Tiles computes the rest. Takes an axis title.",
+  "layout": "boxes",
+  "width": { "min": 48, "max": 72, "per_label_char": 1.2 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the group each value belongs to"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "one value, such as one deal's days to close"
+    }
+  ]
+}

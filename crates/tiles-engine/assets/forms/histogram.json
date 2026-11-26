@@ -1,0 +1,26 @@
+{
+  "name": "histogram",
+  "summary": "How values spread: touching columns counting each bin over a value axis. Send each value and Tiles bins them, or send bin starts in x with counts in y; a threshold draws a dashed rule and colours the bins from it on. Takes an axis title.",
+  "layout": "histogram",
+  "width": { "min": 48, "max": 72 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "number",
+      "required": true,
+      "doc": "each value, such as minutes to first touch, or each bin's start when y gives the counts"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": false,
+      "doc": "the count in each bin, with x as the bin's start; leave it out and Tiles counts the values into bins"
+    },
+    {
+      "name": "threshold",
+      "kind": "number",
+      "required": false,
+      "doc": "a limit the title names, such as an SLA of 15; the first row's number is used, and the bins from it on take the accent"
+    }
+  ]
+}

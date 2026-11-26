@@ -14,8 +14,8 @@ use crate::source::{
     DEFAULT_OMNI_LIMIT, MAX_COLUMNS as MAX_OMNI_FIELDS, MAX_NAME_CHARS, MAX_SQL_BYTES,
 };
 use crate::{
-    ClaimKind, MAX_HIGHLIGHT, MAX_NOTE_CHARS, MAX_ROWS, MAX_SUBTITLE_CHARS, MAX_TEXT_CHARS,
-    MAX_TITLE_CHARS, SCHEMA_VERSION, Tone, Unit,
+    ClaimKind, MAX_AXIS_CHARS, MAX_HIGHLIGHT, MAX_NOTE_CHARS, MAX_ROWS, MAX_SUBTITLE_CHARS,
+    MAX_TEXT_CHARS, MAX_TITLE_CHARS, SCHEMA_VERSION, Tone, Unit,
 };
 
 /// One role a form declares, as the schema describes it.
@@ -189,6 +189,10 @@ pub fn intent_schema(forms: &[FormEntry]) -> Value {
         MAX_NOTE_CHARS,
         "Optional short callout beside the first highlighted mark, such as \"Checkout bug, 4 to 9 Nov\". Needs highlight; refused where it cannot fit",
     );
+    schema["properties"]["axis"] = text(
+        MAX_AXIS_CHARS,
+        "Optional title under a value axis drawn along the bottom, such as \"Minutes\" or \"€ thousand\": what the axis numbers count when unit cannot say it. The forms that draw one say so in the form list",
+    );
     schema
 }
 
@@ -282,7 +286,7 @@ mod tests {
             "v": 1, "form": "column", "title": "Signups dipped in W3", "subtitle": "Weekly",
             "claim": { "kind": "change", "tone": "bad" },
             "fields": { "x": "week", "y": "signups" },
-            "highlight": ["W3"], "unit": "percent", "note": "Checkout bug",
+            "highlight": ["W3"], "unit": "percent", "note": "Checkout bug", "axis": "Signups",
             "data": { "rows": [{ "week": "W3", "signups": 298 }] }
         })
     }
@@ -404,7 +408,7 @@ mod tests {
     #[test]
     fn stated_text_limits_are_the_enforced_limits() {
         let schema = intent_schema(&forms());
-        for key in ["title", "subtitle", "note"] {
+        for key in ["title", "subtitle", "note", "axis"] {
             let max =
                 usize::try_from(schema["properties"][key]["maxLength"].as_u64().unwrap()).unwrap();
             let mut at = full();

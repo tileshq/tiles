@@ -27,6 +27,7 @@ A rule test reads its values from the tokens and fails with the rule's id. `crat
 | T6 | Numbers are easy to read and compare: thousands separators, tabular figures, and no value far below the chart's compact step reads as zero (ADR-049) | test `crates/tiles-engine/tests/rules.rs` · test `crates/tiles-engine/src/format.rs` |
 | T7 | Numbers carry what the measure counts, the intent's unit on every value, tick and tooltip | test `crates/tiles-engine/tests/rules.rs` · test `crates/tiles-engine/src/format.rs` |
 | T8 | Monthly periods read as time, thinned to a calendar step on a point-based axis | test `crates/tiles-engine/tests/rules.rs` |
+| T9 | A value axis along the bottom carries the intent's axis title under its ticks, and a form without one refuses it (ADR-066) | test `crates/tiles-engine/tests/rules.rs` |
 
 ## Colour
 
@@ -56,6 +57,9 @@ A rule test reads its values from the tokens and fails with the rule's id. `crat
 | M11 | A bullet grades its target | test `crates/tiles-engine/tests/rules.rs` |
 | M12 | Shares stack across one full bar, and a share that only rounds to 0 or 100 reads `<1` or `>99` (ADR-051) | test `crates/tiles-engine/tests/rules.rs` |
 | M13 | A lollipop marks the average the intent sends, or the rows' mean when it has two or more rows, and no value label crosses it (ADR-051) | test `crates/tiles-engine/tests/rules.rs` |
+| M14 | A histogram counts every value in touching bins, and a threshold falls on a bin edge so the share past it is exact, or is refused (ADR-066) | test `crates/tiles-engine/tests/rules.rs` |
+| M15 | A box plot draws each group's quartiles and median on one scale, whiskers to the furthest values within Tukey's fences, and a dot for each value past them | test `crates/tiles-engine/tests/rules.rs` |
+| M16 | Range bands nest the inner band and the middle dot inside the outer band, one row per category with its bounds in order | test `crates/tiles-engine/tests/rules.rs` |
 
 ## Motion
 

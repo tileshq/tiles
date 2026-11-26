@@ -1,0 +1,502 @@
+{
+  "v": 1,
+  "form": "box-plot",
+  "title": "Enterprise deals take six times longer to close than SMB deals",
+  "subtitle": "Days from opportunity created to closed-won, last 12 months, 40 deals per segment",
+  "claim": {
+    "kind": "distribution",
+    "tone": "neutral"
+  },
+  "fields": {
+    "x": "segment",
+    "y": "days"
+  },
+  "highlight": [
+    "Enterprise"
+  ],
+  "axis": "Days to close",
+  "data": {
+    "rows": [
+      {
+        "segment": "SMB",
+        "days": 19
+      },
+      {
+        "segment": "SMB",
+        "days": 26
+      },
+      {
+        "segment": "SMB",
+        "days": 19
+      },
+      {
+        "segment": "SMB",
+        "days": 18
+      },
+      {
+        "segment": "SMB",
+        "days": 14
+      },
+      {
+        "segment": "SMB",
+        "days": 19
+      },
+      {
+        "segment": "SMB",
+        "days": 35
+      },
+      {
+        "segment": "SMB",
+        "days": 25
+      },
+      {
+        "segment": "SMB",
+        "days": 33
+      },
+      {
+        "segment": "SMB",
+        "days": 23
+      },
+      {
+        "segment": "SMB",
+        "days": 25
+      },
+      {
+        "segment": "SMB",
+        "days": 23
+      },
+      {
+        "segment": "SMB",
+        "days": 10
+      },
+      {
+        "segment": "SMB",
+        "days": 31
+      },
+      {
+        "segment": "SMB",
+        "days": 26
+      },
+      {
+        "segment": "SMB",
+        "days": 26
+      },
+      {
+        "segment": "SMB",
+        "days": 10
+      },
+      {
+        "segment": "SMB",
+        "days": 10
+      },
+      {
+        "segment": "SMB",
+        "days": 14
+      },
+      {
+        "segment": "SMB",
+        "days": 17
+      },
+      {
+        "segment": "SMB",
+        "days": 24
+      },
+      {
+        "segment": "SMB",
+        "days": 21
+      },
+      {
+        "segment": "SMB",
+        "days": 27
+      },
+      {
+        "segment": "SMB",
+        "days": 16
+      },
+      {
+        "segment": "SMB",
+        "days": 24
+      },
+      {
+        "segment": "SMB",
+        "days": 25
+      },
+      {
+        "segment": "SMB",
+        "days": 16
+      },
+      {
+        "segment": "SMB",
+        "days": 45
+      },
+      {
+        "segment": "SMB",
+        "days": 27
+      },
+      {
+        "segment": "SMB",
+        "days": 36
+      },
+      {
+        "segment": "SMB",
+        "days": 16
+      },
+      {
+        "segment": "SMB",
+        "days": 15
+      },
+      {
+        "segment": "SMB",
+        "days": 18
+      },
+      {
+        "segment": "SMB",
+        "days": 20
+      },
+      {
+        "segment": "SMB",
+        "days": 28
+      },
+      {
+        "segment": "SMB",
+        "days": 23
+      },
+      {
+        "segment": "SMB",
+        "days": 17
+      },
+      {
+        "segment": "SMB",
+        "days": 14
+      },
+      {
+        "segment": "SMB",
+        "days": 17
+      },
+      {
+        "segment": "SMB",
+        "days": 36
+      },
+      {
+        "segment": "Mid-market",
+        "days": 32
+      },
+      {
+        "segment": "Mid-market",
+        "days": 54
+      },
+      {
+        "segment": "Mid-market",
+        "days": 59
+      },
+      {
+        "segment": "Mid-market",
+        "days": 23
+      },
+      {
+        "segment": "Mid-market",
+        "days": 49
+      },
+      {
+        "segment": "Mid-market",
+        "days": 92
+      },
+      {
+        "segment": "Mid-market",
+        "days": 18
+      },
+      {
+        "segment": "Mid-market",
+        "days": 41
+      },
+      {
+        "segment": "Mid-market",
+        "days": 46
+      },
+      {
+        "segment": "Mid-market",
+        "days": 32
+      },
+      {
+        "segment": "Mid-market",
+        "days": 62
+      },
+      {
+        "segment": "Mid-market",
+        "days": 47
+      },
+      {
+        "segment": "Mid-market",
+        "days": 23
+      },
+      {
+        "segment": "Mid-market",
+        "days": 73
+      },
+      {
+        "segment": "Mid-market",
+        "days": 67
+      },
+      {
+        "segment": "Mid-market",
+        "days": 77
+      },
+      {
+        "segment": "Mid-market",
+        "days": 99
+      },
+      {
+        "segment": "Mid-market",
+        "days": 58
+      },
+      {
+        "segment": "Mid-market",
+        "days": 51
+      },
+      {
+        "segment": "Mid-market",
+        "days": 25
+      },
+      {
+        "segment": "Mid-market",
+        "days": 65
+      },
+      {
+        "segment": "Mid-market",
+        "days": 35
+      },
+      {
+        "segment": "Mid-market",
+        "days": 38
+      },
+      {
+        "segment": "Mid-market",
+        "days": 26
+      },
+      {
+        "segment": "Mid-market",
+        "days": 30
+      },
+      {
+        "segment": "Mid-market",
+        "days": 37
+      },
+      {
+        "segment": "Mid-market",
+        "days": 91
+      },
+      {
+        "segment": "Mid-market",
+        "days": 17
+      },
+      {
+        "segment": "Mid-market",
+        "days": 23
+      },
+      {
+        "segment": "Mid-market",
+        "days": 54
+      },
+      {
+        "segment": "Mid-market",
+        "days": 99
+      },
+      {
+        "segment": "Mid-market",
+        "days": 64
+      },
+      {
+        "segment": "Mid-market",
+        "days": 19
+      },
+      {
+        "segment": "Mid-market",
+        "days": 14
+      },
+      {
+        "segment": "Mid-market",
+        "days": 57
+      },
+      {
+        "segment": "Mid-market",
+        "days": 33
+      },
+      {
+        "segment": "Mid-market",
+        "days": 27
+      },
+      {
+        "segment": "Mid-market",
+        "days": 78
+      },
+      {
+        "segment": "Mid-market",
+        "days": 83
+      },
+      {
+        "segment": "Mid-market",
+        "days": 52
+      },
+      {
+        "segment": "Enterprise",
+        "days": 126
+      },
+      {
+        "segment": "Enterprise",
+        "days": 140
+      },
+      {
+        "segment": "Enterprise",
+        "days": 264
+      },
+      {
+        "segment": "Enterprise",
+        "days": 155
+      },
+      {
+        "segment": "Enterprise",
+        "days": 146
+      },
+      {
+        "segment": "Enterprise",
+        "days": 149
+      },
+      {
+        "segment": "Enterprise",
+        "days": 46
+      },
+      {
+        "segment": "Enterprise",
+        "days": 223
+      },
+      {
+        "segment": "Enterprise",
+        "days": 186
+      },
+      {
+        "segment": "Enterprise",
+        "days": 147
+      },
+      {
+        "segment": "Enterprise",
+        "days": 37
+      },
+      {
+        "segment": "Enterprise",
+        "days": 78
+      },
+      {
+        "segment": "Enterprise",
+        "days": 175
+      },
+      {
+        "segment": "Enterprise",
+        "days": 41
+      },
+      {
+        "segment": "Enterprise",
+        "days": 99
+      },
+      {
+        "segment": "Enterprise",
+        "days": 193
+      },
+      {
+        "segment": "Enterprise",
+        "days": 53
+      },
+      {
+        "segment": "Enterprise",
+        "days": 267
+      },
+      {
+        "segment": "Enterprise",
+        "days": 149
+      },
+      {
+        "segment": "Enterprise",
+        "days": 101
+      },
+      {
+        "segment": "Enterprise",
+        "days": 132
+      },
+      {
+        "segment": "Enterprise",
+        "days": 157
+      },
+      {
+        "segment": "Enterprise",
+        "days": 118
+      },
+      {
+        "segment": "Enterprise",
+        "days": 207
+      },
+      {
+        "segment": "Enterprise",
+        "days": 76
+      },
+      {
+        "segment": "Enterprise",
+        "days": 88
+      },
+      {
+        "segment": "Enterprise",
+        "days": 195
+      },
+      {
+        "segment": "Enterprise",
+        "days": 112
+      },
+      {
+        "segment": "Enterprise",
+        "days": 68
+      },
+      {
+        "segment": "Enterprise",
+        "days": 185
+      },
+      {
+        "segment": "Enterprise",
+        "days": 246
+      },
+      {
+        "segment": "Enterprise",
+        "days": 86
+      },
+      {
+        "segment": "Enterprise",
+        "days": 51
+      },
+      {
+        "segment": "Enterprise",
+        "days": 102
+      },
+      {
+        "segment": "Enterprise",
+        "days": 101
+      },
+      {
+        "segment": "Enterprise",
+        "days": 93
+      },
+      {
+        "segment": "Enterprise",
+        "days": 238
+      },
+      {
+        "segment": "Enterprise",
+        "days": 63
+      },
+      {
+        "segment": "Enterprise",
+        "days": 220
+      },
+      {
+        "segment": "Enterprise",
+        "days": 55
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # ADR-015: Five forms draw as their gallery cards, and the horizontal 100% bar is its own form
 
-- Status: Accepted
+- Status: Accepted; the bullet and dumbbell axis titles intent v1 could not carry, and the bullet's `3k` ticks, are settled by [ADR-066](ADR-066-distribution-forms-and-an-axis-title.md)
 - Date: 2026-10-18
 - Supersedes: the big number's change line in [ADR-012](ADR-012-prototype-parity.md)
 

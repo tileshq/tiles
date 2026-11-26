@@ -39,6 +39,12 @@ pub const EMBEDDED: &[(&str, &[u8])] = &[
     ("bullet", crate::seal::sealed!("forms/bullet.json")),
     ("waterfall", crate::seal::sealed!("forms/waterfall.json")),
     ("scatter", crate::seal::sealed!("forms/scatter.json")),
+    ("histogram", crate::seal::sealed!("forms/histogram.json")),
+    ("box-plot", crate::seal::sealed!("forms/box-plot.json")),
+    (
+        "range-bands",
+        crate::seal::sealed!("forms/range-bands.json"),
+    ),
 ];
 
 /// The mark layouts the compiled core provides. A form picks one; a form
@@ -74,6 +80,13 @@ pub enum Layout {
     Waterfall,
     /// Points on two measures.
     Scatter,
+    /// Touching columns that count values into bins.
+    Histogram,
+    /// Boxes and whiskers per group, from each group's values.
+    Boxes,
+    /// Horizontal bands from low to high per row, with an inner band and a
+    /// middle dot.
+    Bands,
 }
 
 impl Layout {
@@ -83,9 +96,23 @@ impl Layout {
     pub fn roles(self) -> &'static [(&'static str, RoleKind, bool)] {
         use RoleKind::{Category, Number};
         match self {
-            Layout::Columns | Layout::Bars | Layout::Dots | Layout::Waterfall => {
+            Layout::Columns | Layout::Bars | Layout::Dots | Layout::Waterfall | Layout::Boxes => {
                 &[("x", Category, true), ("y", Number, true)]
             }
+            Layout::Histogram => &[
+                ("x", Number, true),
+                ("y", Number, false),
+                ("threshold", Number, false),
+            ],
+            Layout::Bands => &[
+                ("x", Category, true),
+                ("lo", Number, true),
+                ("hi", Number, true),
+                ("mid", Number, false),
+                ("inner_lo", Number, false),
+                ("inner_hi", Number, false),
+            ],
+
             Layout::Lollipop => &[
                 ("x", Category, true),
                 ("y", Number, true),
@@ -129,7 +156,7 @@ impl Layout {
     #[must_use]
     pub fn highlight_roles(self) -> &'static [&'static str] {
         match self {
-            Layout::Kpi => &[],
+            Layout::Kpi | Layout::Histogram => &[],
             Layout::Stacked | Layout::Shares | Layout::Slope => &["series"],
             Layout::Line | Layout::Grouped => &["series", "x"],
             Layout::Scatter => &["label"],
@@ -139,7 +166,9 @@ impl Layout {
             | Layout::Dots
             | Layout::Bullet
             | Layout::Waterfall
-            | Layout::Dumbbell => &["x"],
+            | Layout::Dumbbell
+            | Layout::Boxes
+            | Layout::Bands => &["x"],
         }
     }
 }

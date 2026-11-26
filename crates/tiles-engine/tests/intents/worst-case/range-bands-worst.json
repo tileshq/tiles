@@ -1,0 +1,74 @@
+{
+  "v": 1,
+  "form": "range-bands",
+  "title": "Senior Product Design Engineer, Platform Infrastructure, leads every team on hires in 2026",
+  "claim": {
+    "kind": "distribution",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "name",
+    "lo": "p5",
+    "hi": "p95",
+    "mid": "p50",
+    "inner_lo": "p25",
+    "inner_hi": "p75"
+  },
+  "unit": "usd",
+  "highlight": [
+    "王秀英"
+  ],
+  "axis": "Benachrichtigungseinstellungen in USD",
+  "data": {
+    "rows": [
+      {
+        "name": "Benachrichtigungseinstellungen",
+        "p5": -1284,
+        "p25": 2469135.7800000003,
+        "p50": 6172839.45,
+        "p75": 9876543.120000001,
+        "p95": 12345678.9
+      },
+      {
+        "name": "王秀英",
+        "p5": -1284,
+        "p25": 256800.1,
+        "p50": 642000.25,
+        "p75": 1027200.4,
+        "p95": 1284000.5
+      },
+      {
+        "name": "نور الهدى عبد الرحمن",
+        "p5": -1284,
+        "p25": 200000.0,
+        "p50": 500000.0,
+        "p75": 800000.0,
+        "p95": 1000000
+      },
+      {
+        "name": "🦊 Fox",
+        "p5": -1284,
+        "p25": 256.8,
+        "p50": 642.0,
+        "p75": 1027.2,
+        "p95": 1284
+      },
+      {
+        "name": "👩🏽 Priya",
+        "p5": -1284,
+        "p25": 0.2,
+        "p50": 0.5,
+        "p75": 0.8,
+        "p95": 1
+      },
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "p5": -2568,
+        "p25": -1284,
+        "p50": -642.0,
+        "p75": 0,
+        "p95": 1284
+      }
+    ]
+  }
+}

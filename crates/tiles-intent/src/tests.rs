@@ -357,6 +357,28 @@ fn unit_and_note_are_optional_and_checked() {
     );
 }
 
+#[test]
+fn axis_is_optional_trimmed_cut_and_checked() {
+    assert_eq!(parse(GOOD).unwrap().axis, None);
+    let i = parse(&with("axis", "\"  € thousand \"")).unwrap();
+    assert_eq!(i.axis.as_deref(), Some("€ thousand"));
+    let i = parse(&with("axis", "\"   \"")).unwrap();
+    assert_eq!(i.axis, None, "a blank axis title is none");
+    let i = parse(&with("axis", &format!("\"{}\"", "x".repeat(41)))).unwrap();
+    assert_eq!(
+        i.axis.as_deref().map(|a| a.chars().count()),
+        Some(crate::MAX_AXIS_CHARS)
+    );
+    assert!(
+        i.notes
+            .contains(&"Tiles cut axis to 40 characters.".to_string())
+    );
+    let e = err(&with("axis", "\"Min\\u001b[2Jutes\""));
+    assert_eq!(e.key, "axis", "control characters are refused (ADR-009)");
+    let e = err(&with("axis", "7"));
+    assert_eq!(e.key, crate::ARGUMENTS, "an axis title is text");
+}
+
 const OMNI: &str = r#"{
   "v": 1,
   "form": "column",

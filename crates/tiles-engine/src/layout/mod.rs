@@ -5,11 +5,14 @@
 //! padding, band paddings, nice domains, text baseline offsets) so the
 //! engine's card lands close to the approved HTML card.
 
+mod bands;
 mod bars;
+mod boxes;
 mod bullet;
 mod columns;
 mod dumbbell;
 mod grouped;
+mod histogram;
 mod kpi;
 mod line;
 mod scatter;
@@ -30,11 +33,14 @@ use crate::scene::{Anchor, Corners, Emphasis, Grow, Item, Part, Scene, Shape};
 use crate::text::{Fonts, Style};
 use crate::tokens::{Palette, Tokens};
 
+use bands::bands;
 use bars::{BarStyle, bars};
+use boxes::boxes;
 use bullet::bullet;
 use columns::columns;
 use dumbbell::dumbbell;
 use grouped::grouped;
+use histogram::histogram;
 use kpi::kpi;
 use line::line;
 use scatter::scatter;
@@ -69,6 +75,10 @@ pub const MAX_CATEGORIES: usize = 60;
 const NOTE_LEADING: f32 = 1.3;
 /// How far a note's knockout reaches past each line's text box.
 const KNOCKOUT_PAD: f32 = 2.0;
+/// The gap between a value axis's tick labels and its title, and the
+/// title's weight, as the gallery's axis titles set them.
+const AXIS_TITLE_GAP: f32 = 4.0;
+const AXIS_TITLE_WEIGHT: u16 = 500;
 /// Widest a category or series label is set, as a share of the card's inner
 /// width; a longer label is cut short with an ellipsis.
 const LABEL_SHARE: f32 = 0.35;
@@ -262,6 +272,9 @@ pub(crate) fn scene(
         Layout::Bullet => bullet(&mut ctx),
         Layout::Waterfall => waterfall(&mut ctx),
         Layout::Scatter => scatter(&mut ctx),
+        Layout::Histogram => histogram(&mut ctx),
+        Layout::Boxes => boxes(&mut ctx),
+        Layout::Bands => bands(&mut ctx),
     };
     if ctx.note_unplaced {
         return Err(IntentError::new(
@@ -395,6 +408,16 @@ fn default_subtitle(form: &Form, intent: &Intent) -> String {
             col("y").unwrap_or_default(),
             col("x").unwrap_or_default()
         ),
+        Layout::Histogram => match col("y") {
+            Some(y) => format!("{y} by {}", col("x").unwrap_or_default()),
+            None => format!("Count by {}", col("x").unwrap_or_default()),
+        },
+        Layout::Bands => format!(
+            "{} to {} by {}",
+            col("lo").unwrap_or_default(),
+            col("hi").unwrap_or_default(),
+            col("x").unwrap_or_default()
+        ),
         _ => match (col("y"), col("x")) {
             (Some(y), Some(x)) => format!("{y} by {x}"),
             (Some(y), None) => y,
@@ -484,6 +507,8 @@ pub(crate) fn validate(form: &Form, intent: &Intent, pal: &Palette) -> Result<()
             ));
         }
         Layout::Slope => slope_pairs(intent)?,
+        Layout::Bands => band_rows(intent)?,
+        Layout::Histogram => histogram::check(intent)?,
         _ => {}
     }
     if intent.note.is_some() && !takes_note(form.layout) {
@@ -491,6 +516,13 @@ pub(crate) fn validate(form: &Form, intent: &Intent, pal: &Palette) -> Result<()
             "note",
             format!("form {} does not draw a note", form.name),
             "drop note, or use column, bar, lollipop, dot-plot, line, area, multi-line or dumbbell",
+        ));
+    }
+    if intent.axis.is_some() && !takes_axis(form.layout) {
+        return Err(IntentError::new(
+            "axis",
+            format!("form {} draws no value axis along the bottom", form.name),
+            "drop axis and name the unit in the subtitle",
         ));
     }
     // A big number has one value and no category to colour: a highlight
@@ -522,6 +554,8 @@ pub(crate) fn validate(form: &Form, intent: &Intent, pal: &Palette) -> Result<()
             | Layout::Bullet
             | Layout::Waterfall
             | Layout::Dumbbell
+            | Layout::Boxes
+            | Layout::Bands
     ) && let Some(x) = intent.column("x")
     {
         let mut seen: Vec<String> = Vec::new();
@@ -585,6 +619,20 @@ fn takes_note(layout: Layout) -> bool {
             | Layout::Dots
             | Layout::Line
             | Layout::Dumbbell
+    )
+}
+
+/// Whether a layout draws a value axis along the bottom, which an intent's
+/// `axis` titles.
+fn takes_axis(layout: Layout) -> bool {
+    matches!(
+        layout,
+        Layout::Lollipop
+            | Layout::Dumbbell
+            | Layout::Bullet
+            | Layout::Histogram
+            | Layout::Boxes
+            | Layout::Bands
     )
 }
 
@@ -653,6 +701,13 @@ pub(crate) fn mend(form: &Form, intent: &mut Intent, pal: &Palette) {
         intent.note = None;
         intent.notes.push(format!(
             "Form {} draws no note, so Tiles left it out.",
+            form.name
+        ));
+    }
+    if intent.axis.is_some() && !takes_axis(form.layout) {
+        intent.axis = None;
+        intent.notes.push(format!(
+            "Form {} draws no value axis along the bottom, so Tiles left axis out.",
             form.name
         ));
     }
@@ -760,6 +815,68 @@ fn mend_highlight(form: &Form, intent: &mut Intent, pal: &Palette) {
             ));
         }
     }
+}
+
+/// Range bands take one row per category, each band running from low to
+/// high, and an inner band needs both its ends.
+fn band_rows(intent: &Intent) -> Result<(), IntentError> {
+    match (intent.column("inner_lo"), intent.column("inner_hi")) {
+        (Some(_), None) | (None, Some(_)) => {
+            let (has, needs) = if intent.column("inner_lo").is_some() {
+                ("inner_lo", "inner_hi")
+            } else {
+                ("inner_hi", "inner_lo")
+            };
+            return Err(IntentError::new(
+                format!("fields.{has}"),
+                format!("an inner band needs {needs} as well as {has}"),
+                format!("add \"{needs}\": \"<column>\" to fields, or drop {has}"),
+            ));
+        }
+        _ => {}
+    }
+    let Some(x) = intent.column("x") else {
+        return Ok(());
+    };
+    let mut seen: Vec<String> = Vec::new();
+    for (r, row) in intent.table.rows.iter().enumerate() {
+        let l = row[x].label();
+        if seen.contains(&l) {
+            return Err(IntentError::new(
+                format!("data.rows[{r}]"),
+                "repeats the category of an earlier row, and bounds cannot be added",
+                "send one row per category",
+            ));
+        }
+        seen.push(l);
+        for (lo, hi) in [("lo", "hi"), ("inner_lo", "inner_hi")] {
+            let (Some(a), Some(b)) = (intent.column(lo), intent.column(hi)) else {
+                continue;
+            };
+            if let (Some(a), Some(b)) = (row[a].number(), row[b].number())
+                && a > b
+            {
+                return Err(IntentError::new(
+                    format!("data.rows[{r}]"),
+                    format!("{lo} is above {hi}"),
+                    format!("send the lower bound in {lo} and the upper in {hi}"),
+                ));
+            }
+        }
+    }
+    let both = intent.table.rows.iter().any(|row| {
+        [intent.column("lo"), intent.column("hi")]
+            .into_iter()
+            .all(|c| c.is_some_and(|c| row[c].number().is_some()))
+    });
+    if !both {
+        return Err(IntentError::new(
+            "data.rows",
+            "no row holds both a lo and a hi number",
+            "fill both columns in at least one row",
+        ));
+    }
+    Ok(())
 }
 
 /// A slope needs two periods and a series with a value in the first and
@@ -1472,6 +1589,34 @@ impl Ctx<'_> {
         self.t.marks.label_padding + style.size
     }
 
+    /// The intent's axis title, centred under the value axis from `left` to
+    /// `right` with its top at `top`, as the gallery titles a minutes or
+    /// thousands axis. Returns the height it takes, 0 with no title.
+    fn axis_title(&mut self, (left, right): (f32, f32), top: f32) -> f32 {
+        let Some(title) = self.intent.axis.clone() else {
+            return 0.0;
+        };
+        let style = Style::new(self.t.text.label_size, AXIS_TITLE_WEIGHT);
+        let chars: Vec<char> = title.chars().collect();
+        let shown = self.fit_end(&chars, style, self.width);
+        let half = self.width_of(&shown, style) / 2.0;
+        let x = f32::midpoint(left, right)
+            .min(self.left + self.width - half)
+            .max(self.left + half);
+        let baseline = top + AXIS_TITLE_GAP + (TOP * style.size).round();
+        let muted = (Emphasis::Muted, self.pal.muted);
+        self.text(
+            Part::AxisLabel,
+            shown,
+            x,
+            baseline,
+            style,
+            Anchor::Middle,
+            muted,
+        );
+        AXIS_TITLE_GAP + style.size
+    }
+
     /// The tick format for an axis: the measure's unit, and whole
     /// thousands written compact.
     fn tick_format(&self, values: &[f64], unit: bool) -> NumberFormat {
@@ -1481,6 +1626,18 @@ impl Ctx<'_> {
     /// Horizontal gridlines and tick labels on the left, about one tick per
     /// `tick_spacing`, or `count` ticks when given.
     fn y_axis(&mut self, scale: &Linear, count: Option<f32>, left: f32, right: f32) {
+        self.y_axis_with(scale, count, (left, right), true);
+    }
+
+    /// [`Ctx::y_axis`], its ticks carrying the measure's unit when `unit`:
+    /// a histogram's counts do not.
+    fn y_axis_with(
+        &mut self,
+        scale: &Linear,
+        count: Option<f32>,
+        (left, right): (f32, f32),
+        unit: bool,
+    ) {
         let style = self.label_style();
         let count = count
             .unwrap_or_else(|| ((scale.r0 - scale.r1).abs() / self.t.marks.tick_spacing).ceil());
@@ -1489,7 +1646,7 @@ impl Ctx<'_> {
             scale.d0.max(scale.d1),
             f64::from(count),
         );
-        let nf = self.tick_format(&values, true);
+        let nf = self.tick_format(&values, unit);
         for v in values {
             let y = scale.map(v);
             let grid = Shape::Line {
@@ -1514,9 +1671,14 @@ impl Ctx<'_> {
     }
 
     fn tick_label_width(&self, lo: f64, hi: f64, count: f32) -> f32 {
+        self.tick_label_width_with(lo, hi, count, true)
+    }
+
+    /// [`Ctx::tick_label_width`] for ticks that carry the unit when `unit`.
+    fn tick_label_width_with(&self, lo: f64, hi: f64, count: f32, unit: bool) -> f32 {
         let style = self.label_style();
         let values = ticks(lo, hi, f64::from(count));
-        let nf = self.tick_format(&values, true);
+        let nf = self.tick_format(&values, unit);
         values
             .iter()
             .map(|v| self.width_of(&nf.format(*v), style))

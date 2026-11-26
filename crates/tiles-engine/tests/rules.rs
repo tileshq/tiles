@@ -135,6 +135,9 @@ const SINGLE_EMPHASIS: &[&str] = &[
     "multi-line",
     "slope",
     "stacked-bar",
+    "histogram",
+    "box-plot",
+    "range-bands",
 ];
 
 #[test]
@@ -2669,8 +2672,8 @@ fn m11_a_bullet_grades_its_target_in_three_bands_under_a_dark_bar() {
     );
     let ticks = texts(&s, Part::AxisLabel);
     assert!(
-        ticks.contains(&"3k".to_string()),
-        "M11: a value axis, {ticks:?}"
+        ticks.contains(&"3,000".to_string()),
+        "M11: a value axis written in full, as the gallery's bullet writes it, {ticks:?}"
     );
 }
 
@@ -3268,4 +3271,331 @@ fn text_numbers_meet_the_percent_and_prescaled_guards() {
     );
     let e = tiles_intent::parse(&v.to_string()).unwrap_err();
     assert!(e.to_string().contains("values look pre-scaled"), "{e}");
+}
+
+/// The value a tooltip line gives for `name`, such as `count: 90`.
+fn tip_value(tip: &str, name: &str) -> Option<String> {
+    tip.lines()
+        .find_map(|l| l.strip_prefix(&format!("{name}: ")).map(String::from))
+}
+
+#[test]
+fn m14_a_histogram_counts_every_value_in_touching_bins_split_at_its_threshold() {
+    let s = scene("histogram");
+    let bins: Vec<&Item> = s.marks().collect();
+    assert_eq!(bins.len(), 12, "M14: a column per bin");
+    for pair in bins.windows(2) {
+        let (a, b) = (rect(pair[0]), rect(pair[1]));
+        assert!(
+            (b.left - a.right - 1.0).abs() < 0.01,
+            "M14: bins touch, a hairline apart"
+        );
+    }
+    // The bins from the 15-minute SLA on are the finding, red for a bad one.
+    for (i, b) in bins.iter().enumerate() {
+        let late = i >= 3;
+        assert_eq!(b.highlighted, late, "M14: bin {i}");
+        let want = if late { Emphasis::Bad } else { Emphasis::Grey };
+        assert_eq!(b.emphasis, want, "M14: bin {i}");
+    }
+    // 325 of 1,075 requests waited 15 minutes or more.
+    assert_eq!(texts(&s, Part::Value), ["30% at 15 or more"], "M14");
+    assert!(
+        texts(&s, Part::AxisLabel).contains(&"Minutes to first touch".to_string()),
+        "M14: the axis carries the intent's title"
+    );
+    // Values sent one a row are counted, with the threshold on a bin edge so
+    // the share past it is exact.
+    let rows: Vec<serde_json::Value> = (0..100)
+        .map(|i| serde_json::json!({"wait": f64::from(i) + 0.5, "limit": 37}))
+        .collect();
+    let s = scene_of(&intent(
+        "histogram",
+        &serde_json::json!({"x": "wait", "threshold": "limit"}),
+        &rows,
+    ))
+    .unwrap();
+    let total: f64 = s
+        .marks()
+        .filter_map(|m| tip_value(m.tip.as_deref()?, "count")?.parse::<f64>().ok())
+        .sum();
+    assert!((total - 100.0).abs() < 1e-9, "M14: every value is counted");
+    assert_eq!(texts(&s, Part::Value), ["63% at 37 or more"], "M14");
+    let past: f64 = s
+        .marks()
+        .filter(|m| m.highlighted)
+        .filter_map(|m| tip_value(m.tip.as_deref()?, "count")?.parse::<f64>().ok())
+        .sum();
+    assert!(
+        (past - 63.0).abs() < 1e-9,
+        "M14: the named bins hold the share"
+    );
+    // One value: whole count ticks.
+    let s = scene_of(&intent(
+        "histogram",
+        &serde_json::json!({"x": "wait"}),
+        &[serde_json::json!({"wait": 12})],
+    ))
+    .unwrap();
+    // The count axis is the one set flush right against the plot.
+    let counts: Vec<&str> = s
+        .part(Part::AxisLabel)
+        .filter(|i| {
+            matches!(
+                i.shape,
+                Shape::Text {
+                    anchor: tiles_engine::scene::Anchor::End,
+                    ..
+                }
+            )
+        })
+        .filter_map(Item::text)
+        .collect();
+    assert_eq!(counts, ["0", "1"], "M14: counts tick in whole numbers");
+}
+
+#[test]
+fn m14_a_histogram_refuses_what_would_draw_a_wrong_count() {
+    let e = engine();
+    let refuse = |v: serde_json::Value| -> tiles_intent::IntentError {
+        let intent = tiles_intent::parse(&v.to_string()).unwrap();
+        match e.scene(&intent, &Options::default()) {
+            Err(RenderError::Intent(i)) => i,
+            other => panic!("M14: expected a refusal, got {other:?}"),
+        }
+    };
+    let binned = |limit: f64, first: f64| {
+        let rows: Vec<serde_json::Value> = [0.0, 5.0, 10.0]
+            .iter()
+            .map(|s| serde_json::json!({"from": s, "n": if *s == 0.0 { first } else { 4.0 }, "limit": limit}))
+            .collect();
+        intent(
+            "histogram",
+            &serde_json::json!({"x": "from", "y": "n", "threshold": "limit"}),
+            &rows,
+        )
+    };
+    assert_eq!(refuse(binned(7.0, 3.0)).key, "fields.threshold", "M14");
+    assert!(
+        scene_of(&binned(5.0, 3.0)).is_ok(),
+        "M14: a threshold on an edge draws"
+    );
+    let neg = refuse(binned(5.0, -3.0));
+    assert_eq!(
+        neg.to_string(),
+        "data.rows: histogram counts must be zero or more; send how many values fall in each \
+         bin, or leave y out and send the values"
+    );
+    let mut v = fixture("histogram");
+    v["highlight"] = serde_json::json!(["15"]);
+    let i = refuse(v);
+    assert_eq!(i.key, "highlight", "M14: bins are named by a threshold");
+}
+
+/// The `p` quantile of sorted values, as d3 and Vega compute it.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)] // Indexes of a few dozen values.
+fn quantile(sorted: &[f64], p: f64) -> f64 {
+    let at = p * (sorted.len() - 1) as f64;
+    let i = at.floor() as usize;
+    if i + 1 >= sorted.len() {
+        return sorted[sorted.len() - 1];
+    }
+    sorted[i] + (sorted[i + 1] - sorted[i]) * (at - i as f64)
+}
+
+#[test]
+fn m15_a_box_plot_draws_quartiles_whiskers_and_the_values_past_them() {
+    let v = fixture("box-plot");
+    let s = scene_of(&v).unwrap();
+    let rows = v["data"]["rows"].as_array().unwrap();
+    let boxes: Vec<&Item> = s
+        .marks()
+        .filter(|m| matches!(m.shape, Shape::Rect { .. }))
+        .collect();
+    assert_eq!(boxes.len(), 3, "M15: a box per segment");
+    let mut scale = None;
+    let mut outliers = 0;
+    for (b, segment) in boxes.iter().zip(["SMB", "Mid-market", "Enterprise"]) {
+        let mut days: Vec<f64> = rows
+            .iter()
+            .filter(|r| r["segment"] == segment)
+            .map(|r| r["days"].as_f64().unwrap())
+            .collect();
+        days.sort_by(f64::total_cmp);
+        let (q1, q3) = (quantile(&days, 0.25), quantile(&days, 0.75));
+        let fence = 1.5 * (q3 - q1);
+        outliers += days
+            .iter()
+            .filter(|d| **d < q1 - fence || **d > q3 + fence)
+            .count();
+        // One scale for every box: width over spread is the same.
+        #[allow(clippy::cast_possible_truncation)] // A spread of days.
+        let k = rect(b).width() / (q3 - q1) as f32;
+        let k0 = *scale.get_or_insert(k);
+        assert!(
+            (k - k0).abs() / k0 < 1e-3,
+            "M15: {segment} on the shared scale"
+        );
+        assert_eq!(b.highlighted, segment == "Enterprise", "M15");
+        let want = if segment == "Enterprise" {
+            Emphasis::Accent
+        } else {
+            Emphasis::Grey
+        };
+        assert_eq!(b.emphasis, want, "M15: {segment}");
+        let tip = b.tip.as_deref().unwrap();
+        assert!(tip.contains("values: 40"), "M15: {tip}");
+    }
+    let dots = s
+        .marks()
+        .filter(|m| matches!(m.shape, Shape::Circle { .. }))
+        .count();
+    assert_eq!(dots, outliers, "M15: a dot for each value past a whisker");
+    // Each box carries its median as a line in the card's colour.
+    let medians = s
+        .part(Part::Guide)
+        .filter(|g| g.emphasis == Emphasis::Card)
+        .count();
+    assert_eq!(medians, 3, "M15");
+    // A segment with one value still draws its box.
+    let one = intent(
+        "box-plot",
+        &serde_json::json!({"x": "k", "y": "v"}),
+        &[serde_json::json!({"k": "only", "v": 4})],
+    );
+    let s = scene_of(&one).unwrap();
+    assert!(
+        s.marks().any(|m| rect(m).width() >= 4.0),
+        "M15: one value draws a narrow box"
+    );
+}
+
+#[test]
+fn m16_range_bands_nest_the_middle_band_and_dot_inside_the_outer_band() {
+    let s = scene("range-bands");
+    let bands: Vec<&Item> = s
+        .marks()
+        .filter(|m| matches!(m.shape, Shape::Rect { .. }))
+        .collect();
+    let dots: Vec<&Item> = s
+        .marks()
+        .filter(|m| matches!(m.shape, Shape::Circle { .. }))
+        .collect();
+    assert_eq!(
+        (bands.len(), dots.len()),
+        (10, 5),
+        "M16: two bands and a dot a row"
+    );
+    for (pair, dot) in bands.chunks(2).zip(&dots) {
+        let (outer, inner) = (rect(pair[0]), rect(pair[1]));
+        assert!(
+            outer.left <= inner.left && inner.right <= outer.right,
+            "M16: the middle band sits inside the outer"
+        );
+        let cx = dot.bounds().center_x();
+        assert!(
+            inner.left <= cx && cx <= inner.right,
+            "M16: the dot sits in the middle band"
+        );
+        assert!(
+            pair[0].color.a < pair[1].color.a,
+            "M16: the middle band is darker"
+        );
+        assert_eq!(dot.emphasis, Emphasis::Ink, "M16: the middle dot is ink");
+    }
+    let named: Vec<bool> = bands.iter().step_by(2).map(|b| b.highlighted).collect();
+    assert_eq!(named, [false, false, false, true, true], "M16");
+    assert!(
+        texts(&s, Part::AxisLabel).contains(&"Hours to payout".to_string()),
+        "M16: the axis carries the intent's title"
+    );
+    let fields = serde_json::json!({"x": "k", "lo": "a", "hi": "b"});
+    let e = scene_of(&intent(
+        "range-bands",
+        &fields,
+        &[serde_json::json!({"k": "x", "a": 9, "b": 2})],
+    ))
+    .unwrap_err();
+    assert_eq!(
+        e.to_string(),
+        "data.rows[0]: lo is above hi; send the lower bound in lo and the upper in hi"
+    );
+    let twice = [
+        serde_json::json!({"k": "x", "a": 1, "b": 2}),
+        serde_json::json!({"k": "x", "a": 1, "b": 3}),
+    ];
+    let e = scene_of(&intent("range-bands", &fields, &twice)).unwrap_err();
+    assert!(
+        e.to_string()
+            .starts_with("data.rows[1]: repeats the category"),
+        "{e}"
+    );
+    let half = serde_json::json!({"x": "k", "lo": "a", "hi": "b", "inner_lo": "a"});
+    let e = scene_of(&intent(
+        "range-bands",
+        &half,
+        &[serde_json::json!({"k": "x", "a": 1, "b": 2})],
+    ))
+    .unwrap_err();
+    assert!(
+        e.to_string()
+            .starts_with("fields.inner_lo: an inner band needs inner_hi"),
+        "{e}"
+    );
+}
+
+#[test]
+fn an_axis_title_sits_under_the_value_axis_of_a_form_that_draws_one() {
+    let title_under = |s: &Scene, title: &str| {
+        let t = s
+            .part(Part::AxisLabel)
+            .find(|i| i.text() == Some(title))
+            .unwrap_or_else(|| panic!("no axis title {title}"));
+        let Shape::Text { y, .. } = t.shape else {
+            unreachable!()
+        };
+        let ticks_y = s
+            .part(Part::AxisLabel)
+            .filter(|i| {
+                i.text()
+                    .is_some_and(|x| x.chars().next().is_some_and(|c| c.is_ascii_digit()))
+            })
+            .map(|i| i.bounds().bottom)
+            .fold(f32::MIN, f32::max);
+        assert!(y > ticks_y, "{title} sits under the tick labels");
+        assert!(
+            t.bounds().bottom < s.card.bottom,
+            "{title} stays on the card"
+        );
+    };
+    let s = scene_of(&gallery("bullet")).unwrap();
+    title_under(&s, "€ thousand");
+    let s = scene_of(&gallery("dumbbell")).unwrap();
+    title_under(&s, "Minutes");
+    // The lollipop's average keeps the measure's currency.
+    let s = scene_of(&gallery("lollipop")).unwrap();
+    assert!(
+        texts(&s, Part::AxisLabel).contains(&"Average €103".to_string()),
+        "T7: the average carries the unit"
+    );
+    // A form with no value axis along the bottom refuses one, and the MCP
+    // route leaves it out with a note.
+    let mut v = fixture("column");
+    v["axis"] = "Signups".into();
+    let e = scene_of(&v).unwrap_err();
+    assert_eq!(
+        e.to_string(),
+        "axis: form column draws no value axis along the bottom; drop axis and name the unit \
+         in the subtitle"
+    );
+    let mut intent = tiles_intent::parse(&v.to_string()).unwrap();
+    engine().mend(&mut intent);
+    assert_eq!(intent.axis, None);
+    assert!(intent.notes.contains(
+        &"Form column draws no value axis along the bottom, so Tiles left axis out.".into()
+    ));
 }

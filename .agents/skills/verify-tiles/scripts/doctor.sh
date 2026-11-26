@@ -13,7 +13,7 @@ newest="$(find "$root"/crates/*/src "$root"/crates/*/assets "$root/adapters" "$r
 version="$("$bin" --version)"
 case "$version" in "tiles "*"(intent schema 1)") echo "doctor: ok $version";; *) fail "unexpected version line: $version";; esac
 forms="$("$bin" forms | grep -c '^[a-z]')"
-[ "$forms" -ge 15 ] || fail "tiles forms lists $forms forms, want at least 15"
+[ "$forms" -ge 20 ] || fail "tiles forms lists $forms forms, want at least 20"
 echo "doctor: ok $forms forms"
 # The design the binary carries (ADR-037): design pack 1 for the house
 # feature files, built from source for the plain theme.
