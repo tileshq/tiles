@@ -23,6 +23,7 @@ pub mod hit;
 mod layout;
 pub mod motion;
 pub mod pack;
+pub mod pane;
 mod raster;
 pub mod scale;
 pub mod scene;
@@ -581,6 +582,41 @@ impl Engine {
                 rgba,
             })
             .ok_or_else(|| RenderError::Engine("Skia could not draw a frame".into()))
+    }
+
+    /// The hover overlay for `hit` on `scene` at device `scale`: the mark
+    /// outlined and its tooltip, as one small scene placed over the card
+    /// (ADR-063). Draw it with [`Engine::frame_at`] at the same scale.
+    #[must_use]
+    pub fn hover(&self, scene: &Scene, hit: &hit::Hit, scale: f32) -> pane::Overlay {
+        pane::overlay(&self.tokens, &self.fonts, scene, hit, scale)
+    }
+
+    /// A card of `header` over `rows` of text in equal columns, the table
+    /// stress scene of the pane prototype (ADR-063).
+    ///
+    /// # Errors
+    ///
+    /// When the width is out of range.
+    pub fn text_grid(
+        &self,
+        header: &[String],
+        rows: &[Vec<String>],
+        opts: &Options,
+    ) -> Result<Scene, RenderError> {
+        if !(MIN_WIDTH..=MAX_WIDTH).contains(&opts.width) {
+            return Err(RenderError::Engine(format!(
+                "width {} is outside {MIN_WIDTH} to {MAX_WIDTH}",
+                opts.width
+            )));
+        }
+        Ok(pane::text_grid(
+            &self.tokens,
+            &self.fonts,
+            header,
+            rows,
+            opts,
+        ))
     }
 
     /// Parses, lays out and draws an intent in one call.

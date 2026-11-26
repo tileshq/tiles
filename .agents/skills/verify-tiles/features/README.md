@@ -38,6 +38,7 @@ Surfaces:
 - [tiles run, per harness](./run-harnesses.md): Claude Code, Codex, OpenCode and Pi launched with Tiles loaded, and the line naming a harness version Tiles was not proved on.
 - [Terminal routes](./terminal-routes.md): kitty placeholders, pre-cut, sixel, text, and detection.
 - [Install and doctor](./install-doctor.md): permanent installs, the report, `tiles check`, `tiles cache clear`, the installer, `tiles update`, the update check, `tiles --licence` and a build that takes a design pack.
+- [The pane prototype](./pane.md): `tiles pane` in builds with debug assertions, hover, click to filter, resize, the table stress scene, every way out, and the trace that decides go or no-go (ADR-063).
 
 Chart forms, one per file:
 

@@ -6,14 +6,19 @@
 
 use crate::sanitize;
 
-/// Takes the screen: the alternate screen, the cursor hidden, every
-/// pointer motion reported (1003) in SGR form (1006).
-pub const ENTER: &str = "\x1b[?1049h\x1b[?25l\x1b[2J\x1b[?1003h\x1b[?1006h";
+/// Takes the screen: the alternate screen, cleared, the cursor hidden.
+pub const ENTER: &str = "\x1b[?1049h\x1b[?25l\x1b[2J";
+
+/// Turns on mouse reports: every pointer motion (1003), in SGR form (1006).
+pub const MOUSE: &str = "\x1b[?1003h\x1b[?1006h";
 
 /// Asks whether the terminal knows pixel mouse reports (DECRQM for mode
 /// 1016) and how large one cell is (`CSI 16 t`), then for its device
 /// attributes, whose reply every terminal sends and so ends the wait.
 pub const PROBE: &str = "\x1b[?1016$p\x1b[16t\x1b[c";
+
+/// Asks for one cell's size in pixels again, after a resize.
+pub const CELL_SIZE: &str = "\x1b[16t";
 
 /// Turns on pixel mouse reports (mode 1016).
 pub const PIXEL_MOUSE: &str = "\x1b[?1016h";
@@ -32,8 +37,9 @@ pub const BEGIN_UPDATE: &str = "\x1b[?2026h";
 /// Ends an update started by [`BEGIN_UPDATE`].
 pub const END_UPDATE: &str = "\x1b[?2026l";
 
-/// Clears the screen.
-pub const CLEAR: &str = "\x1b[2J";
+/// Clears the screen and deletes every picture on it with its data, for a
+/// redraw from nothing after a resize.
+pub const CLEAR: &str = "\x1b_Ga=d,d=A,q=2\x1b\\\x1b[2J";
 
 /// Moves the cursor to 0-based `row` and `col`.
 #[must_use]

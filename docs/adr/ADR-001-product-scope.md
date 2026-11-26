@@ -1,6 +1,6 @@
 # ADR-001: Tiles ships in five stages, and v0.1 is simple charts in the terminal, fully local
 
-- Status: Accepted; stage 2's open question on open-sourcing the client is superseded by [ADR-019](ADR-019-copying-without-company-data.md); its "update checks" non-goal and its one outbound connection are amended by [ADR-032](ADR-032-update-command-and-harness-versions.md), whose daily check sends one anonymous `GET` to `api.github.com`; its "companion window" non-goal is amended by [ADR-046](ADR-046-companion-window-on-the-text-route.md), which adds one on the text route on macOS
+- Status: Accepted; stage 2's open question on open-sourcing the client is superseded by [ADR-019](ADR-019-copying-without-company-data.md); its "update checks" non-goal and its one outbound connection are amended by [ADR-032](ADR-032-update-command-and-harness-versions.md), whose daily check sends one anonymous `GET` to `api.github.com`; its "companion window" non-goal is amended by [ADR-046](ADR-046-companion-window-on-the-text-route.md), which adds one on the text route on macOS; its interactivity non-goal is amended by [ADR-063](ADR-063-interactive-pane-in-the-skia-engine.md), which builds stage 3's interactive pane in the Skia engine behind a debug-only prototype that decides go or no-go
 - Date: 2026-10-17
 
 ## Context

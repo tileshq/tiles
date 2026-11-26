@@ -1,0 +1,522 @@
+{
+ "v": 1,
+ "form": "big-number",
+ "title": "Revenue reached €1.30M in Q2",
+ "claim": {
+  "kind": "trend",
+  "tone": "good"
+ },
+ "fields": {
+  "x": "quarter",
+  "y": "revenue"
+ },
+ "data": {
+  "rows": [
+   {
+    "quarter": "Q1 25",
+    "revenue": 880000
+   },
+   {
+    "quarter": "Q2 25",
+    "revenue": 940000
+   },
+   {
+    "quarter": "Q3 25",
+    "revenue": 1010000
+   },
+   {
+    "quarter": "Q4 25",
+    "revenue": 1090000
+   },
+   {
+    "quarter": "Q1 26",
+    "revenue": 1180000
+   },
+   {
+    "quarter": "Q2 26",
+    "revenue": 1296000
+   }
+  ]
+ },
+ "dashboard": {
+  "title": "Payments, Q2 2026",
+  "note": "Fixture data for the tiles pane prototype"
+ },
+ "row": [
+  {
+   "v": 1,
+   "form": "big-number",
+   "title": "Orders grew to 18,400",
+   "claim": {
+    "kind": "trend",
+    "tone": "good"
+   },
+   "fields": {
+    "x": "quarter",
+    "y": "orders"
+   },
+   "data": {
+    "rows": [
+     {
+      "quarter": "Q1 25",
+      "orders": 12100
+     },
+     {
+      "quarter": "Q2 25",
+      "orders": 13050
+     },
+     {
+      "quarter": "Q3 25",
+      "orders": 14200
+     },
+     {
+      "quarter": "Q4 25",
+      "orders": 15400
+     },
+     {
+      "quarter": "Q1 26",
+      "orders": 16900
+     },
+     {
+      "quarter": "Q2 26",
+      "orders": 18400
+     }
+    ]
+   }
+  },
+  {
+   "v": 1,
+   "form": "big-number",
+   "title": "Active merchants passed 2,900",
+   "claim": {
+    "kind": "trend",
+    "tone": "good"
+   },
+   "fields": {
+    "x": "quarter",
+    "y": "merchants"
+   },
+   "data": {
+    "rows": [
+     {
+      "quarter": "Q1 25",
+      "merchants": 2210
+     },
+     {
+      "quarter": "Q2 25",
+      "merchants": 2340
+     },
+     {
+      "quarter": "Q3 25",
+      "merchants": 2480
+     },
+     {
+      "quarter": "Q4 25",
+      "merchants": 2610
+     },
+     {
+      "quarter": "Q1 26",
+      "merchants": 2750
+     },
+     {
+      "quarter": "Q2 26",
+      "merchants": 2905
+     }
+    ]
+   }
+  }
+ ],
+ "rows": [
+  [
+   {
+    "v": 1,
+    "form": "bar",
+    "title": "Germany leads revenue by region",
+    "claim": {
+     "kind": "rank",
+     "tone": "good"
+    },
+    "fields": {
+     "x": "region",
+     "y": "revenue"
+    },
+    "data": {
+     "rows": [
+      {
+       "region": "Germany",
+       "revenue": 2291000
+      },
+      {
+       "region": "France",
+       "revenue": 1584000
+      },
+      {
+       "region": "Netherlands",
+       "revenue": 1211000
+      },
+      {
+       "region": "Spain",
+       "revenue": 940000
+      },
+      {
+       "region": "Italy",
+       "revenue": 805000
+      }
+     ]
+    },
+    "highlight": [
+     "Germany"
+    ]
+   },
+   {
+    "v": 1,
+    "form": "column",
+    "title": "Germany places the most orders",
+    "claim": {
+     "kind": "rank",
+     "tone": "good"
+    },
+    "fields": {
+     "x": "region",
+     "y": "orders"
+    },
+    "data": {
+     "rows": [
+      {
+       "region": "Germany",
+       "orders": 6900
+      },
+      {
+       "region": "France",
+       "orders": 4300
+      },
+      {
+       "region": "Netherlands",
+       "orders": 3100
+      },
+      {
+       "region": "Spain",
+       "orders": 2400
+      },
+      {
+       "region": "Italy",
+       "orders": 1700
+      }
+     ]
+    },
+    "highlight": [
+     "Germany"
+    ]
+   }
+  ],
+  [
+   {
+    "v": 1,
+    "form": "multi-line",
+    "title": "Germany's revenue climbs fastest",
+    "claim": {
+     "kind": "compare",
+     "tone": "good"
+    },
+    "fields": {
+     "x": "month",
+     "y": "revenue",
+     "series": "region"
+    },
+    "data": {
+     "rows": [
+      {
+       "month": "Jan",
+       "region": "Germany",
+       "revenue": 310000
+      },
+      {
+       "month": "Feb",
+       "region": "Germany",
+       "revenue": 334000
+      },
+      {
+       "month": "Mar",
+       "region": "Germany",
+       "revenue": 362000
+      },
+      {
+       "month": "Apr",
+       "region": "Germany",
+       "revenue": 391000
+      },
+      {
+       "month": "May",
+       "region": "Germany",
+       "revenue": 428000
+      },
+      {
+       "month": "Jun",
+       "region": "Germany",
+       "revenue": 466000
+      },
+      {
+       "month": "Jan",
+       "region": "France",
+       "revenue": 240000
+      },
+      {
+       "month": "Feb",
+       "region": "France",
+       "revenue": 251000
+      },
+      {
+       "month": "Mar",
+       "region": "France",
+       "revenue": 259000
+      },
+      {
+       "month": "Apr",
+       "region": "France",
+       "revenue": 270000
+      },
+      {
+       "month": "May",
+       "region": "France",
+       "revenue": 276000
+      },
+      {
+       "month": "Jun",
+       "region": "France",
+       "revenue": 288000
+      },
+      {
+       "month": "Jan",
+       "region": "Netherlands",
+       "revenue": 180000
+      },
+      {
+       "month": "Feb",
+       "region": "Netherlands",
+       "revenue": 186000
+      },
+      {
+       "month": "Mar",
+       "region": "Netherlands",
+       "revenue": 197000
+      },
+      {
+       "month": "Apr",
+       "region": "Netherlands",
+       "revenue": 205000
+      },
+      {
+       "month": "May",
+       "region": "Netherlands",
+       "revenue": 214000
+      },
+      {
+       "month": "Jun",
+       "region": "Netherlands",
+       "revenue": 229000
+      },
+      {
+       "month": "Jan",
+       "region": "Spain",
+       "revenue": 150000
+      },
+      {
+       "month": "Feb",
+       "region": "Spain",
+       "revenue": 149000
+      },
+      {
+       "month": "Mar",
+       "region": "Spain",
+       "revenue": 156000
+      },
+      {
+       "month": "Apr",
+       "region": "Spain",
+       "revenue": 161000
+      },
+      {
+       "month": "May",
+       "region": "Spain",
+       "revenue": 158000
+      },
+      {
+       "month": "Jun",
+       "region": "Spain",
+       "revenue": 166000
+      },
+      {
+       "month": "Jan",
+       "region": "Italy",
+       "revenue": 120000
+      },
+      {
+       "month": "Feb",
+       "region": "Italy",
+       "revenue": 128000
+      },
+      {
+       "month": "Mar",
+       "region": "Italy",
+       "revenue": 131000
+      },
+      {
+       "month": "Apr",
+       "region": "Italy",
+       "revenue": 137000
+      },
+      {
+       "month": "May",
+       "region": "Italy",
+       "revenue": 142000
+      },
+      {
+       "month": "Jun",
+       "region": "Italy",
+       "revenue": 147000
+      }
+     ]
+    },
+    "highlight": [
+     "Germany"
+    ]
+   },
+   {
+    "v": 1,
+    "form": "stacked-bar",
+    "title": "Card leads payments in four regions",
+    "claim": {
+     "kind": "share",
+     "tone": "neutral"
+    },
+    "fields": {
+     "x": "region",
+     "y": "payments",
+     "series": "method"
+    },
+    "data": {
+     "rows": [
+      {
+       "region": "Germany",
+       "method": "Card",
+       "payments": 5200
+      },
+      {
+       "region": "Germany",
+       "method": "iDEAL",
+       "payments": 300
+      },
+      {
+       "region": "Germany",
+       "method": "PayPal",
+       "payments": 2900
+      },
+      {
+       "region": "France",
+       "method": "Card",
+       "payments": 4800
+      },
+      {
+       "region": "France",
+       "method": "iDEAL",
+       "payments": 400
+      },
+      {
+       "region": "France",
+       "method": "PayPal",
+       "payments": 3300
+      },
+      {
+       "region": "Netherlands",
+       "method": "Card",
+       "payments": 3100
+      },
+      {
+       "region": "Netherlands",
+       "method": "iDEAL",
+       "payments": 4900
+      },
+      {
+       "region": "Netherlands",
+       "method": "PayPal",
+       "payments": 1200
+      },
+      {
+       "region": "Spain",
+       "method": "Card",
+       "payments": 5800
+      },
+      {
+       "region": "Spain",
+       "method": "iDEAL",
+       "payments": 100
+      },
+      {
+       "region": "Spain",
+       "method": "PayPal",
+       "payments": 2700
+      },
+      {
+       "region": "Italy",
+       "method": "Card",
+       "payments": 6100
+      },
+      {
+       "region": "Italy",
+       "method": "iDEAL",
+       "payments": 100
+      },
+      {
+       "region": "Italy",
+       "method": "PayPal",
+       "payments": 2400
+      }
+     ]
+    },
+    "highlight": [
+     "Card"
+    ]
+   },
+   {
+    "v": 1,
+    "form": "lollipop",
+    "title": "Spain refunds the most orders",
+    "claim": {
+     "kind": "rank",
+     "tone": "bad"
+    },
+    "fields": {
+     "x": "region",
+     "y": "refunds"
+    },
+    "data": {
+     "rows": [
+      {
+       "region": "Germany",
+       "refunds": 210
+      },
+      {
+       "region": "France",
+       "refunds": 180
+      },
+      {
+       "region": "Netherlands",
+       "refunds": 95
+      },
+      {
+       "region": "Spain",
+       "refunds": 320
+      },
+      {
+       "region": "Italy",
+       "refunds": 140
+      }
+     ]
+    },
+    "highlight": [
+     "Spain"
+    ]
+   }
+  ]
+ ]
+}

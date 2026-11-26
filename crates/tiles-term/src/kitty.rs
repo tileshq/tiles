@@ -85,15 +85,12 @@ pub fn show_png_over(
     command(&keys, png)
 }
 
-/// Where and how [`show_rgba_zlib`] places a picture.
+/// Where and how [`show_rgba_zlib`] places a picture: at the cursor, at
+/// its own pixel size, so the terminal never scales it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Placement {
     /// The placement's id, so the same picture can be placed again.
     pub placement: u32,
-    /// Columns covered.
-    pub cols: u16,
-    /// Rows covered.
-    pub rows: u16,
     /// Pixels right of the cursor cell's left edge, below the cell's width.
     pub x_px: u16,
     /// Pixels below the cursor cell's top edge, below the cell's height.
@@ -111,8 +108,6 @@ pub struct Placement {
 pub fn show_rgba_zlib(id: u32, width: u32, height: u32, zlib: &[u8], at: Placement) -> Vec<u8> {
     let Placement {
         placement,
-        cols,
-        rows,
         x_px,
         y_px,
         z,
@@ -120,7 +115,7 @@ pub fn show_rgba_zlib(id: u32, width: u32, height: u32, zlib: &[u8], at: Placeme
     command(
         &format!(
             "a=T,f=32,o=z,t=d,q=2,C=1,i={id},p={placement},s={width},v={height},\
-             c={cols},r={rows},X={x_px},Y={y_px},z={z}"
+             X={x_px},Y={y_px},z={z}"
         ),
         zlib,
     )
@@ -329,15 +324,13 @@ mod tests {
     fn raw_pixels_name_their_size_compression_and_place() {
         let at = super::Placement {
             placement: 2,
-            cols: 40,
-            rows: 12,
             x_px: 3,
             y_px: 5,
             z: 4,
         };
         assert_eq!(
             commands(&super::show_rgba_zlib(7, 640, 384, b"x", at)),
-            ["a=T,f=32,o=z,t=d,q=2,C=1,i=7,p=2,s=640,v=384,c=40,r=12,X=3,Y=5,z=4,m=0;eA=="]
+            ["a=T,f=32,o=z,t=d,q=2,C=1,i=7,p=2,s=640,v=384,X=3,Y=5,z=4,m=0;eA=="]
         );
     }
 
