@@ -1160,6 +1160,8 @@ class CiWorkflow(unittest.TestCase):
             job = self.checks()[name]
             if "strategy:" in jobs[job]:
                 self.assertEqual(self.field(jobs[job], "if"), "${{ always() }}", job)
+                # Or one leg's failure cancels the other's required check.
+                self.assertRegex(jobs[job], r"\n {6}fail-fast: false\n", job)
 
     def test_every_fuzz_target_has_a_job(self):
         block = self.jobs()["fuzz-target"]
