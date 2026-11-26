@@ -6,7 +6,7 @@
 
 - `pane-first-frame` draws the dashboard's heading and eight cards, laid out as the chart tool lays them out at the terminal's width, with a status line on the last row.
 - `pane-hover` draws one small picture over the card under the pointer, the mark outlined and its tooltip beside it, and sends no card again; moving off every mark removes it.
-- `pane-click` filters the other cards that hold the clicked mark's region (or series) to its value and sends only those cards; the status line names the selection; clicking it again, or empty space, clears it.
+- `pane-click` filters the other cards that hold the clicked mark's region (or series) to its value and sends only those cards; the status line names the selection; the tooltip stays on the mark still under the pointer, or goes when the new scene has none there; clicking it again, or empty space, clears it.
 - `pane-resize` lays out and draws everything again when the window changes size.
 - `pane-stress` draws `fixtures/pane/table-stress.json`, a grid of 40 rows by 8 columns of text, one row further down per wheel step or arrow.
 - `pane-exit` gives the screen back on `q`, Control-C, Control-D, SIGINT, SIGTERM, SIGHUP, SIGQUIT and a panic: no mode left on, no picture left, the shell's screen as it was.

@@ -398,32 +398,29 @@ impl App {
         Ok(())
     }
 
-    fn drop_overlay(&mut self, bytes: &mut Vec<u8>) {
-        if let Some((_, id)) = self.overlay.take() {
-            bytes.extend(kitty::delete(id));
-        }
+    /// The slot and the hover target under device pixel `x`, `y`, read from
+    /// the hit maps of the scenes on screen.
+    fn target(&self, x: u32, y: u32) -> Option<(usize, usize)> {
+        board::slot_at(&self.slots, self.cell, x, y)
+            .and_then(|(s, (dx, dy))| board::hit_index(&self.slots[s].hits, dx, dy).map(|h| (s, h)))
     }
 
-    /// The pointer at device pixel `x`, `y`: the overlay for the mark under
-    /// it, or none; `None` when that is what the screen already shows.
-    fn hover(&mut self, x: u32, y: u32) -> Result<Option<Update>, String> {
-        let target = board::slot_at(&self.slots, self.cell, x, y).and_then(|(s, (dx, dy))| {
-            board::hit_index(&self.slots[s].hits, dx, dy).map(|h| (s, h))
-        });
-        if target == self.overlay.map(|(t, _)| t) {
-            return Ok(None);
-        }
-        self.begin("hover");
-        let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
-        let old = self.overlay.map(|(_, id)| id);
-        self.overlay = None;
+    /// Places the overlay for `target` as the other overlay id, or none,
+    /// and deletes the old one once the new one is placed.
+    fn set_overlay(
+        &mut self,
+        target: Option<(usize, usize)>,
+        kind: &str,
+        bytes: &mut Vec<u8>,
+    ) -> Result<(), String> {
+        let old = self.overlay.take().map(|(_, id)| id);
         if let Some((s, h)) = target {
             let id = if old == Some(OVERLAY_IDS[0]) {
                 OVERLAY_IDS[1]
             } else {
                 OVERLAY_IDS[0]
             };
-            if let Some(placed) = self.overlay_bytes(s, h, id)? {
+            if let Some(placed) = self.overlay_bytes(s, h, id, kind)? {
                 bytes.extend(placed);
                 self.overlay = Some(((s, h), id));
             }
@@ -431,11 +428,30 @@ impl App {
         if let Some(old) = old {
             bytes.extend(kitty::delete(old));
         }
+        Ok(())
+    }
+
+    /// The pointer at device pixel `x`, `y`: the overlay for the mark under
+    /// it, or none; `None` when that is what the screen already shows.
+    fn hover(&mut self, x: u32, y: u32) -> Result<Option<Update>, String> {
+        let target = self.target(x, y);
+        if target == self.overlay.map(|(t, _)| t) {
+            return Ok(None);
+        }
+        self.begin("hover");
+        let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
+        self.set_overlay(target, "hover", &mut bytes)?;
         bytes.extend(pane::END_UPDATE.as_bytes());
         Ok(Some(Update { bytes, cards: 0 }))
     }
 
-    fn overlay_bytes(&self, s: usize, h: usize, id: u32) -> Result<Option<Vec<u8>>, String> {
+    fn overlay_bytes(
+        &self,
+        s: usize,
+        h: usize,
+        id: u32,
+        kind: &str,
+    ) -> Result<Option<Vec<u8>>, String> {
         let slot = &self.slots[s];
         let scale = self.look.scale;
         let overlay = self.engine().hover(&slot.scene, &slot.hits[h], scale);
@@ -445,7 +461,7 @@ impl App {
             .map_err(|e| e.to_string())?;
         self.trace.line(
             "draw",
-            format_args!("update={} kind=hover card=overlay", self.update),
+            format_args!("update={} kind={kind} card=overlay", self.update),
         );
         let (cw, ch) = (i64::from(self.cell.0), i64::from(self.cell.1));
         let x = i64::from(slot.at.0) * cw + i64::from(overlay.left);
@@ -475,7 +491,8 @@ impl App {
 
     /// A left click at `x`, `y`: select the mark's value and filter the
     /// other cards, or clear the selection, sending only the cards whose
-    /// scene changed.
+    /// scene changed. The overlay then follows the mark under the pointer
+    /// in the new scenes, or goes when no mark is there.
     fn click(&mut self, x: u32, y: u32) -> Result<Option<Update>, String> {
         let Content::Dashboard {
             call,
@@ -498,8 +515,8 @@ impl App {
         let wanted = board::apply(&call.intents, next.as_ref());
         self.begin("click");
         let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
-        self.drop_overlay(&mut bytes);
         let (intents, cards) = self.relay(wanted, &mut bytes)?;
+        self.set_overlay(self.target(x, y), "click", &mut bytes)?;
         if let Content::Dashboard {
             intents: shown,
             selection,
