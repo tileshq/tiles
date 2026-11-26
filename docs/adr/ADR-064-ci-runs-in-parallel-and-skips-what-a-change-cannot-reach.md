@@ -32,7 +32,7 @@ Firstmate's CI, reviewed on 26 November, shards its suites to a measured time bu
 ### Parallel jobs, under the same required names
 
 - The `rust` gate runs as `rust lint (<system>)` (rustfmt and clippy) and `rust test (<system>)` (`cargo test`, and on macOS the installer and package tests) on Ubuntu and macOS at once. Each system runs the same steps it ran before. `rust (<system>)` is a final job that runs whatever its jobs did and fails when either failed or was cancelled. It reads the matrix's combined result, so a failure on one system fails both systems' checks; the `rust lint` and `rust test` checks name the system that failed.
-- The fuzz gate runs `fuzz (<target>)` for each target at once, six since `pane_input` joined,, each still 60 seconds under AddressSanitizer from its seed corpus, keeping a crashing input as `fuzz-crashes-<target>`. `fuzz` is the final job. `CiWorkflow` in `scripts/test_policy_scripts.py` fails when the matrix's list differs from `fuzz/fuzz_targets/`.
+- The fuzz gate runs `fuzz (<target>)` for each target at once, six since `pane_input` joined, each still 60 seconds under AddressSanitizer from its seed corpus, keeping a crashing input as `fuzz-crashes-<target>`. `fuzz` is the final job. `CiWorkflow` in `scripts/test_policy_scripts.py` fails when the matrix's list differs from `fuzz/fuzz_targets/`.
 - The tests were not split further. A `cargo nextest` partition, or a split by crate, would build every test binary again in each part, 31 to 37 s, to save part of a 34 to 43 s run whose longest binary is 13 to 18 s.
 
 ### A cache pull requests can restore
