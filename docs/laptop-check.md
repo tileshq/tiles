@@ -62,5 +62,3 @@ Some OpenCode builds start a launcher whose TUI attaches to a background service
 
 The development Mac never sees a real Omni instance or key ([ADR-008](adr/ADR-008-data-sources.md)). On a laptop with Omni set up ([omni.md](omni.md)), draw an Omni chart in a `tiles run` kitty session, then check that its call file holds no row ([ADR-027](adr/ADR-027-omni-rows-stay-in-memory.md)): `grep -c '"rows"' ~/Library/Caches/tiles/cards/<id>.call.json` prints 0.
 
-
-Throwaway line to prove a docs-only change skips the build jobs; reverted before review.
