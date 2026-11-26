@@ -712,20 +712,27 @@ impl App<'_> {
     /// sends those whose scene changed, and moves the overlay to the mark
     /// under the pointer in the new scenes, or deletes it when no mark is
     /// there. `note` goes on the status line after any card that refused.
-    fn restate(&mut self, next: State, kind: &str, note: Option<String>) -> Result<Update, String> {
-        let Content::Dashboard { call, .. } = &self.content else {
+    fn restate(
+        &mut self,
+        mut next: State,
+        kind: &str,
+        note: Option<String>,
+    ) -> Result<Update, String> {
+        let Content::Dashboard { call, state, .. } = &self.content else {
             return Err("not a dashboard".into());
         };
+        next.redrilled(state);
         let wanted = next.apply(&call.intents);
         self.begin(kind);
         let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
-        let (intents, cards) = self.relay(wanted, &mut bytes)?;
+        let (intents, cards, refused) = self.relay(wanted, &mut bytes)?;
         if self.note.is_none() {
             self.note = note;
         }
         let target = self.pointer.and_then(|(x, y)| self.target(x, y));
         self.set_overlay(target, kind, &mut bytes)?;
         if let Content::Dashboard { shown, state, .. } = &mut self.content {
+            next.keep(state, &refused);
             *shown = intents;
             *state = next;
         }
@@ -737,15 +744,15 @@ impl App<'_> {
     /// Lays out again each card whose intent `intents` changes, in its own
     /// slot, and sends those whose scene changed. A card that refuses its
     /// filtered rows keeps its picture and its intent, and names itself on
-    /// the status line. Returns the intents the cards now show, and how
-    /// many cards it sent.
+    /// the status line. Returns the intents the cards now show, how many
+    /// cards it sent, and the cards that refused.
     fn relay(
         &mut self,
         mut intents: Vec<Intent>,
         bytes: &mut Vec<u8>,
-    ) -> Result<(Vec<Intent>, usize), String> {
+    ) -> Result<(Vec<Intent>, usize, Vec<usize>), String> {
         let Content::Dashboard { shown, .. } = &self.content else {
-            return Ok((intents, 0));
+            return Ok((intents, 0, Vec::new()));
         };
         let look = self.look;
         let mut changed = Vec::new();
@@ -772,17 +779,17 @@ impl App<'_> {
                 Err(_) => refused.push(k),
             }
         }
-        let refused: Vec<String> = refused
-            .into_iter()
-            .map(|k| {
+        let titles: Vec<String> = refused
+            .iter()
+            .map(|&k| {
                 intents[k] = shown[k].clone();
                 intents[k].title.clone()
             })
             .collect();
-        self.note = (!refused.is_empty()).then(|| {
+        self.note = (!titles.is_empty()).then(|| {
             format!(
                 "{} kept its picture: it cannot be drawn that way",
-                refused.join(", ")
+                titles.join(", ")
             )
         });
         let cards = changed.len();
@@ -792,7 +799,7 @@ impl App<'_> {
             self.slots[i].scene = scene;
             self.replace(i, "click", bytes)?;
         }
-        Ok((intents, cards))
+        Ok((intents, cards, refused))
     }
 
     /// The stress grid moved `by` rows.
@@ -1254,6 +1261,68 @@ mod tests {
         assert_eq!(deeper.fields["x"], "orders.created_at[date]");
         assert_eq!(within.len(), 2);
         assert_eq!(within[1].1, "2026-08-03");
+    }
+
+    #[test]
+    fn a_drill_after_a_click_draws_the_drilled_period_and_a_refusal_keeps_the_level() {
+        use super::board;
+        use super::state::{Drilled, State};
+        use super::{drilled, plan_drill};
+        use tiles_mcp::card::{Call, EnginePainter, Fetched, Look, Query};
+        use tiles_omni::replay::{ReplayServer, recorded};
+
+        let server = ReplayServer::start("replay-key", recorded());
+        let client = tiles_omni::OmniClient::new(server.config());
+        let fetch = |q: Query<'_>, _: std::time::Instant| match q {
+            Query::Omni(s) => client
+                .query(s)
+                .map(Fetched::omni)
+                .map_err(|e| e.to_string()),
+            Query::Warehouse(_) => Err("no warehouse".to_string()),
+        };
+        let painter = EnginePainter::new().unwrap();
+        let look = Look::default();
+        let call = Call::read(BY_MONTH, &painter, &fetch).unwrap();
+        let months = &call.intents[0];
+        let x = months.column("x").unwrap();
+        let august = months
+            .table
+            .rows
+            .iter()
+            .position(|r| r[x].label() == "2026-08-01")
+            .unwrap();
+
+        let clicked = State {
+            filter: board::pick(&call.intents, 0, august),
+            ..State::default()
+        };
+        let shown = clicked.apply(&call.intents);
+        assert_eq!(shown[0].highlight, ["2026-08-01"]);
+        let (request, mut within, _) = plan_drill(&call, &shown, &clicked, 0, august).unwrap();
+        let weeks = drilled(&fetch, &painter, &request, &within).unwrap();
+        let mut next = clicked.clone();
+        next.drills.entry(0).or_default().push(Drilled {
+            request,
+            within: within.pop().unwrap(),
+            intent: weeks.clone(),
+        });
+
+        let mut refused = next.clone();
+        assert!(
+            call.lay_out(&refused.apply(&call.intents), &painter, &look)
+                .is_err(),
+            "the month's highlight is no week of the drilled card"
+        );
+        refused.keep(&clicked, &[0]);
+        assert_eq!(refused, clicked, "a refused card keeps its level");
+
+        next.redrilled(&clicked);
+        assert_eq!(next.filter, None, "the drilled period is the whole card");
+        assert_eq!(next.drills[&0].len(), 1);
+        let drawn = next.apply(&call.intents);
+        assert_eq!(drawn, [weeks]);
+        assert!(call.lay_out(&drawn, &painter, &look).is_ok());
+        assert!(server.unrecorded().is_empty(), "{:?}", server.unrecorded());
     }
 
     #[test]

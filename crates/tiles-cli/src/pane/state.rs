@@ -148,6 +148,31 @@ impl State {
         Ok(())
     }
 
+    /// Drops the cross-filter when its card's drill level differs from
+    /// `prev`'s: the card now draws another period, which the selection
+    /// was not made on.
+    pub fn redrilled(&mut self, prev: &Self) {
+        let depth = |s: &Self, card: usize| s.drills.get(&card).map_or(0, Vec::len);
+        if self
+            .filter
+            .as_ref()
+            .is_some_and(|f| depth(self, f.card) != depth(prev, f.card))
+        {
+            self.filter = None;
+        }
+    }
+
+    /// Gives each card in `refused`, the cards that kept their picture,
+    /// its drill levels, hidden series and sort from `prev`, so the state
+    /// records only what the cards draw.
+    pub fn keep(&mut self, prev: &Self, refused: &[usize]) {
+        for &card in refused {
+            restore(&mut self.drills, &prev.drills, card);
+            restore(&mut self.hidden, &prev.hidden, card);
+            restore(&mut self.sorts, &prev.sorts, card);
+        }
+    }
+
     /// Steps card `card`'s sort, skipping an order its rows, `intent` as
     /// drawn, already stand in; or says the card has no order to change.
     ///
@@ -173,6 +198,14 @@ impl State {
         };
         Ok(next)
     }
+}
+
+/// Card `card`'s entry in `into` set back to the one in `from`.
+fn restore<V: Clone>(into: &mut BTreeMap<usize, V>, from: &BTreeMap<usize, V>, card: usize) {
+    match from.get(&card) {
+        Some(v) => into.insert(card, v.clone()),
+        None => into.remove(&card),
+    };
 }
 
 /// The distinct labels of `intent`'s series column, in row order.
@@ -473,6 +506,56 @@ mod tests {
         assert_eq!(column(&shown[1], "city"), ["Braga"]);
         assert_eq!(column(&shown[1], "product"), ["Espresso"]);
         let _ = without(&grouped(), &BTreeSet::new());
+    }
+
+    #[test]
+    fn a_refused_card_keeps_its_hidden_series_and_sort_and_the_others_change() {
+        let call = [grouped(), grouped()];
+        let mut prev = State::default();
+        prev.toggle(&call, 0, "Filter").unwrap();
+        let mut next = prev.clone();
+        next.toggle(&call, 0, "Filter").unwrap();
+        next.sort(&call[0], 0).unwrap();
+        next.toggle(&call, 1, "Filter").unwrap();
+        next.sort(&call[1], 1).unwrap();
+        next.keep(&prev, &[0]);
+        assert_eq!(next.hidden[&0], BTreeSet::from(["Filter".to_string()]));
+        assert!(!next.sorts.contains_key(&0));
+        assert_eq!(next.hidden[&1], BTreeSet::from(["Filter".to_string()]));
+        assert_eq!(next.sorts.get(&1), Some(&Order::Desc));
+    }
+
+    #[test]
+    fn a_selection_outlives_a_drill_only_on_another_card() {
+        let call = [line(), line()];
+        let selected = |card| State {
+            filter: Some(Selection {
+                card,
+                column: "month".into(),
+                value: "Jan".into(),
+            }),
+            ..State::default()
+        };
+        let level = super::Drilled {
+            request: by_month(),
+            within: ("orders.created_at[month]".into(), "2026-08-01".into()),
+            intent: call[0].clone(),
+        };
+        for (card, kept) in [(0, false), (1, true)] {
+            let prev = selected(card);
+            let mut next = prev.clone();
+            next.redrilled(&prev);
+            assert_eq!(next.filter, prev.filter, "no drill keeps the selection");
+            next.drills.insert(0, vec![level.clone()]);
+            next.redrilled(&prev);
+            assert_eq!(next.filter.is_some(), kept, "drill, selection on {card}");
+            let mut back = selected(card);
+            back.redrilled(&State {
+                drills: next.drills.clone(),
+                ..State::default()
+            });
+            assert_eq!(back.filter.is_some(), kept, "undrill, selection on {card}");
+        }
     }
 
     #[test]
