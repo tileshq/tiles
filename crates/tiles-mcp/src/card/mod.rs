@@ -266,9 +266,6 @@ pub struct Call {
     /// Each card's request as asked, before its rows were fetched, so the
     /// pane can ask its source again for a drill.
     pub requests: Vec<Request>,
-    /// Where each card's rows came from (`Omni`, `BigQuery`), or `None`
-    /// for rows the call holds.
-    pub origins: Vec<Option<String>>,
     /// The dashboard heading, when the call asks for one.
     pub heading: Option<Heading>,
     keys: Vec<String>,
@@ -293,7 +290,6 @@ impl Call {
         Ok(Self {
             intents,
             requests,
-            origins: tables.into_iter().map(|t| t.map(|f| f.origin)).collect(),
             heading: asked.heading,
             keys,
             shape,

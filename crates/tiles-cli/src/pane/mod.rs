@@ -1199,7 +1199,8 @@ mod tests {
         };
         let painter = EnginePainter::new().unwrap();
         let call = Call::read(BY_MONTH, &painter, &fetch).unwrap();
-        assert_eq!(call.origins, [Some("Omni".to_string())]);
+        assert_eq!(call.requests.len(), 1);
+        assert!(call.requests[0].omni().is_some());
         let months = &call.intents[0];
         let x = months.column("x").unwrap();
         let august = months
@@ -1271,7 +1272,7 @@ mod tests {
         ))
         .unwrap();
         let call = Call::read(&json, &painter, &refuse).unwrap();
-        assert!(call.origins.iter().all(Option::is_none));
+        assert!(call.requests.iter().all(|r| r.omni().is_none()));
         let err = plan_drill(&call, &call.intents, &State::default(), 0, 0).unwrap_err();
         assert!(err.contains("Omni date field"), "{err}");
         assert!(drilled(&refuse, &painter, &call.requests[0], &[]).is_err());
