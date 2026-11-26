@@ -1,6 +1,6 @@
 # ADR-055: A push to main skips CI's heavy jobs when its tree is one a pull request's CI passed on
 
-- Status: Accepted; amends [ADR-007](ADR-007-stack-and-delivery.md)'s CI for pushes to main; [ADR-058](ADR-058-add-ons-and-fixture-cards-run-with-no-network.md)'s `no-network` job joins the gated jobs
+- Status: Accepted; amends [ADR-007](ADR-007-stack-and-delivery.md)'s CI for pushes to main; [ADR-058](ADR-058-add-ons-and-fixture-cards-run-with-no-network.md)'s `no-network` job joins the gated jobs; [ADR-063](ADR-063-ci-runs-in-parallel-and-skips-what-a-change-cannot-reach.md) splits the gated `rust` and `fuzz` jobs into parallel jobs, which also skip when its `plan` job finds the change cannot reach them
 - Date: 2026-10-22
 
 ## Context

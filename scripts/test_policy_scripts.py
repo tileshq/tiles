@@ -28,6 +28,8 @@ check_docs = load("check-docs")
 network = load("check-network-owners")
 release_binary = load("check-release-binary")
 ci_main_gate = load("ci-main-gate")
+ci_plan = load("ci-plan")
+ci_budget = load("ci-budget")
 no_network = load("no-network")
 
 
@@ -954,6 +956,222 @@ class CiMainGate(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Running every job: the GitHub API answer could not be read (URLError", result.stdout)
         self.assertEqual(out.read_text(), "skip=false\n")
+
+
+class CiPlan(unittest.TestCase):
+    """scripts/ci-plan.py skips only what the changed files cannot reach (ADR-063)."""
+
+    def outputs(self, changed, outside: bool = False) -> dict[str, bool]:
+        return ci_plan.plan(outside, changed)[0]
+
+    def test_docs_text_alone_skips_the_build_fuzz_and_formal(self):
+        changed = ["docs/adr/ADR-001-x.md", "docs/readme/card.png", "README.md", "CONTRIBUTING.md"]
+        self.assertEqual(self.outputs(changed), {"outside": False, "skip-build": True, "skip-deep": True})
+
+    def test_install_md_runs_everything_since_the_installer_test_reads_it(self):
+        self.assertIn("install.md", (HERE / "test_install.sh").read_text())
+        self.assertEqual(self.outputs(["docs/install.md"]), {"outside": False, "skip-build": False, "skip-deep": False})
+
+    def test_add_ons_skip_only_fuzz_and_formal(self):
+        changed = ["adapters/pi/index.ts", "docs/surfaces.md"]
+        self.assertEqual(self.outputs(changed), {"outside": False, "skip-build": False, "skip-deep": True})
+
+    def test_any_other_file_runs_everything(self):
+        for path in (
+            "crates/tiles-cli/src/main.rs",
+            ".github/workflows/ci.yml",
+            ".agents/skills/verify-tiles/features/bar.md",
+            "fuzz/README.md",
+            "LICENSE",
+            "scripts/ci-plan.py",
+            "Cargo.lock",
+            "docsite/index.md",
+        ):
+            with self.subTest(path):
+                outputs, line = ci_plan.plan(False, ["docs/surfaces.md", "adapters/pi/index.ts", path])
+                self.assertEqual(outputs, {"outside": False, "skip-build": False, "skip-deep": False})
+                self.assertIn(path, line)
+
+    def test_no_diff_or_an_empty_one_runs_everything(self):
+        for changed in (None, []):
+            with self.subTest(changed):
+                outputs, line = ci_plan.plan(False, changed)
+                self.assertFalse(any(outputs.values()))
+                self.assertTrue(line.startswith("Running every job:"), line)
+
+    def test_an_outside_pull_request_waits_for_the_label(self):
+        self.assertEqual(self.outputs(["crates/x.rs"], outside=True), {"outside": True, "skip-build": True, "skip-deep": True})
+        fork, repo = "someone/tiles", "tileshq/tiles"
+        self.assertTrue(ci_plan.is_outside("pull_request", repo, fork, "CONTRIBUTOR", []))
+        self.assertTrue(ci_plan.is_outside("pull_request", repo, fork, "NONE", ["bug"]))
+        self.assertFalse(ci_plan.is_outside("pull_request", repo, fork, "NONE", ["full-ci"]))
+        for association in ("OWNER", "MEMBER", "COLLABORATOR"):
+            self.assertFalse(ci_plan.is_outside("pull_request", repo, fork, association, []))
+        self.assertFalse(ci_plan.is_outside("pull_request", repo, repo, "CONTRIBUTOR", []))
+        for event in ("push", "schedule", "workflow_dispatch"):
+            self.assertFalse(ci_plan.is_outside(event, repo, "", "", []))
+
+    def run_plan(self, files: dict[str, str], event: str = "pull_request", **env: str) -> tuple[str, str]:
+        """Runs the script on a pull request's merge commit that adds `files` to main."""
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+
+        def git(*args: str) -> None:
+            subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+        git("init", "-q", "-b", "main")
+        git("config", "user.email", "ci@example.test")
+        git("config", "user.name", "CI")
+        (root / "Cargo.toml").write_text("[workspace]\n")
+        git("add", "-A")
+        git("commit", "-q", "-m", "main")
+        git("checkout", "-q", "-b", "change")
+        for name, text in files.items():
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            (root / name).write_text(text)
+        git("add", "-A")
+        git("commit", "-q", "-m", "change")
+        git("checkout", "-q", "main")
+        git("merge", "-q", "--no-ff", "-m", "merge", "change")
+        out = root / "output"
+        base = {"PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin", "EVENT": event, "REPO": "o/r", "HEAD_REPO": "o/r", "GITHUB_OUTPUT": str(out)}
+        result = subprocess.run([sys.executable, str(HERE / "ci-plan.py")], cwd=root, env={**base, **env}, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout, out.read_text()
+
+    def test_reads_a_pull_requests_merge_commit(self):
+        line, outputs = self.run_plan({"docs/a.md": "a\n"})
+        self.assertIn("All 1 changed files are docs text", line)
+        self.assertEqual(outputs, "outside=false\nskip-build=true\nskip-deep=true\n")
+        line, outputs = self.run_plan({"docs/a.md": "a\n", "crates/x/src/lib.rs": "\n"})
+        self.assertIn("crates/x/src/lib.rs is code", line)
+        self.assertEqual(outputs, "outside=false\nskip-build=false\nskip-deep=false\n")
+
+    def test_writes_run_everything_for_the_daily_run(self):
+        line, outputs = self.run_plan({"docs/a.md": "a\n"}, event="schedule")
+        self.assertIn("Running every job: this run has no diff to read.", line)
+        self.assertEqual(outputs, "outside=false\nskip-build=false\nskip-deep=false\n")
+
+    def test_writes_run_everything_when_a_push_names_no_earlier_commit(self):
+        line, outputs = self.run_plan({"docs/a.md": "a\n"}, event="push", BEFORE="0" * 40)
+        self.assertEqual(outputs, "outside=false\nskip-build=false\nskip-deep=false\n")
+
+    def test_an_outside_pull_request_skips_without_reading_the_diff(self):
+        line, outputs = self.run_plan({"crates/x.rs": "\n"}, HEAD_REPO="someone/r", AUTHOR_ASSOCIATION="NONE", LABELS='["bug"]')
+        self.assertEqual(outputs, "outside=true\nskip-build=true\nskip-deep=true\n")
+        line, outputs = self.run_plan({"crates/x.rs": "\n"}, HEAD_REPO="someone/r", AUTHOR_ASSOCIATION="NONE", LABELS='["full-ci"]')
+        self.assertEqual(outputs, "outside=false\nskip-build=false\nskip-deep=false\n")
+
+
+class CiBudget(unittest.TestCase):
+    """scripts/ci-budget.py names every job over budget and never fails (ADR-063)."""
+
+    @staticmethod
+    def job(name: str, start: str, end: str | None, conclusion: str | None = "success") -> dict:
+        return {
+            "name": name,
+            "status": "completed" if end else "in_progress",
+            "conclusion": conclusion if end else None,
+            "started_at": f"2026-11-26T10:{start}Z",
+            "completed_at": f"2026-11-26T10:{end}Z" if end else None,
+        }
+
+    def test_warns_about_each_job_over_budget_slowest_first(self):
+        jobs = [
+            self.job("policy", "00:00", "00:22"),
+            self.job("formal", "00:00", "03:01"),
+            self.job("fuzz (intent)", "00:00", "04:10", "failure"),
+            self.job("rust (macos-15)", "00:00", "03:00"),
+            self.job("time budget", "05:00", None),
+        ]
+        lines, over = ci_budget.report(jobs, 180)
+        self.assertEqual(over, ["fuzz (intent) took 250 s, over the 180 s budget", "formal took 181 s, over the 180 s budget"])
+        self.assertEqual(lines[0], "CI job times, budget 180 s each; 2 over.")
+        self.assertEqual(lines[4:], ["| fuzz (intent) (over) | 250 | failure |", "| formal (over) | 181 | success |", "| rust (macos-15) | 180 | success |", "| policy | 22 | success |"])
+
+    def test_a_skipped_job_has_no_time(self):
+        skipped = {"name": "fuzz", "status": "completed", "conclusion": "skipped", "started_at": None, "completed_at": None}
+        self.assertEqual(ci_budget.report([skipped], 180), (["CI job times, budget 180 s each; 0 over.", "", "| Job | Seconds | Conclusion |", "|---|---:|---|"], []))
+
+    def test_reads_every_page_of_jobs(self):
+        pages = {
+            "/repos/o/r/actions/runs/7/attempts/2/jobs?per_page=100&page=1": {"total_count": 3, "jobs": [{"name": "a"}, {"name": "b"}]},
+            "/repos/o/r/actions/runs/7/attempts/2/jobs?per_page=100&page=2": {"total_count": 3, "jobs": [{"name": "c"}]},
+        }
+        self.assertEqual([j["name"] for j in ci_budget.jobs_of(pages.__getitem__, "o/r", "7", "2")], ["a", "b", "c"])
+
+    def test_exits_0_when_the_api_cannot_be_reached(self):
+        env = {"PATH": "/usr/bin:/bin", "GITHUB_API_URL": "http://127.0.0.1:9", "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "7"}
+        result = subprocess.run([sys.executable, str(HERE / "ci-budget.py")], env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("::warning title=CI budget::The job times could not be read (URLError", result.stdout)
+
+
+class CiWorkflow(unittest.TestCase):
+    """.github/workflows/ci.yml keeps the ruleset's required checks (ADR-063)."""
+
+    # The ruleset on main requires exactly these checks.
+    REQUIRED = [
+        "rust (ubuntu-24.04)",
+        "rust (macos-15)",
+        "release-binary",
+        "adapters",
+        "no-network",
+        "policy",
+        "fuzz",
+        "formal",
+        "secrets",
+        "full suite",
+    ]
+
+    def jobs(self) -> dict[str, str]:
+        text = (HERE.parent / ".github/workflows/ci.yml").read_text().split("\njobs:\n", 1)[1]
+        parts = re.split(r"^ {2}([a-z][\w-]*):\s*$", text, flags=re.M)
+        return dict(zip(parts[1::2], parts[2::2]))
+
+    @staticmethod
+    def field(block: str, key: str) -> str | None:
+        match = re.search(rf"^ {{4}}{key}: (.*)$", block, re.M)
+        return match[1].strip() if match else None
+
+    def checks(self) -> dict[str, str]:
+        """Each check name a job publishes when it runs, mapped to its job."""
+        names = {}
+        for job, block in self.jobs().items():
+            name = self.field(block, "name") or job
+            if "${{ matrix.os }}" in name:
+                for system in re.search(r"^ {8}os: \[(.*)\]$", block, re.M)[1].split(", "):
+                    names[name.replace("${{ matrix.os }}", system)] = job
+            elif "${{" not in name:
+                names[name] = job
+        return names
+
+    def test_every_required_check_has_a_job(self):
+        checks = self.checks()
+        for name in self.REQUIRED:
+            self.assertIn(name, checks)
+
+    def test_a_required_matrix_check_always_runs(self):
+        # A matrix job skipped by its condition publishes its unexpanded
+        # name, so a required check under a system's name would never report.
+        jobs = self.jobs()
+        for name in self.REQUIRED:
+            job = self.checks()[name]
+            if "strategy:" in jobs[job]:
+                self.assertEqual(self.field(jobs[job], "if"), "${{ always() }}", job)
+
+    def test_every_fuzz_target_has_a_job(self):
+        block = self.jobs()["fuzz-target"]
+        listed = re.search(r"^ {8}target: \[(.*)\]$", block, re.M)[1].split(", ")
+        targets = sorted(p.stem for p in (HERE.parent / "fuzz/fuzz_targets").glob("*.rs"))
+        self.assertEqual(sorted(listed), targets)
+
+    def test_the_gate_and_budget_wait_for_every_job(self):
+        jobs = self.jobs()
+        gate = set(self.field(jobs["full-suite"], "needs").strip("[]").split(", "))
+        self.assertEqual(gate, set(jobs) - {"main-gate", "full-suite", "budget"})
+        budget = set(self.field(jobs["budget"], "needs").strip("[]").split(", "))
+        self.assertEqual(budget, set(jobs) - {"main-gate", "full-suite", "budget", "rust", "fuzz"})
 
 
 def sandbox_ready() -> bool:
