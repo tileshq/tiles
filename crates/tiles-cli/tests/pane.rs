@@ -164,34 +164,102 @@ impl Pane {
     }
 }
 
+/// The dashboard fixture laid out as the pane lays it out for this
+/// terminal.
+struct Dashboard {
+    painter: tiles_mcp::card::EnginePainter,
+    call: tiles_mcp::card::Call,
+    look: tiles_mcp::card::Look,
+    laid: tiles_mcp::card::Laid,
+    order: Vec<usize>,
+}
+
+impl Dashboard {
+    fn new() -> Self {
+        let json = std::fs::read_to_string(fixture("dashboard.json")).unwrap();
+        let painter = tiles_mcp::card::EnginePainter::new().unwrap();
+        let call = tiles_mcp::card::Call::read(&json, &painter).unwrap();
+        let look = tiles_mcp::card::Look {
+            theme: tiles_engine::Theme::default(),
+            term_cols: COLS,
+            cell_px: (f32::from(CELL.0), f32::from(CELL.1)),
+            ..tiles_mcp::card::Look::default()
+        };
+        let (laid, order) = call.lay_out(&call.intents, &painter, &look).unwrap();
+        Self {
+            painter,
+            call,
+            look,
+            laid,
+            order,
+        }
+    }
+
+    /// The intent of the card drawn as `form`, and the card.
+    fn card(&self, form: &str) -> (&tiles_intent::Intent, &tiles_mcp::card::LaidCard) {
+        let k = self
+            .call
+            .intents
+            .iter()
+            .position(|i| i.form == form)
+            .unwrap();
+        let card = self
+            .laid
+            .cards
+            .iter()
+            .filter(|c| c.align.is_some())
+            .zip(&self.order)
+            .find(|(_, i)| **i == k)
+            .unwrap()
+            .0;
+        (&self.call.intents[k], card)
+    }
+
+    /// The hit map of `card` drawn as `intent`, laid out again in its own
+    /// slot as a click lays it out.
+    fn hits_as(
+        &self,
+        card: &tiles_mcp::card::LaidCard,
+        intent: &tiles_intent::Intent,
+    ) -> Vec<tiles_engine::hit::Hit> {
+        let tile = tiles_mcp::card::Tile {
+            intent,
+            cols: card.cells.0,
+            key: "",
+        };
+        let align = tiles_engine::Align {
+            min_height: f32::from(card.cells.1) * self.look.cell_height_css(),
+            ..card.align.unwrap()
+        };
+        let scene = self.painter.lay_card(&tile, &self.look, align).unwrap();
+        tiles_engine::hit::hit_map(&scene, self.look.scale)
+    }
+}
+
+/// Device pixel `x`, `y` of `card` on the pane.
+fn on_pane(card: &tiles_mcp::card::LaidCard, x: i32, y: i32) -> (u32, u32) {
+    (
+        u32::from(card.at.0) * u32::from(CELL.0) + u32::try_from(x).unwrap(),
+        u32::from(card.at.1) * u32::from(CELL.1) + u32::try_from(y).unwrap(),
+    )
+}
+
 /// The middle of the bar chart's first bar, in device pixels, laid out as
 /// the pane lays it out for this terminal.
 fn first_bar() -> (u32, u32) {
-    let json = std::fs::read_to_string(fixture("dashboard.json")).unwrap();
-    let painter = tiles_mcp::card::EnginePainter::new().unwrap();
-    let call = tiles_mcp::card::Call::read(&json, &painter).unwrap();
-    let look = tiles_mcp::card::Look {
-        theme: tiles_engine::Theme::default(),
-        term_cols: COLS,
-        cell_px: (f32::from(CELL.0), f32::from(CELL.1)),
-        ..tiles_mcp::card::Look::default()
-    };
-    let (laid, order) = call.lay_out(&call.intents, &painter, &look).unwrap();
-    let bar = call.intents.iter().position(|i| i.form == "bar").unwrap();
-    let card = laid
-        .cards
-        .iter()
-        .filter(|c| c.align.is_some())
-        .zip(&order)
-        .find(|(_, i)| **i == bar)
-        .unwrap()
-        .0;
-    let hit = &tiles_engine::hit::hit_map(&card.scene, look.scale)[0];
-    let x = u32::from(card.at.0) * u32::from(CELL.0)
-        + u32::try_from(i32::midpoint(hit.left, hit.right)).unwrap();
-    let y = u32::from(card.at.1) * u32::from(CELL.1)
-        + u32::try_from(i32::midpoint(hit.top, hit.bottom)).unwrap();
-    (x, y)
+    let board = Dashboard::new();
+    let (_, card) = board.card("bar");
+    let hit = &tiles_engine::hit::hit_map(&card.scene, board.look.scale)[0];
+    on_pane(
+        card,
+        i32::midpoint(hit.left, hit.right),
+        i32::midpoint(hit.top, hit.bottom),
+    )
+}
+
+/// A pointer an SGR pixel report places at `x`, `y`; the report is 1-based.
+fn report(button: u8, x: u32, y: u32, end: char) -> Vec<u8> {
+    format!("\x1b[<{button};{};{}{end}", x + 1, y + 1).into_bytes()
 }
 
 #[test]
@@ -258,6 +326,93 @@ fn a_hover_sends_only_the_overlay_and_a_click_sends_only_the_cards_it_filters() 
     ] {
         assert!(trace.contains(kind), "{kind} in {trace}");
     }
+}
+
+#[test]
+fn a_click_keeps_the_tooltip_on_the_mark_still_under_the_pointer() {
+    let board = Dashboard::new();
+    let (x, y) = first_bar();
+    // After Germany's bar is clicked, the column chart holds Germany's
+    // column alone. Clicking it selects from the column chart instead, which
+    // draws all five regions again: find a point on the lone column that no
+    // column covers once all five are back.
+    let (columns, card) = board.card("column");
+    let mut germany = columns.clone();
+    let region = germany.table.index("region").unwrap();
+    germany
+        .table
+        .rows
+        .retain(|r| r[region].label() == "Germany");
+    let alone = board.hits_as(card, &germany);
+    let all = board.hits_as(card, columns);
+    let lone = alone.iter().find(|h| h.row == Some(0)).unwrap();
+    let mid = i32::midpoint(lone.left, lone.right);
+    let (cx, cy) = (lone.top..lone.bottom)
+        .map(|y| (mid, y))
+        .find(|&(x, y)| tiles_engine::hit::hit_at(&all, x, y).is_none())
+        .map(|(x, y)| on_pane(card, x, y))
+        .expect("a point on the lone column that no column covers among five");
+
+    let mut pane = Pane::start("click-tooltip", &fixture("dashboard.json"), &[]);
+    let first_frame = pane.first_frame();
+    pane.send(&report(35, x, y, 'M'));
+    let hovered = pane.wait_from(first_frame, b"\x1b[?2026l");
+    // Click without moving: the bar under the pointer keeps its tooltip.
+    pane.send(&[report(0, x, y, 'M'), report(0, x, y, 'm')].concat());
+    let clicked = pane.wait_from(hovered, b"\x1b[?2026l");
+    let click = pane.seen[hovered..clicked].to_vec();
+    pane.send(&report(35, cx, cy, 'M'));
+    let hovered_again = pane.wait_from(clicked, b"\x1b[?2026l");
+    let hover_again = pane.seen[clicked..hovered_again].to_vec();
+    // Click the lone column: the columns spread out and leave the pointer on
+    // empty space.
+    pane.send(&[report(0, cx, cy, 'M'), report(0, cx, cy, 'm')].concat());
+    let clicked_again = pane.wait_from(hovered_again, b"\x1b[?2026l");
+    let click_again = pane.seen[hovered_again..clicked_again].to_vec();
+    pane.send(b"q");
+    let (status, _, trace) = pane.finish();
+    assert!(status.success(), "{status:?}");
+
+    let clicks: Vec<&str> = trace
+        .lines()
+        .filter(|l| l.contains("kind=click bytes"))
+        .collect();
+    assert_eq!(clicks.len(), 2, "{trace}");
+    assert!(clicks[0].ends_with("cards=4"), "{}", clicks[0]);
+    // The bar chart narrows to Germany and the columns widen to all five:
+    // the second click hit the column, not empty space, which would clear
+    // the selection and send four cards.
+    assert!(clicks[1].ends_with("cards=2"), "{}", clicks[1]);
+
+    // The first click places the bar's tooltip again, as the other overlay
+    // id, above the cards, and deletes the one the hover placed.
+    assert!(
+        has(&click, b"i=6999991,p=1,"),
+        "the tooltip is placed again"
+    );
+    assert!(has(&click, b",z=2,"));
+    assert!(has(&click, b"\x1b_Ga=d,d=I,q=2,i=6999990\x1b\\"));
+    let placed = click
+        .windows(b"i=6999991,p=1,".len())
+        .position(|w| w == b"i=6999991,p=1,")
+        .unwrap();
+    let last_card = click
+        .windows(b"i=700".len())
+        .rposition(|w| w == b"i=700")
+        .unwrap();
+    assert!(last_card < placed, "the tooltip goes above the new cards");
+    assert_eq!(
+        trace.matches("kind=click card=overlay").count(),
+        1,
+        "only the first click draws a tooltip: {trace}"
+    );
+
+    // The hover finds the lone column in the filtered scene.
+    assert!(has(&hover_again, b"i=6999990,p=1,"), "the column's tooltip");
+    // The second click leaves no tooltip: nothing is under the pointer.
+    assert!(!has(&click_again, b"i=6999990,p=1,"));
+    assert!(!has(&click_again, b"i=6999991,p=1,"));
+    assert!(has(&click_again, b"\x1b_Ga=d,d=I,q=2,i=6999990\x1b\\"));
 }
 
 #[test]
