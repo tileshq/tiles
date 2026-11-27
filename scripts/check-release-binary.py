@@ -11,7 +11,9 @@ the binary, which finds everything `strings` would, for:
     assets  every hex colour in the assets the build sealed, in quotes and bare (bare
             #ffffff is left out: x86 code spells it, a jump byte 0x23 then
             0x66 padding), every form text of 16 or more characters
-            (summaries, role notes), and every asset key written as a JSON
+            (summaries, role notes) other than a form's name, which
+            `forms::EMBEDDED` keeps readable to look the form up by, and
+            every asset key written as a JSON
             key ("key":), less the few the add-ons `tiles` embeds also use
             (crates/tiles-cli/src/addons.rs)
 
@@ -161,11 +163,12 @@ def needles(root: Path, pack: Path | None = None) -> list[tuple[str, re.Pattern[
     for text in asset_texts(root, pack):
         walk(json.loads(text), keys, texts)
     addons = addon_text(root)
+    names = {p.stem for p in (root / "crates/tiles-engine/assets/forms").glob("*.json")}
     found: list[tuple[str, re.Pattern[bytes]]] = []
     for text in sorted(texts):
         if re.fullmatch(r"#[0-9a-fA-F]{6}", text):
             found.append((f"colour {text}", colour_pattern(text)))
-        elif len(text) >= TEXT_MIN:
+        elif len(text) >= TEXT_MIN and text not in names:
             found.append((f"form text {text[:40]!r}", re.compile(re.escape(text.encode()))))
     for key in sorted(keys):
         json_key = rf'"{re.escape(key)}"\s*:'

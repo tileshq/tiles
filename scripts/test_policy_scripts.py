@@ -629,6 +629,11 @@ class ReleaseBinary(unittest.TestCase):
         problems = self.scan(summary.encode())
         self.assertEqual(len(problems), 1, problems)
         self.assertIn("form text", problems[0])
+        # A form's name stays readable: forms::EMBEDDED looks the form up by it.
+        heatmap = json.loads((assets / "forms/calendar-heatmap.json").read_text())
+        self.assertGreaterEqual(len(heatmap["name"]), release_binary.TEXT_MIN)
+        self.assertEqual(self.scan(heatmap["name"].encode()), [])
+        self.assertTrue(self.scan(heatmap["summary"].encode()))
 
     def test_finds_a_colour_in_either_case_and_a_json_key_with_spaces(self):
         tokens = json.loads((self.ROOT / "crates/tiles-engine/assets/plain/tokens.json").read_text())
