@@ -197,47 +197,100 @@ fn ringed(item: &Item) -> bool {
     matches!(item.shape, Shape::Rect { .. } | Shape::Circle { .. })
 }
 
-/// The largest bar, box or dot of `item`'s row whose box holds `item`'s,
-/// the first of equals: the one mark a row is ringed by, so a named point's
-/// larger dot stands for its smaller one and a range band's outer band for
-/// its inner band and middle dot. `item` itself when nothing holds it.
-fn outermost<'a>(card: &'a Scene, item: &'a Item) -> &'a Item {
-    let b = item.bounds();
-    let area = |r: Rect| r.width() * r.height();
-    card.items
+/// The one mark row `row` is ringed and washed by, for focus and hover
+/// alike, from the row's bars, boxes and dots: when every one is a dot,
+/// the largest (`prefer` among equals, else the first), so a named
+/// point's larger dot stands for its smaller one; otherwise one rectangle
+/// round all of them, in the largest one's colour, rounded by the largest
+/// radius among them and square only at a corner every one of them leaves
+/// square, so a range band's inner band and middle dot share its outer
+/// band's ring wherever they reach. `None` when the row draws none.
+fn row_mark(card: &Scene, row: usize, prefer: Option<&Item>) -> Option<Item> {
+    let marks: Vec<&Item> = card
+        .items
         .iter()
-        .filter(|i| i.part == Part::Mark && i.datum.is_some() && i.datum == item.datum)
-        .filter(|i| ringed(i))
-        .filter(|i| {
-            let o = i.bounds();
-            o.left <= b.left && o.top <= b.top && o.right >= b.right && o.bottom >= b.bottom
-        })
+        .filter(|i| i.part == Part::Mark && i.datum == Some(row) && ringed(i))
+        .collect();
+    let area = |i: &Item| i.bounds().width() * i.bounds().height();
+    let largest = marks
+        .iter()
+        .copied()
         .fold(None, |best: Option<&Item>, i| match best {
-            Some(b) if area(b.bounds()) >= area(i.bounds()) => best,
+            Some(b)
+                if area(b) > area(i)
+                    || (area(b) >= area(i) && !prefer.is_some_and(|p| std::ptr::eq(p, i))) =>
+            {
+                best
+            }
             _ => Some(i),
-        })
-        .unwrap_or(item)
+        })?;
+    if marks.len() == 1
+        || marks
+            .iter()
+            .all(|i| matches!(i.shape, Shape::Circle { .. }))
+    {
+        return Some(largest.clone());
+    }
+    let mut bounds = largest.bounds();
+    let mut radius: f32 = 0.0;
+    let mut round = [false; 4];
+    for m in &marks {
+        let b = m.bounds();
+        bounds = Rect::from_ltrb(
+            bounds.left.min(b.left),
+            bounds.top.min(b.top),
+            bounds.right.max(b.right),
+            bounds.bottom.max(b.bottom),
+        );
+        let (r, corners) = match m.shape {
+            Shape::Rect {
+                rect,
+                radius,
+                corners,
+            } => (
+                radius.min(rect.width() / 2.0).min(rect.height() / 2.0),
+                corners,
+            ),
+            Shape::Circle { r, .. } => (r, Corners::All),
+            _ => continue,
+        };
+        if r > 0.0 {
+            radius = radius.max(r);
+            for (k, v) in corner_radii(corners, 1.0, 0.0).into_iter().enumerate() {
+                round[k] |= v > 0.0;
+            }
+        }
+    }
+    let corners = match round {
+        [true, true, false, false] => Corners::Top,
+        [false, false, true, true] => Corners::Bottom,
+        [false, true, true, false] => Corners::Right,
+        [true, false, false, true] => Corners::Left,
+        _ => Corners::All,
+    };
+    let mut mark = largest.clone();
+    mark.shape = Shape::Rect {
+        rect: bounds,
+        radius,
+        corners,
+    };
+    Some(mark)
 }
 
-/// The mark `hit` lights at device `scale`: the item under the pointer
-/// when it is a bar, a box or a dot (a line chart's undrawn point
-/// included), else the row's first bar, box or dot, so a lollipop's stem
-/// or a value label lights the head; then its row's [`outermost`] mark
-/// that holds it. Never a series line or a stem.
-fn mark_item<'a>(card: &'a Scene, hit: &Hit, scale: f32) -> Option<&'a Item> {
+/// The mark `hit` lights at device `scale`: its row's [`row_mark`],
+/// preferring the item under the pointer among equal dots, or, for a row
+/// the card draws no bar, box or dot for, the item under the pointer when
+/// it is a dot (a line chart's undrawn point). Never a series line or a
+/// stem: a lollipop's stem or a value label lights the head.
+fn mark_item(card: &Scene, hit: &Hit, scale: f32) -> Option<Item> {
     let row = hit.row?;
-    card.items
+    let under = card
+        .items
         .iter()
         .filter(|i| i.datum == Some(row))
         .find(|i| crate::hit::target(i, scale).as_ref() == Some(hit))
-        .filter(|i| ringed(i))
-        .or_else(|| {
-            card.items
-                .iter()
-                .filter(|i| i.part == Part::Mark && i.datum == Some(row))
-                .find(|i| ringed(i))
-        })
-        .map(|i| outermost(card, i))
+        .filter(|i| ringed(i));
+    row_mark(card, row, under).or_else(|| under.cloned())
 }
 
 /// The colour the card draws `hit`'s mark in, for the tooltip's swatch.
@@ -380,9 +433,8 @@ fn text_box(fonts: &Fonts, item: &Item) -> Option<Rect> {
 
 /// `card` with a value focused (ADR-070): each mark the highlight names
 /// gets a one-pixel ring in the accent, broken round any value label it
-/// passes, one per row unless the row's marks lie apart (a mark inside a
-/// larger one of its row is ringed by that one, [`outermost`]), and every
-/// other mark moves a little towards the card. A card whose highlight
+/// passes, one per row ([`row_mark`]), and every other mark moves a
+/// little towards the card. A card whose highlight
 /// names no mark is returned as it is.
 pub(crate) fn focus(tokens: &Tokens, fonts: &Fonts, card: &Scene) -> Scene {
     if !card
@@ -402,15 +454,27 @@ pub(crate) fn focus(tokens: &Tokens, fonts: &Fonts, card: &Scene) -> Scene {
         .collect();
     let mut out = card.clone();
     let mut rings = Vec::new();
+    let mut rung = Vec::new();
     for (item, drawn) in card.items.iter().zip(&mut out.items) {
         if item.part != Part::Mark {
             continue;
         }
         if !item.highlighted {
             drawn.color = item.color.mix(pal.card, DIM);
-        } else if std::ptr::eq(outermost(card, item), item)
-            && let Some(path) = ring_path(item)
-        {
+            continue;
+        }
+        if !ringed(item) {
+            continue;
+        }
+        let mark = match item.datum {
+            Some(row) if rung.contains(&row) => continue,
+            Some(row) => {
+                rung.push(row);
+                row_mark(card, row, None)
+            }
+            None => Some(item.clone()),
+        };
+        if let Some(path) = mark.as_ref().and_then(ring_path) {
             for run in gapped(&path, &labels) {
                 rings.push(line(run, RING, pal.accent));
             }
@@ -661,7 +725,7 @@ fn ring_items(
                 wash.tip = None;
                 items.push(wash);
             }
-            ring_path(m).unwrap_or_else(|| rounded(ring, [RING_RADIUS; 4]))
+            ring_path(&m).unwrap_or_else(|| rounded(ring, [RING_RADIUS; 4]))
         }
         None => rounded(ring, [RING_RADIUS; 4]),
     };

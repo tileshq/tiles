@@ -1117,40 +1117,77 @@ fn a_ring_rounds_only_the_corners_its_bar_rounds() {
     }
 }
 
-/// How far `(x, y)` lies outside the edge of `item`, a dot or a bar
-/// rounded all round; negative inside it.
-fn edge_distance(item: &Item, (x, y): (f32, f32)) -> f32 {
-    let (b, r) = match item.shape {
-        Shape::Circle { r, .. } => (item.bounds(), r),
-        Shape::Rect {
-            rect,
-            radius,
-            corners: Corners::All,
-        } => (
-            rect,
-            radius.min(rect.width() / 2.0).min(rect.height() / 2.0),
-        ),
-        _ => panic!("a dot or a mark rounded all round: {:?}", item.shape),
-    };
+/// How far `(x, y)` lies outside the box `b` rounded all round by `r`;
+/// negative inside it.
+fn edge_distance(b: skia_safe::Rect, r: f32, (x, y): (f32, f32)) -> f32 {
+    let r = r.min(b.width() / 2.0).min(b.height() / 2.0);
     let qx = (x - b.center_x()).abs() - (b.width() / 2.0 - r);
     let qy = (y - b.center_y()).abs() - (b.height() / 2.0 - r);
     qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - r
 }
 
-/// A row the card draws as marks inside a larger one, a line card's named
-/// point (a larger dot laid over its dot) or a range band (an inner band
-/// and a middle dot inside the outer band), gets one ring, round the outer
-/// mark, when focused and when any of its targets is hovered, and the
-/// hover's wash takes the outer mark's shape (ADR-070).
+/// The shape one ring goes round for a row drawn with `marks`, as a box
+/// and its radius: the largest dot when every mark is a dot, else the box
+/// round them all, rounded by the largest radius among them.
+fn row_shape(marks: &[&Item]) -> (skia_safe::Rect, f32) {
+    let area = |i: &&&Item| i.bounds().width() * i.bounds().height();
+    let radius = |i: &Item| match i.shape {
+        Shape::Circle { r, .. } => r,
+        Shape::Rect {
+            rect,
+            radius,
+            corners: Corners::All,
+        } => radius.min(rect.width() / 2.0).min(rect.height() / 2.0),
+        _ => panic!("a dot or a mark rounded all round: {:?}", i.shape),
+    };
+    if marks
+        .iter()
+        .all(|i| matches!(i.shape, Shape::Circle { .. }))
+    {
+        let dot = marks
+            .iter()
+            .max_by(|a, b| area(a).total_cmp(&area(b)))
+            .unwrap();
+        return (dot.bounds(), radius(dot));
+    }
+    let b = marks.iter().fold(marks[0].bounds(), |u, i| {
+        let b = i.bounds();
+        skia_safe::Rect::from_ltrb(
+            u.left.min(b.left),
+            u.top.min(b.top),
+            u.right.max(b.right),
+            u.bottom.max(b.bottom),
+        )
+    });
+    (b, marks.iter().map(|i| radius(i)).fold(0.0, f32::max))
+}
+
+/// A row the card draws with several marks, a line card's named point (a
+/// larger dot laid over its dot) or a range band (an inner band and a
+/// middle dot on the outer band, a narrow inner band widened to a pill
+/// that sticks out of it included), gets one ring round them all when
+/// focused and when any of its targets is hovered, and the hover's wash
+/// takes that ring's shape (ADR-070).
 #[test]
 #[allow(clippy::cast_precision_loss, clippy::too_many_lines)] // Pixel offsets; focus and every hover target.
-fn a_row_drawn_as_nested_marks_gets_one_ring_round_the_outer_one() {
+fn a_row_drawn_as_several_marks_gets_one_ring_round_them_all() {
     let e = engine();
     let scale = 2.0;
     let off = 2.5;
-    let area = |i: &&Item| i.bounds().width() * i.bounds().height();
-    for form in ["area", "range-bands"] {
-        let s = scene(form);
+    let mut narrow = fixture("range-bands");
+    let row = |m: &str, v: [f64; 5]| serde_json::json!({"method": m, "p5": v[0], "p25": v[1], "p50": v[2], "p75": v[3], "p95": v[4]});
+    narrow["data"]["rows"] = serde_json::json!([
+        row("Wide", [0.0, 10.0, 50.0, 90.0, 100.0]),
+        row("Stuck", [0.0, 0.1, 0.2, 0.5, 60.0]),
+        row("Narrow", [50.0, 50.0, 50.5, 51.0, 52.0]),
+    ]);
+    narrow["highlight"] = serde_json::json!(["Stuck", "Narrow"]);
+    let narrow = scene_of(&narrow).unwrap();
+    for (form, s) in [
+        ("area", scene("area")),
+        ("range-bands", scene("range-bands")),
+        ("narrow range-bands", narrow),
+    ] {
         let accent = e.tokens().palette(s.theme).accent;
         let focused = e.pane_focus(&s);
         let focus_ring: Vec<(f32, f32)> = focused
@@ -1180,12 +1217,23 @@ fn a_row_drawn_as_nested_marks_gets_one_ring_round_the_outer_one() {
                 .filter(|i| i.part == Part::Mark && i.datum == Some(row))
                 .filter(|i| matches!(i.shape, Shape::Rect { .. } | Shape::Circle { .. }))
                 .collect();
-            assert!(marks.len() > 1, "{form} draws row {row} as nested marks");
-            let outer = *marks
-                .iter()
-                .max_by(|a, b| area(a).total_cmp(&area(b)))
-                .unwrap();
-            let near = outer.bounds().with_outset((off + 1.0, off + 1.0));
+            assert!(marks.len() > 1, "{form} draws row {row} with several marks");
+            let (want, radius) = row_shape(&marks);
+            if form.starts_with("narrow") {
+                let widest = marks
+                    .iter()
+                    .map(|i| i.bounds())
+                    .max_by(|a, b| (a.width() * a.height()).total_cmp(&(b.width() * b.height())))
+                    .unwrap();
+                assert!(
+                    marks.iter().any(|i| {
+                        let b = i.bounds();
+                        b.left < widest.left - 0.5 || b.right > widest.right + 0.5
+                    }),
+                    "{form} row {row} has a mark sticking out of its largest"
+                );
+            }
+            let near = want.with_outset((off + 1.0, off + 1.0));
             let ring: Vec<(f32, f32)> = focus_ring
                 .iter()
                 .copied()
@@ -1195,10 +1243,10 @@ fn a_row_drawn_as_nested_marks_gets_one_ring_round_the_outer_one() {
                 .collect();
             assert!(!ring.is_empty(), "{form} row {row} has a focus ring");
             for p in ring {
-                let d = edge_distance(outer, p);
+                let d = edge_distance(want, radius, p);
                 assert!(
                     (d - off).abs() < 0.1,
-                    "{form} row {row}: every focus ring point is {off} off the outer mark, {p:?} is {d}"
+                    "{form} row {row}: every focus ring point is {off} off the row's marks, {p:?} is {d}"
                 );
             }
             for hit in hit_map(&s, scale).iter().filter(|h| h.row == Some(row)) {
@@ -1220,10 +1268,10 @@ fn a_row_drawn_as_nested_marks_gets_one_ring_round_the_outer_one() {
                     .collect();
                 assert!(!ring.is_empty(), "{form}: a hover ring for {:?}", hit.tip);
                 for p in ring {
-                    let d = edge_distance(outer, p);
+                    let d = edge_distance(want, radius, p);
                     assert!(
                         (d - off).abs() < 0.1,
-                        "{form}: hovering {:?}, every ring point is {off} off the outer mark, {p:?} is {d}",
+                        "{form}: hovering {:?}, every ring point is {off} off the row's marks, {p:?} is {d}",
                         hit.tip
                     );
                 }
@@ -1235,13 +1283,12 @@ fn a_row_drawn_as_nested_marks_gets_one_ring_round_the_outer_one() {
                     .filter(|i| i.color == Rgba::white(0.12))
                     .map(|i| i.bounds().with_offset(shift))
                     .collect();
-                let want = outer.bounds();
                 assert!(
                     matches!(washes.as_slice(), [w] if (w.left - want.left).abs() < 0.01
                         && (w.top - want.top).abs() < 0.01
                         && (w.right - want.right).abs() < 0.01
                         && (w.bottom - want.bottom).abs() < 0.01),
-                    "{form}: hovering {:?} washes the outer mark alone, got {washes:?}",
+                    "{form}: hovering {:?} washes the ring's shape alone, got {washes:?}",
                     hit.tip
                 );
             }
