@@ -3469,7 +3469,7 @@ fn m14_a_histogram_refuses_what_would_draw_a_wrong_count() {
         assert_eq!(
             refuse(uneven(limit)).to_string(),
             "data.rows: sent bins must be equal width; send bin starts an equal step apart, \
-             or leave y out and send the values",
+             with a row of y 0 for an empty bin, or leave y out and send the values",
             "M14: bins at uneven gaps are refused"
         );
     }

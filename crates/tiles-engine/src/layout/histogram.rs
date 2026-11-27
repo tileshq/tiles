@@ -93,7 +93,7 @@ pub(super) fn check(intent: &Intent) -> Result<(), IntentError> {
         return Err(IntentError::new(
             "data.rows",
             "sent bins must be equal width",
-            "send bin starts an equal step apart, or leave y out and send the values",
+            "send bin starts an equal step apart, with a row of y 0 for an empty bin, or leave y out and send the values",
         ));
     }
     // A threshold on no sent bin's edge splits a count Tiles cannot split,
