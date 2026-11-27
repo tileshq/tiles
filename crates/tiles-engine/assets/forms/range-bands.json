@@ -1,0 +1,44 @@
+{
+  "name": "range-bands",
+  "summary": "A spread per category from precomputed bounds: a light band from lo to hi, an optional darker inner band and a dot at the middle value, such as the 5th to 95th percentile, the middle half and the median. Takes an axis title.",
+  "layout": "bands",
+  "width": { "min": 48, "max": 72, "per_label_char": 1.2 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the category of each row, one row each"
+    },
+    {
+      "name": "lo",
+      "kind": "number",
+      "required": true,
+      "doc": "the low end of the outer band, such as the 5th percentile"
+    },
+    {
+      "name": "hi",
+      "kind": "number",
+      "required": true,
+      "doc": "the high end of the outer band, such as the 95th percentile"
+    },
+    {
+      "name": "mid",
+      "kind": "number",
+      "required": false,
+      "doc": "the middle value drawn as a dot, such as the median"
+    },
+    {
+      "name": "inner_lo",
+      "kind": "number",
+      "required": false,
+      "doc": "the low end of the darker inner band, such as the 25th percentile; needs inner_hi"
+    },
+    {
+      "name": "inner_hi",
+      "kind": "number",
+      "required": false,
+      "doc": "the high end of the inner band, such as the 75th percentile; needs inner_lo"
+    }
+  ]
+}

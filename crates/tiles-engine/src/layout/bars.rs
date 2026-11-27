@@ -315,7 +315,8 @@ pub(super) fn bars(c: &mut Ctx, style: BarStyle) -> f32 {
             .into_iter()
             .map(|v| (tf.format(v), x.map(v)))
             .collect();
-        c.bottom_labels(&tick_labels, top + span, Under::Values)
+        let below = c.bottom_labels(&tick_labels, top + span, Under::Values);
+        below + c.axis_title((left, right), top + span + below)
     } else {
         0.0
     };

@@ -72,7 +72,9 @@ pub(super) fn bullet(c: &mut Ctx) -> f32 {
     let (lo, hi) = nice(lo, hi.max(values.iter().copied().fold(0.0, f64::max)), 4.0);
     let left = c.left + PAD + widest + c.t.marks.label_padding;
     let limit = c.left + c.width - PAD;
-    let tf = c.tick_format(&ticks(lo, hi, 4.0), true);
+    // Ticks written in full, 1,000 rather than 1k, as the gallery's bullet
+    // writes its thousands axis.
+    let tf = NumberFormat::for_values(&ticks(lo, hi, 4.0)).with_unit(c.intent.unit);
     // The scale narrows only as far as a row's text past its reach, or the
     // last tick's half width, needs.
     let label_w = |l: &str| c.width_of(l, vs);
@@ -199,6 +201,7 @@ pub(super) fn bullet(c: &mut Ctx) -> f32 {
         .map(|v| (tf.format(v), x.map(v)))
         .collect();
     let below = c.bottom_labels(&tick_labels, bottom, Under::Values);
+    let titled = c.axis_title((left, right), bottom + below);
     c.plot = Rect::from_ltrb(left, top, right, bottom);
-    span + below + 2.0 * PAD
+    span + below + titled + 2.0 * PAD
 }

@@ -1,0 +1,80 @@
+{
+  "v": 1,
+  "form": "histogram",
+  "title": "Three in ten demo requests wait longer than the 15-minute SLA",
+  "subtitle": "Demo requests last quarter, by minutes from form fill to first touch",
+  "claim": {
+    "kind": "distribution",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "minute",
+    "y": "requests",
+    "threshold": "sla"
+  },
+  "axis": "Minutes to first touch",
+  "data": {
+    "rows": [
+      {
+        "minute": 0,
+        "requests": 310,
+        "sla": 15
+      },
+      {
+        "minute": 5,
+        "requests": 260,
+        "sla": 15
+      },
+      {
+        "minute": 10,
+        "requests": 180,
+        "sla": 15
+      },
+      {
+        "minute": 15,
+        "requests": 90,
+        "sla": 15
+      },
+      {
+        "minute": 20,
+        "requests": 60,
+        "sla": 15
+      },
+      {
+        "minute": 25,
+        "requests": 45,
+        "sla": 15
+      },
+      {
+        "minute": 30,
+        "requests": 35,
+        "sla": 15
+      },
+      {
+        "minute": 35,
+        "requests": 28,
+        "sla": 15
+      },
+      {
+        "minute": 40,
+        "requests": 22,
+        "sla": 15
+      },
+      {
+        "minute": 45,
+        "requests": 18,
+        "sla": 15
+      },
+      {
+        "minute": 50,
+        "requests": 15,
+        "sla": 15
+      },
+      {
+        "minute": 55,
+        "requests": 12,
+        "sla": 15
+      }
+    ]
+  }
+}

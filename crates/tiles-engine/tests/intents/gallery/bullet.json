@@ -3,6 +3,7 @@
   "form": "bullet",
   "title": "EMEA and APAC are behind their Q3 bookings quota",
   "subtitle": "Made-up data \u00b7 new bookings this quarter vs quota (tick), \u20ac thousand \u00b7 bands: under 70%, 70 to 90%, over 90% of quota",
+  "axis": "\u20ac thousand",
   "claim": {
     "kind": "compare",
     "tone": "bad"

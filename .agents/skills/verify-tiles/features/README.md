@@ -58,4 +58,7 @@ Chart forms, one per file:
 - [bullet](./bullet.md): "Three of four teams are on track for quota".
 - [waterfall](./waterfall.md): "Expansion more than covered churn this quarter".
 - [scatter](./scatter.md): "Larger accounts adopt more features, Globex is the outlier".
+- [histogram](./histogram.md): "Three in ten demo requests wait longer than the 15-minute SLA".
+- [box-plot](./box-plot.md): "Enterprise deals take six times longer to close than SMB deals".
+- [range-bands](./range-bands.md): "Card and wallet payouts land within a day; transfers and BNPL take up to five".
 

@@ -1,6 +1,6 @@
 # ADR-003: The model fills a short chart intent (form, fields, claim, highlight, title); Tiles owns the spec
 
-- Status: Accepted; amended by [ADR-012](ADR-012-prototype-parity.md); the hosted intelligence reading ranges is superseded by [ADR-019](ADR-019-copying-without-company-data.md); for cards `tiles_chart` draws, its refusal of a highlight that names no category is superseded by [ADR-020](ADR-020-dashboards.md), which corrects the slips that draw no wrong number and says so in the result
+- Status: Accepted; amended by [ADR-012](ADR-012-prototype-parity.md) and by [ADR-066](ADR-066-distribution-forms-and-an-axis-title.md), which adds an optional `axis` key; the hosted intelligence reading ranges is superseded by [ADR-019](ADR-019-copying-without-company-data.md); for cards `tiles_chart` draws, its refusal of a highlight that names no category is superseded by [ADR-020](ADR-020-dashboards.md), which corrects the slips that draw no wrong number and says so in the result
 - Date: 2026-10-17
 
 ## Context

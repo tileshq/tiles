@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "form": "lollipop",
+  "title": "A travel payment is worth four times the average payment",
+  "subtitle": "Made-up data \u00b7 average payment value by merchant category, \u20ac",
+  "unit": "eur",
+  "claim": {
+    "kind": "compare",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "category",
+    "y": "value",
+    "average": "average"
+  },
+  "data": {
+    "rows": [
+      {
+        "category": "Travel",
+        "value": 412,
+        "average": 103
+      },
+      {
+        "category": "Electronics",
+        "value": 238,
+        "average": 103
+      },
+      {
+        "category": "Furniture",
+        "value": 205,
+        "average": 103
+      },
+      {
+        "category": "Event tickets",
+        "value": 160,
+        "average": 103
+      },
+      {
+        "category": "Fashion",
+        "value": 88,
+        "average": 103
+      },
+      {
+        "category": "Beauty",
+        "value": 52,
+        "average": 103
+      },
+      {
+        "category": "Groceries",
+        "value": 47,
+        "average": 103
+      },
+      {
+        "category": "Food delivery",
+        "value": 31,
+        "average": 103
+      },
+      {
+        "category": "Subscriptions",
+        "value": 18,
+        "average": 103
+      }
+    ]
+  },
+  "highlight": [
+    "Travel"
+  ]
+}

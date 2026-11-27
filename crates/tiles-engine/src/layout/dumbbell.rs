@@ -228,8 +228,9 @@ pub(super) fn dumbbell(c: &mut Ctx) -> f32 {
         .map(|v| (tf.format(v), x.map(v)))
         .collect();
     let below = c.bottom_labels(&tick_labels, bottom, Under::Values);
+    let titled = c.axis_title((left, right), bottom + below);
     c.plot = Rect::from_ltrb(left, top, right, bottom);
-    bottom + below + PAD - c.top
+    bottom + below + titled + PAD - c.top
 }
 
 /// The dumbbell's dot, as a Vega symbol size, as the gallery sets it.

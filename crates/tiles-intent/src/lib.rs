@@ -51,6 +51,9 @@ pub const MAX_TEXT_CHARS: usize = 120;
 pub const MAX_HIGHLIGHT: usize = 50;
 /// Longest note, in characters (ADR-012): a short callout, not a caption.
 pub const MAX_NOTE_CHARS: usize = 48;
+/// Longest axis title, in characters: a few words under a value axis, such
+/// as `Minutes` or `€ thousand`.
+pub const MAX_AXIS_CHARS: usize = 40;
 /// Largest magnitude a number cell may hold. Sums of up to 60 categories of
 /// 5 series stay exact enough to draw and short enough to print; 1.7e308
 /// stacked twice overflowed to infinity and drew a silently wrong chart.
@@ -295,6 +298,9 @@ pub struct Intent {
     pub unit: Option<Unit>,
     /// A short callout drawn beside the first highlighted mark (ADR-012).
     pub note: Option<String>,
+    /// The value axis's title, such as `Minutes`, written under the axis of
+    /// a form that draws one along the bottom.
+    pub axis: Option<String>,
     /// The rows.
     pub table: Table,
     /// What Tiles corrected or left out of the intent rather than refusing
@@ -354,6 +360,8 @@ struct RawIntent {
     unit: Option<Unit>,
     #[serde(default)]
     note: Option<String>,
+    #[serde(default)]
+    axis: Option<String>,
     data: source::DataSource,
 }
 
@@ -386,6 +394,8 @@ pub struct Request {
     pub unit: Option<Unit>,
     /// A short callout beside the first highlighted mark (ADR-012).
     pub note: Option<String>,
+    /// The value axis's title.
+    pub axis: Option<String>,
     /// Where the rows come from.
     pub data: source::DataSource,
     /// What Tiles corrected or left out so far, one sentence each.
@@ -549,6 +559,7 @@ impl Request {
             highlight: self.highlight,
             unit: self.unit,
             note: self.note,
+            axis: self.axis,
             table,
             notes: self.notes,
         })
@@ -790,7 +801,7 @@ pub fn parse_request(json: &str) -> Result<Request, IntentError> {
             ARGUMENTS,
             format!("not a valid chart: {e}"),
             "send v, form, title, claim, fields and data as keys of this object itself, \
-             not nested under another key, and optionally subtitle, highlight, unit and note",
+             not nested under another key, and optionally subtitle, highlight, unit, note and axis",
         )
     };
     let mut value: Value = serde_json::from_str(json).map_err(invalid)?;
@@ -838,7 +849,7 @@ pub fn unnest(value: &mut Value) -> bool {
 }
 
 /// The keys an intent takes.
-const KEYS: [&str; 10] = [
+const KEYS: [&str; 11] = [
     "v",
     "form",
     "title",
@@ -848,6 +859,7 @@ const KEYS: [&str; 10] = [
     "highlight",
     "unit",
     "note",
+    "axis",
     "data",
 ];
 
@@ -1037,6 +1049,11 @@ fn validate(raw: RawIntent, mut notes: Vec<String>) -> Result<Request, IntentErr
     }
     .filter(|s| !s.is_empty());
     let note = note(raw.note.as_deref(), !raw.highlight.is_empty(), &mut notes)?;
+    let axis = match raw.axis.as_deref() {
+        Some(a) => Some(mend_text("axis", a, MAX_AXIS_CHARS, &mut notes)?),
+        None => None,
+    }
+    .filter(|a| !a.is_empty());
     for (role, column) in &raw.fields {
         text(&format!("fields.{}", clip(role)), role, MAX_TEXT_CHARS)?;
         text(&format!("fields.{}", clip(role)), column, MAX_TEXT_CHARS)?;
@@ -1088,6 +1105,7 @@ fn validate(raw: RawIntent, mut notes: Vec<String>) -> Result<Request, IntentErr
         highlight,
         unit: raw.unit,
         note,
+        axis,
         data: raw.data,
         notes,
     })

@@ -1,0 +1,166 @@
+{
+  "v": 1,
+  "form": "box-plot",
+  "title": "Senior Product Design Engineer, Platform Infrastructure, leads every team on hires in 2026",
+  "claim": {
+    "kind": "distribution",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "name",
+    "y": "value"
+  },
+  "unit": "usd",
+  "highlight": [
+    "نور الهدى عبد الرحمن"
+  ],
+  "axis": "Benachrichtigungseinstellungen in USD",
+  "data": {
+    "rows": [
+      {
+        "name": "Benachrichtigungseinstellungen",
+        "value": 6172839.45
+      },
+      {
+        "name": "Benachrichtigungseinstellungen",
+        "value": 9876543.120000001
+      },
+      {
+        "name": "Benachrichtigungseinstellungen",
+        "value": 12345678.9
+      },
+      {
+        "name": "Benachrichtigungseinstellungen",
+        "value": 13580246.790000001
+      },
+      {
+        "name": "Benachrichtigungseinstellungen",
+        "value": 17283950.46
+      },
+      {
+        "name": "Benachrichtigungseinstellungen",
+        "value": 37037036.7
+      },
+      {
+        "name": "王秀英",
+        "value": 642000.25
+      },
+      {
+        "name": "王秀英",
+        "value": 1027200.4
+      },
+      {
+        "name": "王秀英",
+        "value": 1284000.5
+      },
+      {
+        "name": "王秀英",
+        "value": 1412400.55
+      },
+      {
+        "name": "王秀英",
+        "value": 1797600.7
+      },
+      {
+        "name": "王秀英",
+        "value": 3852001.5
+      },
+      {
+        "name": "نور الهدى عبد الرحمن",
+        "value": 500000.0
+      },
+      {
+        "name": "نور الهدى عبد الرحمن",
+        "value": 800000.0
+      },
+      {
+        "name": "نور الهدى عبد الرحمن",
+        "value": 1000000
+      },
+      {
+        "name": "نور الهدى عبد الرحمن",
+        "value": 1100000.0
+      },
+      {
+        "name": "نور الهدى عبد الرحمن",
+        "value": 1400000.0
+      },
+      {
+        "name": "نور الهدى عبد الرحمن",
+        "value": 3000000
+      },
+      {
+        "name": "🦊 Fox",
+        "value": 642.0
+      },
+      {
+        "name": "🦊 Fox",
+        "value": 1027.2
+      },
+      {
+        "name": "🦊 Fox",
+        "value": 1284
+      },
+      {
+        "name": "🦊 Fox",
+        "value": 1412.4
+      },
+      {
+        "name": "🦊 Fox",
+        "value": 1797.6
+      },
+      {
+        "name": "🦊 Fox",
+        "value": 3852
+      },
+      {
+        "name": "👩🏽 Priya",
+        "value": 0.5
+      },
+      {
+        "name": "👩🏽 Priya",
+        "value": 0.8
+      },
+      {
+        "name": "👩🏽 Priya",
+        "value": 1
+      },
+      {
+        "name": "👩🏽 Priya",
+        "value": 1.1
+      },
+      {
+        "name": "👩🏽 Priya",
+        "value": 1.4
+      },
+      {
+        "name": "👩🏽 Priya",
+        "value": 3
+      },
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -642.0
+      },
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -1027.2
+      },
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -1284
+      },
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -1412.4
+      },
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -1797.6
+      },
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -3852
+      }
+    ]
+  }
+}

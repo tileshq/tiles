@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "form": "range-bands",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "distribution",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "name",
+    "lo": "lo",
+    "hi": "hi"
+  },
+  "unit": "usd",
+  "data": {
+    "rows": [
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "lo": -1284,
+        "hi": 12345678.9
+      }
+    ]
+  }
+}
