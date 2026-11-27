@@ -112,8 +112,9 @@ fn threshold(intent: &Intent) -> Option<f64> {
 
 /// The bins: the sent ones with their counts summed per start, each as wide
 /// as the narrowest gap between two starts, or the values counted into
-/// even, round bins, one of whose edges is the threshold when it falls
-/// among the values, so the bins past it hold exactly the values past it.
+/// even, round bins, one of whose edges is the threshold when it is at or
+/// below the largest value, so the bins past it hold exactly the values
+/// past it.
 fn bins(intent: &Intent, threshold: Option<f64>) -> Vec<Bin> {
     let x = intent.column("x").unwrap_or(0);
     let rows = &intent.table.rows;
