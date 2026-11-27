@@ -87,10 +87,10 @@ const ACCENT_AT: f32 = 0.8;
 const INK_TOP: f32 = 0.35;
 
 /// A grid of columns (x) by rows (row), each cell the track's shade with
-/// the accent laid over it by value, from the lowest to the highest. A
-/// highlight names rows, columns or both; the cells where they meet carry
-/// their values and the names they sit under are in ink. A key under the
-/// grid runs from the lowest value to the highest.
+/// the accent laid over it by value, from zero, or the lowest value when
+/// one is below zero, to the highest. A highlight names rows, columns or
+/// both; the cells where they meet carry their values and the names they
+/// sit under are in ink. A key under the grid runs over the same range.
 #[allow(
     clippy::too_many_lines,
     clippy::many_single_char_names,
@@ -232,7 +232,7 @@ pub(super) fn heatmap(c: &mut Ctx) -> f32 {
     // Evenly thinned, every n-th column named, as a value axis keeps its
     // step: hours read 07:00, 09:00, 11:00, not whichever happen to fit.
     let below = c.bottom_labels(&labels, bottom, Under::Values);
-    // The key: the lowest value, the shades from light to full, the highest.
+    // The key: the low end, the shades from light to full, the highest.
     let key_top = bottom + below + KEY_TOP;
     let key_mid = key_top + KEY_SWATCH.1 / 2.0;
     let lo_text = nf.format(lo);

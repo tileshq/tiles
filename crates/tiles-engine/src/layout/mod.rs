@@ -891,6 +891,20 @@ fn periods(form: &Form, intent: &Intent) -> Result<(), IntentError> {
             "aggregate to fewer periods, such as weeks or months",
         ));
     }
+    if let Some(sc) = intent.column("series") {
+        let rows = &intent.table.rows;
+        if let Some(empty) = rows.iter().map(|r| r[sc].label()).find(|l| {
+            !rows
+                .iter()
+                .any(|r| r[sc].label() == *l && r[y].number().is_some())
+        }) {
+            return Err(IntentError::new(
+                "data.rows",
+                format!("series {empty} has no y number in any period"),
+                format!("drop the rows for {empty}, or widen the periods to where it has values"),
+            ));
+        }
+    }
     Ok(())
 }
 
