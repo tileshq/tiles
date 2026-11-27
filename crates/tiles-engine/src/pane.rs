@@ -561,6 +561,16 @@ pub(crate) fn overlay(
         css(hit.bottom, scale),
     );
     let ring = mark.with_outset((RING_OUT, RING_OUT));
+    let (ringed, line_box) = ring_items(fonts, pal, card, scale, hit, ring, cue.focused);
+    // The ring can circle a mark outside the hit, a lollipop's head for its
+    // stem: the ring's box holds both, for the picture and the tooltip.
+    let line_box = line_box.with_outset((-RING / 2.0, -RING / 2.0));
+    let ring = Rect::from_ltrb(
+        ring.left.min(line_box.left),
+        ring.top.min(line_box.top),
+        ring.right.max(line_box.right),
+        ring.bottom.max(line_box.bottom),
+    );
     let laid = tip(fonts, &hit.tip, cue.hint, card.width);
     let reach = RING + 1.0;
     let pref_left = cue
@@ -575,7 +585,7 @@ pub(crate) fn overlay(
         card,
         ring.with_outset((reach, reach)),
         scale,
-        ring_items(fonts, pal, card, scale, hit, ring, cue.focused),
+        ringed,
     );
     let mut items = vec![
         rect(shadow, TIP_RADIUS + SHADOW.1, Rgba::black(SHADOW.2)),
@@ -605,6 +615,7 @@ pub(crate) fn overlay(
 /// it showing through; a one-pixel ring in the accent round it (at
 /// [`RING_HOVER`] unless the mark is the focused value); and, above the
 /// ring, any value label the ring's box reaches, so no label is ever cut.
+/// Also the box round the ring's centre line.
 fn ring_items(
     fonts: &Fonts,
     pal: &crate::tokens::Palette,
@@ -613,7 +624,7 @@ fn ring_items(
     hit: &Hit,
     ring: Rect,
     focused: bool,
-) -> Vec<Item> {
+) -> (Vec<Item>, Rect) {
     let mut items = Vec::new();
     let path = match mark_item(card, hit, scale) {
         Some(m) => {
@@ -655,7 +666,7 @@ fn ring_items(
     {
         items.push(label.clone());
     }
-    items
+    (items, bounds_of(&path))
 }
 
 /// The tooltip's swatch and text inside `tip_box`: the mark's name after

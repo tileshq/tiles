@@ -1169,6 +1169,19 @@ fn a_hovered_dot_takes_a_circle_ring_and_its_own_colour() {
                     .map(|(x, y)| (x + shift.0, y + shift.1))
                     .collect();
                 assert!(!ring.is_empty(), "a ring round {:?}", hit.tip);
+                // The picture holds the whole ring, a stem's hover included,
+                // whose hit box ends at the head's centre.
+                let (w, h) = (over.ring.scene.width, over.ring.scene.height);
+                assert!(
+                    ring.iter().all(|&(x, y)| {
+                        x - 0.5 >= shift.0
+                            && x + 0.5 <= shift.0 + w
+                            && y - 0.5 >= shift.1
+                            && y + 0.5 <= shift.1 + h
+                    }),
+                    "the ring piece for {:?} holds the whole ring",
+                    hit.tip
+                );
                 let biggest = s
                     .items
                     .iter()
