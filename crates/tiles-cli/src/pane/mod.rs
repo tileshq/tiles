@@ -1364,9 +1364,14 @@ mod tests {
             all[0] = i.clone();
             call.lay_out(&all, &painter, &look).is_ok()
         };
+        // Even before the selection is dropped, the month never reaches the
+        // drilled card's highlight: its weeks still hold the month column,
+        // but the month fills no category role there.
+        let kept = next.apply(&call.intents);
+        assert_eq!(kept[0].highlight, Vec::<String>::new());
         assert!(
-            !draws(&next.apply(&call.intents)[0]),
-            "the month's highlight is no week of the drilled card"
+            draws(&kept[0]),
+            "the drilled card draws with the click kept"
         );
         let deeper = redrill(&call, &clicked, next.clone(), 0, draws).unwrap();
         assert_eq!(deeper.filter, None, "the drilled period is the whole card");

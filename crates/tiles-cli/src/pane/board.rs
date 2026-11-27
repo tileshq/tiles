@@ -107,16 +107,25 @@ pub fn filtered(intent: &Intent, column: &str, value: &str) -> Option<Intent> {
     Some(out)
 }
 
-/// `intent` with `value` as its only highlight, when its rows hold it.
+/// `intent` with `value` as its only highlight, when `column` fills one of
+/// its [`SELECT_ROLES`] and its rows hold `value` there. A value found only
+/// in another column, such as the month column a drilled card of weeks
+/// still holds, highlights nothing: the engine takes highlights from the
+/// card's categories, and would refuse the card.
 #[must_use]
-pub fn highlighted(intent: &Intent, value: &str) -> Intent {
+pub fn highlighted(intent: &Intent, column: &str, value: &str) -> Intent {
     let mut out = intent.clone();
-    if out
-        .table
-        .rows
+    let fills = SELECT_ROLES
         .iter()
-        .any(|r| r.iter().any(|v| v.label() == value))
-    {
+        .any(|role| intent.fields.get(*role).is_some_and(|c| c == column));
+    let holds = intent.table.index(column).is_some_and(|c| {
+        intent
+            .table
+            .rows
+            .iter()
+            .any(|r| r.get(c).is_some_and(|v| v.label() == value))
+    });
+    if fills && holds {
         out.highlight = vec![value.to_string()];
     }
     out
@@ -134,7 +143,7 @@ pub fn apply(base: &[Intent], selection: Option<&Selection>) -> Vec<Intent> {
         .enumerate()
         .map(|(i, intent)| {
             if i == s.card {
-                highlighted(intent, &s.value)
+                highlighted(intent, &s.column, &s.value)
             } else {
                 filtered(intent, &s.column, &s.value).unwrap_or_else(|| intent.clone())
             }
@@ -249,6 +258,32 @@ mod tests {
         assert_eq!(out[1].table.rows.len(), 2);
         assert_eq!(out[2], base[2]);
         assert_eq!(apply(&base, None), base);
+    }
+
+    #[test]
+    fn the_clicked_card_highlights_only_through_the_selected_column() {
+        use super::highlighted;
+        let bars = by_region();
+        assert_eq!(highlighted(&bars, "region", "France").highlight, ["France"]);
+        // The value in a column that fills no category role, or in no row,
+        // leaves the highlight as it was.
+        assert_eq!(highlighted(&bars, "revenue", "4").highlight, ["Germany"]);
+        assert_eq!(highlighted(&bars, "region", "Spain").highlight, ["Germany"]);
+        let weeks = intent(
+            r#"{"v":1,"form":"column","title":"August by week","claim":{"kind":"trend","tone":"good"},
+            "fields":{"x":"week","y":"orders"},
+            "data":{"rows":[{"month":"2026-08-01","week":"2026-08-03","orders":4},
+            {"month":"2026-08-01","week":"2026-08-10","orders":5}]}}"#,
+        );
+        // A drilled card of weeks still holds the month it was drilled from.
+        assert_eq!(
+            highlighted(&weeks, "month", "2026-08-01").highlight,
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            highlighted(&weeks, "week", "2026-08-10").highlight,
+            ["2026-08-10"]
+        );
     }
 
     #[test]
