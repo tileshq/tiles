@@ -748,11 +748,12 @@ fn a_tall_columns_tooltip_leaves_the_title_and_value_labels_clear() {
     assert_eq!(column["form"], "column");
     let intent = tiles_intent::parse(&column.to_string()).unwrap();
     // The column card as the pane draws it in a 205-column kitty window
-    // with 7 by 12.5 CSS pixel cells: 100 columns wide, at scale 2.
+    // with 7 by 12.5 CSS pixel cells, 100 columns wide, and in a
+    // 107-column one, 51 columns wide, at scale 2.
     let scale = 2.0;
-    for theme in [dark(), light()] {
+    for (theme, width) in [(dark(), 700.0), (light(), 700.0), (dark(), 357.0)] {
         let opts = Options {
-            width: 700.0,
+            width,
             theme,
             cell_height: Some(12.5),
         };

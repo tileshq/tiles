@@ -254,7 +254,8 @@ fn nearest(lo: f32, hi: f32, pref: f32, free: impl Fn(f32) -> bool) -> Option<f3
 
 /// Where a `w` by `h` tooltip for the mark `mark`, outlined by `ring`,
 /// goes on `card` (ADR-069): below the mark, from `pref_left`; else beside
-/// it, on the side with more room, inside the plot; else inside the mark's
+/// it, on the side with more room, inside the plot's width, from the plot's
+/// top down to the axis labels under it; else inside the mark's
 /// upper part when the mark is wide and tall enough; each only where it
 /// leaves the card's title and value labels clear. When none does, below
 /// the mark, or above it when the tile has no room below.
@@ -291,7 +292,7 @@ fn place_tip(
     }
     for (_, left, fits) in sides {
         if fits
-            && let Some(top) = nearest(plot.top, plot.bottom - h, ring.top, |t| free(left, t))
+            && let Some(top) = nearest(plot.top, card.height - h, ring.top, |t| free(left, t))
         {
             return (left, top);
         }
