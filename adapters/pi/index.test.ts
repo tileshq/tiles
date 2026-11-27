@@ -24,7 +24,7 @@ register(
     return next(specifier, context);
   }`)}`,
 );
-const { default: tiles, OMNI_CHOICES, approveLookup, approveOmni, approveWarehouse, clean, fit, isCardPath, line, loadSpec, omniTopics, readCard, runTiles, standsDown, toolResult, warehouseLookup, warehouseTargets } =
+const { default: tiles, OMNI_CHOICES, approveLookup, approveOmni, approveWarehouse, clean, fit, isCardPath, line, loadSpec, omniTopics, readCard, runTiles, specFile, standsDown, toolResult, warehouseLookup, warehouseTargets } =
   await import("./index.ts");
 
 function fakeTiles(script: string): ToolSpec {
@@ -215,6 +215,49 @@ test("the launch's own copy stays up when its folder is reached through a link",
   assert.equal(standsDown(env, join(root, "link", "run", "42", "pi") + "/"), false);
   assert.equal(standsDown(env, realpathSync(join(root, "installed")) + "/"), true);
   assert.equal(standsDown({ ...env, TILES_ADDONS: join(real, "run", "42") + "/" }, join(root, "link", "run", "42", "pi") + "/"), false);
+});
+
+// Pi 1.7.0 hands a terminal restoring a session the `-e` it started with, so
+// `tiles run pi` keeps the launch's copy, with no tool.json beside it, at one
+// path that outlives the run. Outside a run it must register nothing: an
+// installed copy registering tiles_chart too stops Pi.
+test("the launch's copy reads the run's tool.json and does nothing outside a run", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiles-pi-kept-"));
+  mkdirSync(join(root, "run", "42", "pi"), { recursive: true });
+  writeFileSync(join(root, "run", "42", "pi", "tool.json"), JSON.stringify(fakeTiles("")));
+  mkdirSync(join(root, "installed"));
+  writeFileSync(join(root, "installed", "tool.json"), JSON.stringify(fakeTiles("")));
+  const run = { TILES_RUN: "1", TILES_ADDONS: join(root, "run", "42") + "/" };
+  assert.equal(specFile(run, join(root, "pi") + "/"), join(root, "run", "42", "pi", "tool.json"));
+  assert.equal(specFile({}, join(root, "pi") + "/"), null);
+  assert.equal(specFile({ TILES_RUN: "1" }, join(root, "pi") + "/"), null);
+  assert.equal(specFile(run, join(root, "installed") + "/"), null);
+  assert.equal(specFile({}, join(root, "installed") + "/"), join(root, "installed", "tool.json"));
+});
+
+test("the extension registers from the run's tool.json in a run and nothing outside one", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiles-pi-entry-"));
+  mkdirSync(join(root, "pi"));
+  writeFileSync(join(root, "pi", "tool.json"), JSON.stringify(fakeTiles("")));
+  const saved = { run: process.env.TILES_RUN, addons: process.env.TILES_ADDONS };
+  const names = () => {
+    const registered: string[] = [];
+    tiles({ registerTool: (t: any) => registered.push(t.name), registerCommand: (n: string) => registered.push(`/${n}`), on: () => {} });
+    return registered;
+  };
+  try {
+    delete process.env.TILES_RUN;
+    delete process.env.TILES_ADDONS;
+    assert.deepEqual(names(), []);
+    process.env.TILES_RUN = "1";
+    process.env.TILES_ADDONS = root + "/";
+    assert.deepEqual(names(), ["tiles_chart", "/theme"]);
+  } finally {
+    for (const [k, v] of [["TILES_RUN", saved.run], ["TILES_ADDONS", saved.addons]] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
 });
 
 const omniCard = (topic: unknown) => ({ title: "Revenue", form: "bar", data: { omni: { topic, fields: ["orders.revenue"] } } });
