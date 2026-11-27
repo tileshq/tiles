@@ -3861,6 +3861,50 @@ fn m18_a_bump_chart_ranks_each_period_largest_first() {
 }
 
 #[test]
+fn m18_a_bump_chart_names_every_line_inside_the_plot() {
+    // A top two across twelve months with 24 members names every line
+    // inside the plot, none on another.
+    let rows: Vec<serde_json::Value> = (0..24)
+        .map(|i| serde_json::json!({"x": format!("M{:02}", i / 2), "s": format!("S{i}"), "v": 24 - i}))
+        .collect();
+    let mut top_n = intent(
+        "bump",
+        &serde_json::json!({"x": "x", "y": "v", "series": "s"}),
+        &rows,
+    );
+    top_n["highlight"] = serde_json::json!(["S0"]);
+    let s = scene_of(&top_n).unwrap();
+    assert!(
+        !texts(&s, Part::AxisLabel).contains(&"#3".to_string()),
+        "M18"
+    );
+    let mut ends: Vec<(f32, f32)> = s
+        .part(Part::Legend)
+        .map(|i| match &i.shape {
+            Shape::Text { y, style, .. } => (y - (0.30 * style.size).round(), style.size),
+            _ => unreachable!(),
+        })
+        .collect();
+    assert_eq!(ends.len(), 24, "M18: each line is named at its end");
+    ends.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for &(cy, _) in &ends {
+        assert!(
+            cy >= s.plot.top() - 0.5 && cy <= s.plot.bottom() + 0.5,
+            "M18: an end name at {cy} sits outside the plot {:?}",
+            s.plot
+        );
+    }
+    for w in ends.windows(2) {
+        assert!(
+            w[1].0 - w[0].0 >= w[0].1 + 1.5,
+            "M18: end names at {} and {} overlap",
+            w[0].0,
+            w[1].0
+        );
+    }
+}
+
+#[test]
 fn m19_diverging_bars_meet_at_a_zero_rule_and_carry_signed_values() {
     let s = scene("diverging-bar");
     let rule = s

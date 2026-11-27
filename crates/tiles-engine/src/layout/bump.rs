@@ -85,7 +85,9 @@ pub(super) fn bump(c: &mut Ctx) -> f32 {
     let left = c.left + PAD + rank_w + c.t.marks.label_padding;
     let right = (c.left + c.width - PAD - name_room).max(left + 1.0);
     let top = c.top + PAD + (ls.size * 0.5).ceil();
-    let h = HEIGHT.max(RANK_STEP * f(n));
+    let h = HEIGHT
+        .max(RANK_STEP * f(n))
+        .max((ls.size + 2.0) * f(series.len()));
     let ys = points(n, top, top + h, 0.5);
     let xpos = points(xs.len(), left, right, 0.3);
     let muted = (Emphasis::Muted, c.pal.muted);
