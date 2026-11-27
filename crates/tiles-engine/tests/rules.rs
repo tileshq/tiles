@@ -949,9 +949,15 @@ fn pixel_at(
     }
 }
 
-/// Hovering a box on the box plot (ADR-069) lightens the box towards
-/// white on every theme, and the median the card draws over the box stays
-/// in the card colour above the lighter box.
+/// `top`, an unpremultiplied pixel, over the opaque pixel `under`.
+fn over(top: Rgba, under: Rgba) -> Rgba {
+    let a = f32::from(top.a) / 255.0;
+    under.mix(Rgba { a: 255, ..top }, a)
+}
+
+/// Hovering a box on the box plot (ADR-069) washes the box in white on
+/// every theme, and the median the card draws over the box shows through
+/// the wash in the card colour.
 #[test]
 #[allow(clippy::cast_precision_loss)] // Pixel offsets.
 fn a_hovered_box_lightens_and_keeps_its_median() {
@@ -988,27 +994,34 @@ fn a_hovered_box_lightens_and_keeps_its_median() {
         let ring = e
             .hover(&s, &hit, scale, tiles_engine::pane::Cue::default())
             .ring;
+        let card = e.frame_at(&s, scale, Moment::FINAL).unwrap();
         let frame = e.frame_at(&ring.scene, scale, Moment::FINAL).unwrap();
-        let origin = (ring.left, ring.top);
-        let median = pixel_at(&frame, origin, (mx, cy), scale);
-        assert_eq!(
-            (median.r, median.g, median.b),
-            (pal.card.r, pal.card.g, pal.card.b),
-            "the median stays above the hovered box"
+        let seen = |at: (f32, f32)| {
+            let under = pixel_at(&card, (0, 0), at, scale);
+            (
+                under,
+                over(pixel_at(&frame, (ring.left, ring.top), at, scale), under),
+            )
+        };
+        let (_, median) = seen((mx, cy));
+        let washed = pal.card.mix(Rgba::white(1.0), 0.12);
+        let near = |a: u8, b: u8| a.abs_diff(b) <= 3;
+        assert!(
+            near(median.r, washed.r) && near(median.g, washed.g) && near(median.b, washed.b),
+            "the median {median:?} shows through the wash as {washed:?}"
         );
         let inside = if mx - boxed.left > boxed.right - mx {
             f32::midpoint(boxed.left, mx)
         } else {
             f32::midpoint(mx, boxed.right)
         };
-        let lit = pixel_at(&frame, origin, (inside, cy), scale);
+        let (plain, lit) = seen((inside, cy));
         let sum = |c: Rgba| u32::from(c.r) + u32::from(c.g) + u32::from(c.b);
         assert!(
-            lit.r >= mark.color.r && lit.g >= mark.color.g && lit.b >= mark.color.b,
-            "{lit:?} is no darker than {:?}",
-            mark.color
+            lit.r >= plain.r && lit.g >= plain.g && lit.b >= plain.b,
+            "{lit:?} is no darker than {plain:?}"
         );
-        assert!(sum(lit) > sum(mark.color), "the hovered box is lighter");
+        assert!(sum(lit) > sum(plain), "the hovered box is lighter");
     }
 }
 
