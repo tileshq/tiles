@@ -9,9 +9,9 @@
 //! `fish/conf.d/tiles.fish`, which fish reads by itself, so no file of the
 //! user's changes. Each script records the `tiles` that ran setup, as
 //! installed ([`installed`]), and defines one function per harness on
-//! `PATH` whose `--version` answered as that harness when setup ran
-//! ([`found`], [`answers_as`]), so another program named `pi` keeps its
-//! name. The function runs
+//! `PATH` when setup ran ([`found`]), except a `pi` whose `--version`
+//! answered as another program ([`answers_as_pi`]), which keeps its name.
+//! The function runs
 //! `<that tiles> run --from-shell <harness>` when standard input and output
 //! are a terminal, that file is executable and no `tiles run` is already
 //! around the shell, and the harness itself otherwise. `tiles run
@@ -132,22 +132,24 @@ fn defined(text: &str) -> Vec<Harness> {
         .collect()
 }
 
-/// The harnesses on `PATH`, told apart by their `--version` answer.
+/// The harnesses on `PATH`, with `pi` told apart by its `--version` answer.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Found {
-    /// Those that answered as that harness: the scripts define them.
+    /// Those the scripts define a function for: every harness on `PATH`
+    /// but a `pi` that answered as another program.
     pub harnesses: Vec<Harness>,
-    /// Those that did not: another program of the same name, which the
+    /// A `pi` that answered `--version` as another program, which the
     /// scripts leave alone.
     pub others: Vec<Harness>,
+    /// A `pi` that gave no `--version` answer in time, or failed, and is
+    /// wired anyway.
+    pub unanswered: Vec<Harness>,
 }
 
-/// Whether `answer`, a `--version` answer, is the one `harness` gives: a
-/// line `2.1.316 (Claude Code)`, `codex-cli 0.166.0`, `1.19.3` or
-/// `opencode v2.0.32` for `OpenCode`, or `1.4.0` for Pi, each version
-/// `X.Y.Z`. The digits-of-pi `pi`'s `pi (cln) 1.3` is not Pi's.
+/// Whether `answer`, a `--version` answer, is Pi's: a line `1.4.0`, the
+/// version `X.Y.Z`. The digits-of-pi `pi`'s `pi (cln) 1.3` is not Pi's.
 #[must_use]
-pub fn answers_as(harness: Harness, answer: &str) -> bool {
+pub fn answers_as_pi(answer: &str) -> bool {
     let version = |w: &str| {
         let w = w.strip_prefix('v').unwrap_or(w);
         let core = w.split(['-', '+']).next().unwrap_or_default();
@@ -158,40 +160,34 @@ pub fn answers_as(harness: Harness, answer: &str) -> bool {
                 .iter()
                 .all(|p| (1..=6).contains(&p.len()) && p.chars().all(|c| c.is_ascii_digit()))
     };
-    answer.lines().any(|line| {
-        let words: Vec<&str> = line.split_whitespace().collect();
-        match (harness, words.as_slice()) {
-            (Harness::Claude, [v, "(Claude", "Code)"]) | (Harness::Codex, ["codex-cli", v]) => {
-                version(v)
-            }
-            (Harness::OpenCode, [v] | ["opencode", v]) | (Harness::Pi, [v]) => version(v),
-            _ => false,
-        }
+    answer.lines().any(|line| match line.split_whitespace().collect::<Vec<_>>()[..] {
+        [v] => version(v),
+        _ => false,
     })
 }
 
-/// The harnesses on this machine's `PATH`, each asked its `--version` at
-/// once, within [`crate::opencode::ask`]'s patience.
+/// The harnesses on this machine's `PATH`. Only `pi`, a common name for
+/// other programs, is asked its `--version`, within
+/// [`crate::opencode::ask`]'s patience; `claude`, `codex` and `opencode`
+/// count by name.
 #[must_use]
 pub fn found() -> Found {
-    let asking: Vec<_> = Harness::ALL
-        .into_iter()
-        .filter_map(|h| {
-            let path = crate::which(h.name())?;
-            Some((
-                h,
-                std::thread::spawn(move || crate::opencode::ask(&path, "--version")),
-            ))
-        })
-        .collect();
     let mut out = Found::default();
-    for (h, asked) in asking {
-        let answer = asked.join().ok().flatten();
-        if answer.is_some_and(|a| answers_as(h, &a)) {
-            out.harnesses.push(h);
-        } else {
-            out.others.push(h);
+    for h in Harness::ALL {
+        let Some(path) = crate::which(h.name()) else {
+            continue;
+        };
+        if h == Harness::Pi {
+            match crate::opencode::ask(&path, "--version") {
+                Some(answer) if !answers_as_pi(&answer) => {
+                    out.others.push(h);
+                    continue;
+                }
+                Some(_) => {}
+                None => out.unanswered.push(h),
+            }
         }
+        out.harnesses.push(h);
     }
     out
 }
@@ -341,12 +337,14 @@ pub struct Plan {
     pub wired: Vec<(Kind, PathBuf)>,
     /// The `tiles` the scripts run once the edits are made.
     pub tiles: PathBuf,
-    /// The harnesses the scripts get a function for: those on `PATH` that
-    /// answered as themselves.
+    /// The harnesses the scripts get a function for: those on `PATH` but a
+    /// `pi` that answered as another program.
     pub harnesses: Vec<Harness>,
-    /// The commands on `PATH` that did not answer as the harness of their
-    /// name, which get no function.
+    /// A `pi` on `PATH` that answered as another program, which gets no
+    /// function.
     pub others: Vec<Harness>,
+    /// A `pi` on `PATH` that gave no `--version` answer, wired anyway.
+    pub unanswered: Vec<Harness>,
     /// The harnesses Tiles' script on disk defines a function for.
     pub commands: Vec<Harness>,
 }
@@ -512,6 +510,7 @@ pub fn plan(
         tiles: tiles.to_path_buf(),
         harnesses: harnesses.to_vec(),
         others: found.others.clone(),
+        unanswered: found.unanswered.clone(),
         ..Plan::default()
     };
     let mut held_by = Vec::new();
@@ -734,8 +733,8 @@ pub fn undo(places: &Places, dry_run: bool) -> Result<Vec<Undone>, String> {
 /// `tiles doctor`'s line: the shells wired, through which files, and the
 /// commands they start through Tiles, or the `tiles` their script runs when
 /// it is missing; then the shells and harnesses not wired yet, a function
-/// for a harness no longer on `PATH`, and each command on `PATH` that did
-/// not answer as its harness.
+/// for a harness no longer on `PATH`, and a `pi` on `PATH` that answered
+/// `--version` as another program or gave no answer.
 #[must_use]
 pub fn status_line(plan: Option<&Plan>) -> String {
     let Some(plan) = plan else {
@@ -825,9 +824,15 @@ pub fn status_line(plan: Option<&Plan>) -> String {
     for h in &plan.others {
         let _ = write!(
             line,
-            "; the {0} on PATH did not answer --version as {1}, so tiles setup does not wire {0}",
-            h.name(),
-            crate::proved::title(*h)
+            "; the {0} on PATH answered --version as another program, so tiles setup does not wire {0}",
+            h.name()
+        );
+    }
+    for h in &plan.unanswered {
+        let _ = write!(
+            line,
+            "; the {0} on PATH gave no --version answer in time, so tiles setup wires {0} anyway",
+            h.name()
         );
     }
     for p in &plan.left {

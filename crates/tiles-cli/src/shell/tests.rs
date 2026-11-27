@@ -3,7 +3,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use super::{
-    Edit, Found, Kind, Places, Undone, answers_as, apply, block, fish, follow, installed, plan,
+    Edit, Found, Kind, Places, Undone, answers_as_pi, apply, block, fish, follow, installed, plan,
     script, status_line, steps_aside, undo,
 };
 use crate::harness::Harness;
@@ -27,11 +27,12 @@ fn shell_is(name: &'static str) -> impl Fn(&str) -> Option<String> {
     move |k: &str| (k == "SHELL").then(|| format!("/bin/{name}"))
 }
 
-/// What [`super::found`] finds when each of `harnesses` answers as itself.
+/// What [`super::found`] finds when each of `harnesses` is on `PATH` and a
+/// `pi` among them answers as Pi.
 fn of(harnesses: &[Harness]) -> Found {
     Found {
         harnesses: harnesses.to_vec(),
-        others: Vec::new(),
+        ..Found::default()
     }
 }
 
@@ -492,44 +493,50 @@ fn the_scripts_follow_the_harnesses_on_path() {
 }
 
 #[test]
-fn only_a_harness_that_answers_as_itself_is_wired() {
-    for (h, answer) in [
-        (Harness::Claude, "2.1.316 (Claude Code)\n"),
-        (Harness::Codex, "codex-cli 0.166.0\n"),
-        (Harness::OpenCode, "1.19.3\n"),
-        (Harness::OpenCode, "opencode v2.0.32\n"),
-        (Harness::Pi, "1.4.0\n"),
-        (Harness::Pi, "Debugger attached.\n1.4.0\n"),
-    ] {
-        assert!(answers_as(h, answer), "{} {answer:?}", h.name());
+fn a_pi_is_wired_unless_it_answers_as_another_program() {
+    for answer in ["1.4.0\n", "Debugger attached.\n1.4.0\n"] {
+        assert!(answers_as_pi(answer), "{answer:?}");
     }
-    for (h, answer) in [
-        (Harness::Pi, "pi (cln) 1.3\n"),
-        (Harness::Pi, ""),
-        (Harness::Pi, "3.14159265358979323846\n"),
-        (Harness::Claude, "1.4.0\n"),
-        (Harness::Codex, "2.1.316 (Claude Code)\n"),
-        (Harness::OpenCode, "codex-cli 0.166.0\n"),
+    for answer in [
+        "pi (cln) 1.3\n",
+        "",
+        "3.14159265358979323846\n",
+        "2.1.316 (Claude Code)\n",
     ] {
-        assert!(!answers_as(h, answer), "{} {answer:?}", h.name());
+        assert!(!answers_as_pi(answer), "{answer:?}");
     }
     let (root, places) = home("others");
     let tiles = stub_tiles(&root);
-    let found = Found {
+    let wired = |found: &Found| {
+        apply(
+            &plan(&places, &shell_is("zsh"), &tiles, found)
+                .unwrap()
+                .edits,
+        )
+        .unwrap();
+        plan(&places, &shell_is("zsh"), &tiles, found).unwrap()
+    };
+    let p = wired(&Found {
         harnesses: vec![Harness::Claude],
         others: vec![Harness::Pi],
-    };
-    apply(
-        &plan(&places, &shell_is("zsh"), &tiles, &found)
-            .unwrap()
-            .edits,
-    )
-    .unwrap();
-    let p = plan(&places, &shell_is("zsh"), &tiles, &found).unwrap();
+        ..Found::default()
+    });
     assert_eq!(p.commands, [Harness::Claude]);
     assert!(
         status_line(Some(&p)).ends_with(
-            ": claude typed in a new terminal starts through tiles run; the pi on PATH did not answer --version as Pi, so tiles setup does not wire pi"
+            ": claude typed in a new terminal starts through tiles run; the pi on PATH answered --version as another program, so tiles setup does not wire pi"
+        ),
+        "{p:?}"
+    );
+    let p = wired(&Found {
+        harnesses: vec![Harness::Pi, Harness::Claude],
+        unanswered: vec![Harness::Pi],
+        ..Found::default()
+    });
+    assert_eq!(p.commands, [Harness::Pi, Harness::Claude]);
+    assert!(
+        status_line(Some(&p)).ends_with(
+            ": pi and claude typed in a new terminal start through tiles run; the pi on PATH gave no --version answer in time, so tiles setup wires pi anyway"
         ),
         "{p:?}"
     );

@@ -9,8 +9,9 @@
 //! `tiles` on `PATH` or an older one ahead of it, and starts it plain when
 //! its input is not a terminal, inside `tiles run`, or once that `tiles` is
 //! gone. A harness not on `PATH` at setup gets no function, so the shell
-//! runs it itself, until setup runs again, and a `pi` that does not answer
-//! `--version` as Pi never gets one.
+//! runs it itself, until setup runs again. A `pi` that answers `--version`
+//! as another program never gets one, and a `pi` that gives no answer in
+//! time gets one anyway.
 
 use std::io::Read as _;
 use std::os::unix::fs::PermissionsExt as _;
@@ -532,7 +533,7 @@ fn a_pi_that_is_another_program_gets_no_function_and_keeps_its_name() {
     );
     assert!(
         doctor.contains(
-            "; the pi on PATH did not answer --version as Pi, so tiles setup does not wire pi"
+            "; the pi on PATH answered --version as another program, so tiles setup does not wire pi"
         ),
         "{doctor}"
     );
@@ -545,5 +546,43 @@ fn a_pi_that_is_another_program_gets_no_function_and_keeps_its_name() {
             "{shell}, Pi: {said}"
         );
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_pi_whose_version_answer_never_comes_is_wired_anyway() {
+    let root = machine("silent");
+    std::fs::write(
+        root.join("path/pi"),
+        "#!/bin/sh\n[ \"$1\" = --version ] && exec sleep 30\necho \"pi [$*] TILES_RUN=[$TILES_RUN]\"\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join("bin")).unwrap();
+    std::fs::create_dir_all(root.join("home/.config/fish")).unwrap();
+    std::os::unix::fs::symlink(TILES, root.join("bin/tiles")).unwrap();
+    set_up(&root);
+    let path = format!("{}:/usr/bin:/bin", root.join("path").display());
+    let found = shells(&root);
+    assert!(!found.is_empty(), "no zsh, bash or fish here");
+    for (shell, read) in &found {
+        let said = at_prompt(&root, shell, read, &path, None);
+        assert!(
+            said.contains("/pi/index.ts a b] TILES_RUN=[1]"),
+            "{shell}, silent pi: {said}"
+        );
+    }
+    let doctor = text(
+        &command(&root, TILES)
+            .arg("doctor")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap(),
+    );
+    assert!(
+        doctor.contains(
+            "; the pi on PATH gave no --version answer in time, so tiles setup wires pi anyway"
+        ),
+        "{doctor}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }

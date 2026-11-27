@@ -1396,7 +1396,7 @@ fn zsh_machine(name: &str) -> (PathBuf, crate::shell::Places, Report) {
         Path::new("/opt/homebrew/bin/tiles"),
         &crate::shell::Found {
             harnesses: Harness::ALL.to_vec(),
-            others: Vec::new(),
+            ..crate::shell::Found::default()
         },
     );
     (dirs.home.parent().unwrap().to_path_buf(), places, r)
@@ -1467,7 +1467,7 @@ fn a_wired_shell_is_left_as_it_is_and_listed_with_its_files_under_verbose() {
         Path::new("/opt/homebrew/bin/tiles"),
         &crate::shell::Found {
             harnesses: Harness::ALL.to_vec(),
-            others: Vec::new(),
+            ..crate::shell::Found::default()
         },
     );
     let (text, _, ok) = drive(Args::default(), &again, None);
@@ -1525,6 +1525,7 @@ fn the_closing_line_names_only_a_harness_the_shell_wired() {
             &crate::shell::Found {
                 harnesses: wired,
                 others: vec![Harness::Pi],
+                ..crate::shell::Found::default()
             },
         );
         let (text, _, ok) = drive(Args::default(), &r, Some("y\n"));
@@ -1546,7 +1547,7 @@ fn a_shell_found_after_another_was_wired_is_the_one_setup_names() {
         Path::new("/opt/homebrew/bin/tiles"),
         &crate::shell::Found {
             harnesses: vec![Harness::Pi],
-            others: Vec::new(),
+            ..crate::shell::Found::default()
         },
     );
     let (text, asked, _) = drive(Args::default(), &again, Some("n\n"));

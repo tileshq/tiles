@@ -28,7 +28,7 @@ Then ask for a chart: "chart our weekly signups: W1 120, W2 180, W3 150; W3 dipp
 
 <p align="center"><img src="docs/readme/card.png" alt="One column card drawn inline in a terminal session, Obsidian theme" width="440"></p>
 
-`tiles setup` adds one small function to zsh, bash or fish for each coding tool it finds on your `PATH` (it checks each one's `--version`, so another program named `pi` is left alone), so a session you start at the prompt runs through `tiles run`, which loads Tiles for that session and draws the card. `claude -p`, pipes and scripts run the tool untouched, and if Tiles fails the tool starts without it. The function runs the `tiles` that set it up by its full path, so it works before `~/.local/bin` is on your `PATH`. `tiles shell off` takes the function out again. In any other shell, start a session with `tiles run claude`.
+`tiles setup` adds one small function to zsh, bash or fish for each coding tool it finds on your `PATH` (it asks `pi --version`, so another program named `pi` is left alone), so a session you start at the prompt runs through `tiles run`, which loads Tiles for that session and draws the card. `claude -p`, pipes and scripts run the tool untouched, and if Tiles fails the tool starts without it. The function runs the `tiles` that set it up by its full path, so it works before `~/.local/bin` is on your `PATH`. `tiles shell off` takes the function out again. In any other shell, start a session with `tiles run claude`.
 
 ## What you get
 
