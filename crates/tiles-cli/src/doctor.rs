@@ -401,7 +401,7 @@ mod tests {
             latest: Some(crate::update::Version::parse("0.1.5").unwrap()),
         };
         let versions = [
-            (Harness::Pi, Some("1.4.0".to_string())),
+            (Harness::Pi, Some("1.7.0".to_string())),
             (Harness::Codex, None),
         ];
         let text = report(&Inputs {
@@ -426,7 +426,7 @@ mod tests {
         let joined = text.join("\n");
         assert!(
             joined.contains(
-                "\n  pi       /usr/local/bin/pi  1.4.0 (proved on 1.4.0)  add-on not installed"
+                "\n  pi       /usr/local/bin/pi  1.7.0 (proved on 1.7.0)  add-on not installed"
             ),
             "{joined}"
         );

@@ -289,9 +289,22 @@ fn say(lines: &[String], raw: bool) {
     }
 }
 
-/// Writes the add-ons under `dir`, then the files the launch reads.
-fn write_addons(dir: &std::path::Path, spec: &Spec, plan: &harness::Plan) -> Result<(), String> {
+/// Writes the add-ons under `dir`, Pi's extension under `cache` for Pi
+/// ([`harness::PI_EXTENSION`]), then the files the launch reads.
+fn write_addons(
+    cache: &std::path::Path,
+    dir: &std::path::Path,
+    spec: &Spec,
+    plan: &harness::Plan,
+    harness: Harness,
+) -> Result<(), String> {
     addons::write_all(dir, spec)?;
+    if harness == Harness::Pi {
+        addons::write_file(
+            &cache.join(harness::PI_EXTENSION),
+            addons::SOURCES[0].1.as_bytes(),
+        )?;
+    }
     plan.files
         .iter()
         .try_for_each(|(path, text)| addons::write_file(path, text.as_bytes()))
@@ -530,7 +543,7 @@ fn launch(args: &[String], sources: &[&dyn Source], from_shell: bool) -> Result<
         say(&said, false);
         return Ok(ExitCode::SUCCESS);
     }
-    write_addons(&addons, &spec, &plan).map_err(Early::Failed)?;
+    write_addons(&cache, &addons, &spec, &plan, args.harness).map_err(Early::Failed)?;
     say(&said, session.is_some());
     LAUNCHED.store(true, std::sync::atomic::Ordering::SeqCst);
     let code = match (plan.wrap, session) {

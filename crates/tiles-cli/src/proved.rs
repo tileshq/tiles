@@ -33,7 +33,7 @@ pub const PROVED: [Row; 5] = [
     Row {
         harness: Harness::Pi,
         cli: None,
-        versions: &["1.0.0", "1.2.0", "1.3.0", "1.4.0"],
+        versions: &["1.0.0", "1.2.0", "1.3.0", "1.4.0", "1.7.0"],
         record: "ADR-032",
     },
     Row {
@@ -91,7 +91,7 @@ pub fn title(harness: Harness) -> &'static str {
 }
 
 /// The version `program --version` names: `2.1.316 (Claude Code)`,
-/// `1.4.0` and `codex-cli 0.166.0` all name one. Read the way
+/// `1.7.0` and `codex-cli 0.166.0` all name one. Read the way
 /// [`opencode`] reads `OpenCode`'s: stdin closed, the answer in an unlinked
 /// file, at most 5 s.
 #[must_use]
@@ -194,9 +194,9 @@ mod tests {
         }
         assert_eq!(
             row(Harness::Pi, None).unwrap().versions,
-            ["1.0.0", "1.2.0", "1.3.0", "1.4.0"]
+            ["1.0.0", "1.2.0", "1.3.0", "1.4.0", "1.7.0"]
         );
-        assert_eq!(row(Harness::Pi, None).unwrap().newest(), "1.4.0");
+        assert_eq!(row(Harness::Pi, None).unwrap().newest(), "1.7.0");
         assert_eq!(row(Harness::Claude, None).unwrap().versions, ["2.1.316"]);
         assert_eq!(
             row(Harness::Codex, None).unwrap().versions,
@@ -254,6 +254,10 @@ mod tests {
         assert!(matches(pi, "1.0.4"));
         assert!(!matches(pi, "1.1.0"));
         assert!(!matches(pi, "1.5.0"));
+        assert!(!matches(pi, "1.6.1"));
+        assert!(matches(pi, "1.7.0"));
+        assert!(matches(pi, "1.7.2"));
+        assert!(!matches(pi, "1.8.0"));
         assert!(!matches(pi, "2.0.0"));
         assert!(matches(pi, "1.3.0-beta.2"));
     }
@@ -286,15 +290,16 @@ mod tests {
         assert!(
             run_line(Harness::Pi, None, Some("2.0.0"))
                 .unwrap()
-                .starts_with("Tiles was proved on Pi 1.4.0, and this is 2.0.0")
+                .starts_with("Tiles was proved on Pi 1.7.0, and this is 2.0.0")
         );
         assert_eq!(run_line(Harness::Pi, None, Some("1.3.2")), None);
         assert_eq!(run_line(Harness::Pi, None, Some("1.2.0")), None);
         assert_eq!(run_line(Harness::Pi, None, Some("1.4.0")), None);
+        assert_eq!(run_line(Harness::Pi, None, Some("1.7.0")), None);
         assert_eq!(
-            run_line(Harness::Pi, None, Some("1.5.0")).as_deref(),
+            run_line(Harness::Pi, None, Some("1.6.1")).as_deref(),
             Some(
-                "Tiles was proved on Pi 1.4.0, and this is 1.5.0; if a card misdraws, run tiles check"
+                "Tiles was proved on Pi 1.7.0, and this is 1.6.1; if a card misdraws, run tiles check"
             )
         );
         assert_eq!(run_line(Harness::Pi, None, None), None, "unread: silent");
@@ -344,28 +349,28 @@ mod tests {
             check_line(Harness::Pi, Some("1.2.0")),
             Some((
                 true,
-                "pi version: Pi 1.2.0, proved on 1.4.0 (ADR-032)".into()
+                "pi version: Pi 1.2.0, proved on 1.7.0 (ADR-032)".into()
             ))
         );
         assert_eq!(
-            check_line(Harness::Pi, Some("1.4.0")),
+            check_line(Harness::Pi, Some("1.7.0")),
             Some((
                 true,
-                "pi version: Pi 1.4.0, proved on 1.4.0 (ADR-032)".into()
+                "pi version: Pi 1.7.0, proved on 1.7.0 (ADR-032)".into()
             ))
         );
         assert_eq!(
             check_line(Harness::Pi, Some("1.5.0")),
             Some((
                 false,
-                "pi version: Pi 1.5.0, not the major and minor version Tiles was proved on, 1.4.0 (ADR-032)".into()
+                "pi version: Pi 1.5.0, not the major and minor version Tiles was proved on, 1.7.0 (ADR-032)".into()
             ))
         );
         assert_eq!(
             check_line(Harness::Pi, None),
             Some((
                 true,
-                "pi version: pi --version could not be read; Tiles was proved on 1.4.0".into()
+                "pi version: pi --version could not be read; Tiles was proved on 1.7.0".into()
             ))
         );
         assert_eq!(check_line(Harness::OpenCode, Some("1.19.3")), None);
@@ -375,7 +380,7 @@ mod tests {
     fn doctor_prints_the_version_beside_the_proved_one() {
         assert_eq!(
             doctor_note(Harness::Pi, None, Some("1.2.0")),
-            "1.2.0 (proved on 1.4.0)"
+            "1.2.0 (proved on 1.7.0)"
         );
         assert_eq!(
             doctor_note(Harness::Codex, None, None),
@@ -399,7 +404,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         for (name, answer, want) in [
             ("claude", "2.1.316 (Claude Code)", Some("2.1.316")),
-            ("pi", "1.4.0", Some("1.4.0")),
+            ("pi", "1.7.0", Some("1.7.0")),
             ("codex", "codex-cli 0.166.0", Some("0.166.0")),
             ("odd", "\u{1b}]0;x\u{7}dev build", None),
         ] {

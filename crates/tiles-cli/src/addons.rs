@@ -183,10 +183,11 @@ pub fn opencode_config(
     })
 }
 
-/// Writes every add-on under `dir`: `pi/`, `claude/`, and the instruction as
-/// `opencode/instructions.md` for `OpenCode`'s `instructions` key.
+/// Writes every add-on under `dir`: Pi's `pi/tool.json` (its extension is
+/// kept at [`crate::harness::PI_EXTENSION`]), `claude/`, and the instruction
+/// as `opencode/instructions.md` for `OpenCode`'s `instructions` key.
 pub fn write_all(dir: &Path, spec: &Spec) -> Result<(), String> {
-    for (path, source) in SOURCES {
+    for (path, source) in &SOURCES[1..] {
         write_file(&dir.join(path), source.as_bytes())?;
     }
     write_file(
@@ -284,7 +285,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         write_all(&dir, &spec()).unwrap();
         for f in [
-            "pi/index.ts",
             "pi/tool.json",
             "opencode/instructions.md",
             "claude/hooks/register.tsx",

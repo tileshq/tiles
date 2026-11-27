@@ -222,6 +222,47 @@ fn an_interactive_session_from_the_shell_starts_with_tiles_loaded() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Pi 1.7.0 hands a terminal restoring a session the `-e` it started with,
+/// and a terminal that restores it through the shell passes that back.
+#[test]
+fn a_restored_pi_session_from_the_shell_loads_the_extension_once_from_a_path_that_outlives_the_run()
+{
+    let root = machine("restored");
+    let kept = root.join("cache/pi/index.ts");
+    let stale = root.join("cache/run/1/pi/index.ts");
+    for named in [&stale, &kept] {
+        let out = tiles(
+            &root,
+            &[
+                "run",
+                "--from-shell",
+                "pi",
+                "--session",
+                "s",
+                "-e",
+                named.to_str().unwrap(),
+            ],
+            None,
+        );
+        let said = text(&out);
+        assert!(out.status.success(), "{said}");
+        assert!(
+            said.contains(&format!(
+                "pi [-e {} --session s] TILES_RUN=[1]",
+                kept.display()
+            )),
+            "{said}"
+        );
+        assert!(kept.is_file(), "{said}");
+        assert_eq!(
+            std::fs::read_dir(root.join("cache/run")).unwrap().count(),
+            0,
+            "{said}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn a_tiles_that_fails_before_the_harness_starts_it_plain() {
     let root = machine("broken");

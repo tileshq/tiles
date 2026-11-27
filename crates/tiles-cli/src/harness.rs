@@ -276,6 +276,35 @@ fn path(p: &Path) -> String {
     p.display().to_string()
 }
 
+/// Where `tiles run pi` keeps Pi's extension, under the cache: one path for
+/// every run, left in place when the run ends. Pi 1.7.0 hands a terminal
+/// that restores a session the `-e` it started with, and stops on one that
+/// names no file (ADR-032). The run's `tool.json` stays under the add-ons,
+/// named by `TILES_ADDONS`; outside a run this copy registers nothing.
+pub const PI_EXTENSION: &str = "pi/index.ts";
+
+/// Pi's arguments without a `-e` or `--extension` naming a Tiles Pi
+/// extension under `cache`, at [`PI_EXTENSION`] or in a run's add-ons where
+/// builds before 2026-11-27 kept it: a restored session passes back the `-e`
+/// Tiles added, and Tiles adds its own.
+fn without_tiles_extension(args: &[String], cache: &Path) -> Vec<String> {
+    let tiles = |v: &String| {
+        let p = Path::new(v);
+        p.starts_with(cache) && p.ends_with(PI_EXTENSION)
+    };
+    let mut out = Vec::with_capacity(args.len());
+    let mut i = 0;
+    while i < args.len() {
+        if matches!(args[i].as_str(), "-e" | "--extension") && args.get(i + 1).is_some_and(tiles) {
+            i += 2;
+        } else {
+            out.push(args[i].clone());
+            i += 1;
+        }
+    }
+    out
+}
+
 /// Where `tiles run claude` writes [`claude_settings`].
 pub const CLAUDE_SETTINGS: &str = "claude-settings.json";
 
@@ -543,8 +572,10 @@ pub fn plan(harness: Harness, setup: &Setup, user_args: &[String]) -> Result<Pla
         Harness::Pi => {
             launch
                 .args
-                .extend(["-e".to_string(), path(&setup.addons.join("pi/index.ts"))]);
-            launch.args.extend(user_args.iter().cloned());
+                .extend(["-e".to_string(), path(&setup.cache.join(PI_EXTENSION))]);
+            launch
+                .args
+                .extend(without_tiles_extension(user_args, &setup.cache));
             launch.env.push(("TILES_BIN".into(), tiles));
             launch
                 .env
@@ -1053,7 +1084,7 @@ mod tests {
     fn pi_loads_the_extension_and_draws_itself_on_the_placeholder_route() {
         let kitty = detected(Terminal::Kitty, None, Route::KittyPlaceholders);
         let p = plan(Harness::Pi, &setup(kitty), &["-c".into()]);
-        assert_eq!(p.launch.args, ["-e", "/c/addons/pi/index.ts", "-c"]);
+        assert_eq!(p.launch.args, ["-e", "/c/pi/index.ts", "-c"]);
         assert!(
             p.launch
                 .env
@@ -1061,7 +1092,7 @@ mod tests {
         );
         assert!(!p.wrap);
         let warp = plan(Harness::Pi, &setup(warp()), &[]);
-        assert_eq!(warp.launch.args, ["-e", "/c/addons/pi/index.ts"]);
+        assert_eq!(warp.launch.args, ["-e", "/c/pi/index.ts"]);
         assert!(warp.wrap);
         assert_eq!(warp.draw, Draw::Block);
         assert!(
@@ -1083,6 +1114,41 @@ mod tests {
                 .launch
                 .env
                 .contains(&("PI_IMAGE_PROTOCOL".into(), "kitty".into()))
+        );
+    }
+
+    #[test]
+    fn a_restored_pi_session_loads_the_extension_once_from_a_path_that_outlives_the_run() {
+        let args: Vec<String> = [
+            "--session",
+            "s",
+            "-e",
+            "/c/run/42/pi/index.ts",
+            "--extension",
+            "/c/pi/index.ts",
+            "-e",
+            "/x/pi/index.ts",
+            "-e",
+        ]
+        .map(String::from)
+        .to_vec();
+        let p = plan(Harness::Pi, &setup(warp()), &args);
+        assert_eq!(
+            p.launch.args,
+            [
+                "-e",
+                "/c/pi/index.ts",
+                "--session",
+                "s",
+                "-e",
+                "/x/pi/index.ts",
+                "-e"
+            ]
+        );
+        assert!(
+            p.launch
+                .env
+                .contains(&("TILES_ADDONS".into(), "/c/addons/".into()))
         );
     }
 

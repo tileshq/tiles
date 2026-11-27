@@ -1,7 +1,7 @@
 // Contract tests for the Pi extension against a fake Pi API and a fake tiles
 // binary: node --test adapters/pi/index.test.ts
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,7 +24,7 @@ register(
     return next(specifier, context);
   }`)}`,
 );
-const { default: tiles, OMNI_CHOICES, approveLookup, approveOmni, approveWarehouse, clean, fit, isCardPath, line, loadSpec, omniTopics, readCard, runTiles, standsDown, toolResult, warehouseLookup, warehouseTargets } =
+const { default: tiles, OMNI_CHOICES, approveLookup, approveOmni, approveWarehouse, clean, fit, isCardPath, line, loadSpec, omniTopics, readCard, runTiles, specFile, standsDown, toolResult, warehouseLookup, warehouseTargets } =
   await import("./index.ts");
 
 function fakeTiles(script: string): ToolSpec {
@@ -199,6 +199,69 @@ test("an installed copy stands down under tiles run", () => {
   assert.equal(standsDown(env, "/home/u/.pi/agent/extensions/tiles/"), true);
   assert.equal(standsDown(env, "/c/run/42/pi/"), false);
   assert.equal(standsDown({}, "/home/u/.pi/agent/extensions/tiles/"), false);
+});
+
+// Pi 1.5.1 and later import an extension from its real path, so with the
+// cache reached through a link, as under /tmp on macOS, the launch's copy at
+// <cache>/pi/ sees the real folder while TILES_ADDONS names the link.
+test("under tiles run an installed copy stands down and the launch's copy loads, through a linked cache too", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiles-pi-link-"));
+  const spec = JSON.stringify(fakeTiles(""));
+  mkdirSync(join(root, "real", "run", "42", "pi"), { recursive: true });
+  mkdirSync(join(root, "real", "pi"));
+  writeFileSync(join(root, "real", "run", "42", "pi", "tool.json"), spec);
+  mkdirSync(join(root, "installed"));
+  writeFileSync(join(root, "installed", "tool.json"), JSON.stringify(fakeTiles("")));
+  symlinkSync(join(root, "real"), join(root, "link"));
+  const real = realpathSync(join(root, "real"));
+  for (const cache of [join(root, "link"), real]) {
+    const env = { TILES_RUN: "1", TILES_ADDONS: join(cache, "run", "42") + "/" };
+    assert.equal(specFile(env, realpathSync(join(root, "installed")) + "/"), null);
+    assert.equal(readFileSync(specFile(env, join(real, "pi") + "/")!, "utf8"), spec);
+  }
+});
+
+// Pi 1.7.0 hands a terminal restoring a session the `-e` it started with, so
+// `tiles run pi` keeps the launch's copy, with no tool.json beside it, at one
+// path that outlives the run. Outside a run it must register nothing: an
+// installed copy registering tiles_chart too stops Pi.
+test("the launch's copy reads the run's tool.json and does nothing outside a run", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiles-pi-kept-"));
+  mkdirSync(join(root, "run", "42", "pi"), { recursive: true });
+  writeFileSync(join(root, "run", "42", "pi", "tool.json"), JSON.stringify(fakeTiles("")));
+  mkdirSync(join(root, "installed"));
+  writeFileSync(join(root, "installed", "tool.json"), JSON.stringify(fakeTiles("")));
+  const run = { TILES_RUN: "1", TILES_ADDONS: join(root, "run", "42") + "/" };
+  assert.equal(specFile(run, join(root, "pi") + "/"), join(root, "run", "42", "pi", "tool.json"));
+  assert.equal(specFile({}, join(root, "pi") + "/"), null);
+  assert.equal(specFile({ TILES_RUN: "1" }, join(root, "pi") + "/"), null);
+  assert.equal(specFile(run, join(root, "installed") + "/"), null);
+  assert.equal(specFile({}, join(root, "installed") + "/"), join(root, "installed", "tool.json"));
+});
+
+test("the extension registers from the run's tool.json in a run and nothing outside one", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiles-pi-entry-"));
+  mkdirSync(join(root, "pi"));
+  writeFileSync(join(root, "pi", "tool.json"), JSON.stringify(fakeTiles("")));
+  const saved = { run: process.env.TILES_RUN, addons: process.env.TILES_ADDONS };
+  const names = () => {
+    const registered: string[] = [];
+    tiles({ registerTool: (t: any) => registered.push(t.name), registerCommand: (n: string) => registered.push(`/${n}`), on: () => {} });
+    return registered;
+  };
+  try {
+    delete process.env.TILES_RUN;
+    delete process.env.TILES_ADDONS;
+    assert.deepEqual(names(), []);
+    process.env.TILES_RUN = "1";
+    process.env.TILES_ADDONS = root + "/";
+    assert.deepEqual(names(), ["tiles_chart", "/theme"]);
+  } finally {
+    for (const [k, v] of [["TILES_RUN", saved.run], ["TILES_ADDONS", saved.addons]] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
 });
 
 const omniCard = (topic: unknown) => ({ title: "Revenue", form: "bar", data: { omni: { topic, fields: ["orders.revenue"] } } });

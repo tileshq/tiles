@@ -33,13 +33,16 @@
 //
 // The chart logic stays in the tiles binary: execute() runs `tiles card -`
 // with the intent on stdin. tool.json, written next to this file by
-// `tiles run pi` or `tiles install pi`, holds the schema, description and
-// instruction that binary generates, so the three cannot drift apart. While
+// `tiles install pi` and into the run's add-ons (TILES_ADDONS) by `tiles run
+// pi`, holds the schema, description and instruction that binary generates,
+// so the three cannot drift apart. While
 // the warehouse is configured it also lists the lookup tools, which run
 // `tiles warehouse models` and `tiles warehouse columns` with no shell.
 
 import { spawn } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { Image } from "@earendil-works/pi-tui";
 
@@ -300,7 +303,7 @@ export function clean(text: string): string {
     .join("");
 }
 
-export function loadSpec(url: URL = new URL("./tool.json", import.meta.url)): ToolSpec {
+export function loadSpec(url: URL): ToolSpec {
   return JSON.parse(readFileSync(url, "utf8")) as ToolSpec;
 }
 
@@ -441,10 +444,25 @@ export function standsDown(env: Record<string, string | undefined>, here: string
   return env.TILES_RUN === "1" && typeof env.TILES_ADDONS === "string" && !here.startsWith(env.TILES_ADDONS);
 }
 
+/** The tool.json this copy reads, or null when it registers nothing. An
+ * installed copy reads the one beside it and stands down under `tiles run
+ * pi`. The launch's copy has none beside it: `tiles run pi` keeps it at one
+ * path that outlives the run, since Pi 1.7.0 hands a terminal restoring the
+ * session the `-e` it started with and stops on a missing one. It reads the
+ * run's tool.json from TILES_ADDONS, and outside a run does nothing, since an
+ * installed copy registering the same tool would stop Pi too. */
+export function specFile(env: Record<string, string | undefined>, here: string): string | null {
+  const beside = join(here, "tool.json");
+  if (existsSync(beside)) return standsDown(env, here) ? null : beside;
+  if (env.TILES_RUN !== "1" || typeof env.TILES_ADDONS !== "string") return null;
+  return join(env.TILES_ADDONS, "pi", "tool.json");
+}
+
 export default function tiles(pi: any, spec?: ToolSpec) {
   if (spec === undefined) {
-    if (standsDown(process.env, new URL(".", import.meta.url).pathname)) return;
-    spec = loadSpec();
+    const file = specFile(process.env, fileURLToPath(new URL(".", import.meta.url)));
+    if (file === null) return;
+    spec = loadSpec(pathToFileURL(file));
   }
   const omni = { allowed: false };
   const warehouse = { allowed: false };
