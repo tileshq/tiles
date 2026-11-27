@@ -252,12 +252,44 @@ fn nearest(lo: f32, hi: f32, pref: f32, free: impl Fn(f32) -> bool) -> Option<f3
     })
 }
 
+/// The clear place for a `w` by `h` tooltip anywhere in `card` nearest
+/// `pref`, or `None` when the boxes in `clear` leave none. If any place is
+/// clear, one is whose left and top each sit at the tile's edge or just
+/// past a box's edge (slide a clear tooltip left, then up, until it
+/// stops), so only those are tried.
+fn anywhere(
+    clear: &[Rect],
+    card: &Scene,
+    (w, h): (f32, f32),
+    pref: (f32, f32),
+    free: impl Fn(f32, f32) -> bool,
+) -> Option<(f32, f32)> {
+    let (max_left, max_top) = (card.width - w, card.height - h);
+    let lefts = clear
+        .iter()
+        .flat_map(|c| [c.right + SHADOW.1, c.left - w - SHADOW.1])
+        .chain([0.0, max_left, pref.0.clamp(0.0, max_left.max(0.0))]);
+    let tops: Vec<f32> = clear
+        .iter()
+        .flat_map(|c| [c.bottom + 1.0, c.top - h - SHADOW.0 - SHADOW.1])
+        .chain([0.0, max_top, pref.1.clamp(0.0, max_top.max(0.0))])
+        .collect();
+    lefts
+        .flat_map(|l| tops.iter().map(move |&t| (l, t)))
+        .filter(|&(l, t)| (0.0..=max_left).contains(&l) && (0.0..=max_top).contains(&t))
+        .filter(|&(l, t)| free(l, t))
+        .min_by(|a, b| {
+            let d = |(l, t): (f32, f32)| (l - pref.0).powi(2) + (t - pref.1).powi(2);
+            d(*a).total_cmp(&d(*b))
+        })
+}
+
 /// Where a `w` by `h` tooltip for the mark `mark`, outlined by `ring`,
 /// goes on `card` (ADR-069): below the mark, from `pref_left`; else beside
 /// it, on the side with more room, inside the plot's width, from the plot's
 /// top down to the axis labels under it; else inside the mark's
-/// upper part when the mark is wide and tall enough; else as low as the
-/// tile allows, over the mark's foot, from `pref_left`; each only where it
+/// upper part when the mark is wide and tall enough; else the clear place
+/// in the tile nearest `pref_left` just below the mark; each only where it
 /// leaves the card's title and value labels clear. When none does, below
 /// the mark, or above it when the tile has no room below.
 fn place_tip(
@@ -305,11 +337,8 @@ fn place_tip(
     {
         return inside;
     }
-    let low = (card.height - h).max(0.0);
-    if low < below
-        && let Some(left) = nearest(0.0, card.width - w, pref_left, |l| free(l, low))
-    {
-        return (left, low);
+    if let Some(at) = anywhere(&clear, card, (w, h), (pref_left, below), &free) {
+        return at;
     }
     let top = if below + h <= card.height {
         below

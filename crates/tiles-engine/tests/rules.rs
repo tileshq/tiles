@@ -739,59 +739,71 @@ fn a_pane_heading_keeps_its_title_whole_and_a_focus_adds_no_reflow() {
 }
 
 #[test]
-fn a_tall_columns_tooltip_leaves_the_title_and_value_labels_clear() {
+fn every_pane_tooltip_leaves_the_title_and_value_labels_clear() {
     let e = engine();
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
     let board: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let column = &board["rows"][0][1];
     assert_eq!(column["form"], "column");
-    let intent = tiles_intent::parse(&column.to_string()).unwrap();
-    // The column card as the pane draws it in a 205-column kitty window
-    // with 7 by 12.5 CSS pixel cells, 100 columns wide, and in a
-    // 107-column one, 51 columns wide, at scale 2.
+    let column = tiles_intent::parse(&column.to_string()).unwrap();
+    let s = e.scene(&column, &Options::default()).unwrap();
+    assert!(
+        s.part(Part::Value).any(|v| v.text() == Some("6,900")),
+        "the Germany column has its value label"
+    );
+    // Every card on the board as the pane draws it in kitty windows from
+    // about 50 to 205 columns, with 7 by 12.5 CSS pixel cells, at scale 2:
+    // the column card at 700 px is a 205-column window's half, at 357 px a
+    // 107-column window's, where the bar and lollipop tooltips once fell
+    // back over other rows' value labels.
     let scale = 2.0;
-    for (theme, width) in [(dark(), 700.0), (light(), 700.0), (dark(), 357.0)] {
-        let opts = Options {
-            width,
-            theme,
-            cell_height: Some(12.5),
-        };
-        let s = e.scene(&intent, &opts).unwrap();
-        let hits = hit_map(&s, scale);
-        let germany = hits.iter().find(|h| h.row == Some(0)).unwrap();
-        assert!(germany.tip.contains("Germany"), "{:?}", germany.tip);
-        let mut clear = vec![text_box(&e, s.part(Part::Title).next().unwrap())];
-        assert!(
-            s.part(Part::Value).any(|v| v.text() == Some("6,900")),
-            "the Germany column has its value label"
-        );
-        clear.extend(s.part(Part::Value).map(|v| text_box(&e, v)));
-        // Every column, each with and without the hint line, at each width.
-        let columns = hits.iter().filter(|h| h.row.is_some());
-        for (hit, hint) in columns.flat_map(|h| [(h, None), (h, Some("click again to clear"))]) {
-            let pointer = f32::midpoint(hit.left as f32, hit.right as f32) / scale;
-            let cue = tiles_engine::pane::Cue {
-                pointer_x: Some(pointer),
-                hint,
+    let cards = board["rows"].as_array().unwrap().iter().flat_map(|r| {
+        r.as_array()
+            .unwrap()
+            .iter()
+            .map(|c| tiles_intent::parse(&c.to_string()).unwrap())
+    });
+    for intent in cards.collect::<Vec<_>>() {
+        let widths = (280..=720).step_by(8).map(|w| w as f32).chain([357.0]);
+        for (theme, width) in widths.flat_map(|w| [(dark(), w), (light(), w)]) {
+            let opts = Options {
+                width,
+                theme,
+                cell_height: Some(12.5),
             };
-            let tip = e.hover(&s, hit, scale, cue).tip;
-            let tip_box = skia_safe::Rect::from_xywh(
-                tip.left as f32 / scale,
-                tip.top as f32 / scale,
-                tip.scene.width,
-                tip.scene.height,
-            );
-            assert!(
-                tip_box.right <= s.width && tip_box.bottom <= s.height,
-                "{tip_box:?} stays in the tile"
-            );
-            for r in &clear {
-                assert!(
-                    !skia_safe::Rect::intersects2(&tip_box, r),
-                    "the tooltip {tip_box:?} for {:?} at {width} covers {r:?}",
-                    hit.tip
+            let s = e.scene(&intent, &opts).unwrap();
+            let hits = hit_map(&s, scale);
+            let mut clear: Vec<_> = s.part(Part::Title).map(|t| text_box(&e, t)).collect();
+            clear.extend(s.part(Part::Value).map(|v| text_box(&e, v)));
+            // Every mark, with no hint and with each hint the pane shows.
+            let hints = [None, Some("click again to clear"), Some("click to focus Netherlands")];
+            let marks = hits.iter().filter(|h| h.row.is_some());
+            for (hit, hint) in marks.flat_map(|h| hints.map(|n| (h, n))) {
+                let pointer = f32::midpoint(hit.left as f32, hit.right as f32) / scale;
+                let cue = tiles_engine::pane::Cue {
+                    pointer_x: Some(pointer),
+                    hint,
+                };
+                let tip = e.hover(&s, hit, scale, cue).tip;
+                let tip_box = skia_safe::Rect::from_xywh(
+                    tip.left as f32 / scale,
+                    tip.top as f32 / scale,
+                    tip.scene.width,
+                    tip.scene.height,
                 );
+                assert!(
+                    tip_box.right <= s.width && tip_box.bottom <= s.height,
+                    "{tip_box:?} stays in the tile"
+                );
+                for r in &clear {
+                    assert!(
+                        !skia_safe::Rect::intersects2(&tip_box, r),
+                        "on {:?} at {width}, the tooltip {tip_box:?} for {:?} covers {r:?}",
+                        s.part(Part::Title).next().and_then(Item::text),
+                        hit.tip
+                    );
+                }
             }
         }
     }
