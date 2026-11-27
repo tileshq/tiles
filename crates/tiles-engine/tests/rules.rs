@@ -3456,6 +3456,24 @@ fn m14_a_histogram_refuses_what_would_draw_a_wrong_count() {
         scene_of(&binned(5.0, 3.0)).is_ok(),
         "M14: a threshold on an edge draws"
     );
+    let uneven = |limit: f64| {
+        let rows: Vec<serde_json::Value> = [0.0, 5.0, 10.0, 15.0, 30.0, 60.0]
+            .iter()
+            .map(|s| serde_json::json!({"from": s, "n": 10, "limit": limit}))
+            .collect();
+        intent(
+            "histogram",
+            &serde_json::json!({"x": "from", "y": "n", "threshold": "limit"}),
+            &rows,
+        )
+    };
+    assert_eq!(
+        refuse(uneven(45.0)).key,
+        "fields.threshold",
+        "M14: a threshold between two sent starts splits a bin"
+    );
+    let s = scene_of(&uneven(30.0)).unwrap();
+    assert_eq!(texts(&s, Part::Value), ["33% at 30 or more"], "M14");
     let neg = refuse(binned(5.0, -3.0));
     assert_eq!(
         neg.to_string(),
@@ -3622,6 +3640,23 @@ fn m16_range_bands_nest_the_middle_band_and_dot_inside_the_outer_band() {
             .starts_with("fields.inner_lo: an inner band needs inner_hi"),
         "{e}"
     );
+    let all = serde_json::json!({
+        "x": "k", "lo": "a", "hi": "b", "inner_lo": "c", "inner_hi": "d", "mid": "m"
+    });
+    for (c, d, m, want) in [
+        (5, 40, 30, "inner_lo is below lo"),
+        (5, 4, 30, "inner_lo is above inner_hi"),
+        (20, 60, 30, "inner_hi is above hi"),
+        (20, 40, 60, "mid is above hi"),
+        (20, 40, 5, "mid is below lo"),
+    ] {
+        let row = serde_json::json!({"k": "x", "a": 10, "b": 50, "c": c, "d": d, "m": m});
+        let e = scene_of(&intent("range-bands", &all, &[row])).unwrap_err();
+        assert!(
+            e.to_string().starts_with(&format!("data.rows[0]: {want};")),
+            "M16: {e}"
+        );
+    }
 }
 
 #[test]

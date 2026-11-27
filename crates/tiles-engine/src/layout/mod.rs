@@ -863,6 +863,24 @@ fn band_rows(intent: &Intent) -> Result<(), IntentError> {
                 ));
             }
         }
+        let num = |k: &str| intent.column(k).and_then(|c| row[c].number());
+        if let (Some(lo), Some(hi)) = (num("lo"), num("hi")) {
+            for k in ["inner_lo", "inner_hi", "mid"] {
+                let Some(v) = num(k) else { continue };
+                let side = if v < lo {
+                    "below lo"
+                } else if v > hi {
+                    "above hi"
+                } else {
+                    continue;
+                };
+                return Err(IntentError::new(
+                    format!("data.rows[{r}]"),
+                    format!("{k} is {side}"),
+                    format!("send {k} between lo and hi, as the bands nest"),
+                ));
+            }
+        }
     }
     let both = intent.table.rows.iter().any(|row| {
         [intent.column("lo"), intent.column("hi")]

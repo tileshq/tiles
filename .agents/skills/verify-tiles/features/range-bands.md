@@ -9,6 +9,7 @@
 - `range-bands-obsidian` draws it in Obsidian, the default theme, with the same geometry.
 - `range-bands-frames` writes the entrance ending on the settled card.
 - `range-bands-bounds` refuses a row whose lo is above its hi.
+- `range-bands-nest` refuses a row whose inner band or middle dot falls outside its outer band.
 
 ## How to get to it (user POV)
 
@@ -29,6 +30,7 @@ Preconditions:
 - **Obsidian card.** Run the same with name `range-bands-obsidian` and `--theme obsidian`. The transcript names `range-bands form, obsidian theme`; the card is graphite with light text, the accent is purple and the PNG has the same pixel size as the light one.
 - **Entrance.** Run the light command with name `range-bands-frames` and `--frames '$OUT/frames' --timings`. Frame 00 is fully transparent and the last frame matches `card.png`.
 - **Bounds out of order.** Swap `p5` and `p95` in the first row, name `range-bands-bounds`. Exit 1 and `tiles: data.rows[0]: lo is above hi; send the lower bound in lo and the upper in hi`.
+- **Bands that do not nest.** Set `p25` in the first row to 4 (below its `p5` of 6), name `range-bands-nest`. Exit 1 and `tiles: data.rows[0]: inner_lo is below lo; send inner_lo between lo and hi, as the bands nest`.
 
 ## Gotchas
 

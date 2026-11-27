@@ -82,14 +82,14 @@ pub(super) fn check(intent: &Intent) -> Result<(), IntentError> {
             "send wider bins, or leave y out and let Tiles bin the values",
         ));
     }
-    // A threshold inside a sent bin splits a count Tiles cannot split, so
-    // the share past it would be wrong.
+    // A sent bin runs to the next start, so a threshold past the first start
+    // that is no start splits a count Tiles cannot split, and the share past
+    // it would be wrong.
     if let Some(t) = threshold(intent) {
         let bins = bins(intent, None);
-        let inside = bins
-            .iter()
-            .any(|b| t > b.start + edge(b) && t < b.end - edge(b));
-        if inside {
+        let past_first = bins.first().is_some_and(|b| t > b.start + edge(b));
+        let on_start = bins.iter().any(|b| (t - b.start).abs() <= edge(b));
+        if past_first && !on_start {
             return Err(IntentError::new(
                 "fields.threshold",
                 "the threshold falls inside a bin, so the share past it cannot be counted",
