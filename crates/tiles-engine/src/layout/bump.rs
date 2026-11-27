@@ -35,8 +35,8 @@ fn ranks(grid: &Cells, periods: usize, series: usize) -> Vec<Vec<Option<usize>>>
 /// One line per series with a number through its rank in each period, first
 /// at the top, ranks named down the left as far as the most series any one
 /// period ranks, and each series still ranked in the last period named
-/// beside it at the right edge; a line that drops out earlier is named only
-/// when it is the highlight, at its own last point. The named series
+/// beside it at the right edge; a line that drops out earlier, the highlight
+/// included, ends in a dot at its last point with no name. The named series
 /// takes the accent (red for a bad finding) and the rest the ordered context
 /// greys (playbook K1); with none named, the categorical order (K6).
 #[allow(
@@ -182,21 +182,7 @@ pub(super) fn bump(c: &mut Ctx) -> f32 {
     }
     let mut ends: Vec<(usize, f32)> = column.iter().map(|&(si, r)| (si, ys[r - 1])).collect();
     spread(&mut ends, ls.size + 2.0, (top, top + h));
-    ends.extend(
-        (0..series.len())
-            .filter(|&si| hl[si] && rank[si][end].is_none())
-            .filter_map(|si| {
-                (0..xs.len())
-                    .rev()
-                    .find_map(|xi| rank[si][xi])
-                    .map(|r| (si, ys[r - 1]))
-            }),
-    );
     for &(si, yy) in &ends {
-        let last = (0..xs.len())
-            .rev()
-            .find(|&xi| rank[si][xi].is_some())
-            .unwrap_or(0);
         let (style, color) = if hl[si] {
             (ls.with_weight(600), colors[si])
         } else if spotlight {
@@ -208,7 +194,7 @@ pub(super) fn bump(c: &mut Ctx) -> f32 {
         c.text(
             Part::Legend,
             names[si].clone(),
-            xpos[last] + END_LABEL_GAP,
+            xpos[end] + END_LABEL_GAP,
             yy + (MIDDLE * style.size).round(),
             style,
             Anchor::Start,

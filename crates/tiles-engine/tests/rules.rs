@@ -3864,15 +3864,49 @@ fn m18_a_bump_chart_ranks_each_period_largest_first() {
     assert_eq!(texts(&s, Part::Legend), ["A"], "M18");
 }
 
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+fn bump_top_n(rows: &[serde_json::Value], highlight: &str) -> Scene {
+    let mut i = intent(
+        "bump",
+        &serde_json::json!({"x": "x", "y": "v", "series": "s"}),
+        rows,
+    );
+    i["highlight"] = serde_json::json!([highlight]);
+    scene_of(&i).unwrap()
+}
+
+/// A text's anchor x and its centre y.
+fn text_at(s: &Scene, part: Part, label: &str) -> (f32, f32) {
+    s.part(part)
+        .find(|i| i.text() == Some(label))
+        .map(|i| match &i.shape {
+            Shape::Text { x, y, style, .. } => (*x, y - (0.30 * style.size).round()),
+            _ => unreachable!(),
+        })
+        .unwrap()
+}
+
+/// The centre x of a bump series' point in one month.
+fn bump_point_x(s: &Scene, series: &str, month: &str) -> f32 {
+    s.marks()
+        .find(|m| {
+            let tip = m.tip.as_deref().unwrap_or("");
+            tip.contains(&format!("s: {series}\n")) && tip.contains(&format!("x: {month}\n"))
+        })
+        .unwrap()
+        .bounds()
+        .center_x()
+}
+
 #[test]
 fn m18_a_bump_chart_names_the_lines_still_ranked_at_the_right_edge() {
     // A top five over twelve months with fifteen members: three take #1 in
     // turn and the first two drop out after March and July.
-    let months = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
     let mut rows: Vec<serde_json::Value> = Vec::new();
-    for (m, month) in months.iter().enumerate() {
+    for (m, month) in MONTHS.iter().enumerate() {
         let leader = if m < 3 {
             "Early"
         } else if m < 7 {
@@ -3887,35 +3921,7 @@ fn m18_a_bump_chart_names_the_lines_still_ranked_at_the_right_edge() {
             );
         }
     }
-    let top_n = |highlight: &str| {
-        let mut i = intent(
-            "bump",
-            &serde_json::json!({"x": "x", "y": "v", "series": "s"}),
-            &rows,
-        );
-        i["highlight"] = serde_json::json!([highlight]);
-        scene_of(&i).unwrap()
-    };
-    let text_at = |s: &Scene, part: Part, label: &str| {
-        s.part(part)
-            .find(|i| i.text() == Some(label))
-            .map(|i| match &i.shape {
-                Shape::Text { x, y, style, .. } => (*x, y - (0.30 * style.size).round()),
-                _ => unreachable!(),
-            })
-            .unwrap()
-    };
-    let point_x = |s: &Scene, series: &str, month: &str| {
-        s.marks()
-            .find(|m| {
-                let tip = m.tip.as_deref().unwrap_or("");
-                tip.contains(&format!("s: {series}\n")) && tip.contains(&format!("x: {month}\n"))
-            })
-            .unwrap()
-            .bounds()
-            .center_x()
-    };
-    let s = top_n("Late");
+    let s = bump_top_n(&rows, "Late");
     assert_eq!(
         texts(&s, Part::AxisLabel)[..5],
         ["#1", "#2", "#3", "#4", "#5"],
@@ -3928,7 +3934,7 @@ fn m18_a_bump_chart_names_the_lines_still_ranked_at_the_right_edge() {
         ["F0", "F1", "F11", "F2", "Late"],
         "M18: only December's five are named"
     );
-    let dec = point_x(&s, "Late", "Dec");
+    let dec = bump_point_x(&s, "Late", "Dec");
     for name in &names {
         let (x, _) = text_at(&s, Part::Legend, name);
         assert!(x > dec, "M18: {name} is named mid-plot at {x}");
@@ -3939,15 +3945,52 @@ fn m18_a_bump_chart_names_the_lines_still_ranked_at_the_right_edge() {
         (late_y - rank_y("#1")).abs() < (rank_y("#2") - rank_y("#1")) / 2.0,
         "M18: December's #1 is named beside its own lane"
     );
-    // The highlight is named even when it drops out, at its own last point.
-    let s = top_n("Early");
-    let (x, _) = text_at(&s, Part::Legend, "Early");
-    let mar = point_x(&s, "Early", "Mar");
+}
+
+#[test]
+fn m18_a_bump_chart_leaves_a_dropped_out_highlight_unnamed() {
+    // A highlight that falls out of the top five in December keeps its
+    // accent line but takes no name, so December's #5 sits alone in its lane.
+    let mut rows: Vec<serde_json::Value> = Vec::new();
+    for month in MONTHS {
+        for (k, name) in ["A", "B", "C", "D"].iter().enumerate() {
+            rows.push(serde_json::json!({"x": month, "s": name, "v": 90 - 10 * k}));
+        }
+        let fifth = if month == "Dec" {
+            "E"
+        } else {
+            "Wallets and cards"
+        };
+        rows.push(serde_json::json!({"x": month, "s": fifth, "v": 10}));
+    }
+    let s = bump_top_n(&rows, "Wallets and cards");
     assert!(
-        x > mar && x < mar + 20.0,
-        "M18: the highlight is named at March"
+        s.marks()
+            .filter(|m| m.highlighted)
+            .all(|m| m.emphasis == Emphasis::Accent),
+        "K1: the dropped-out highlight keeps its accent"
     );
-    assert_eq!(texts(&s, Part::Legend).len(), 6, "M18");
+    assert_eq!(texts(&s, Part::Legend), ["A", "B", "C", "D", "E"], "M18");
+    let dec = bump_point_x(&s, "E", "Dec");
+    for item in s.part(Part::Legend) {
+        let b = item.bounds();
+        assert!(
+            b.left() > dec,
+            "M18: a name is drawn mid-plot at {}",
+            b.left()
+        );
+        assert!(
+            b.right() <= s.card.right(),
+            "M18: a name runs past the card's edge to {}",
+            b.right()
+        );
+    }
+    let rank_y = |r: &str| text_at(&s, Part::AxisLabel, r).1;
+    let (_, e_y) = text_at(&s, Part::Legend, "E");
+    assert!(
+        (e_y - rank_y("#5")).abs() < (rank_y("#5") - rank_y("#4")) / 2.0,
+        "M18: December's #5 is named beside its own lane"
+    );
 }
 
 #[test]
