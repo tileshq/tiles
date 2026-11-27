@@ -739,6 +739,61 @@ fn a_pane_heading_keeps_its_title_whole_and_a_focus_adds_no_reflow() {
 }
 
 #[test]
+fn a_tall_columns_tooltip_leaves_the_title_and_value_labels_clear() {
+    let e = engine();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
+    let board: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let column = &board["rows"][0][1];
+    assert_eq!(column["form"], "column");
+    let intent = tiles_intent::parse(&column.to_string()).unwrap();
+    // The column card as the pane draws it in a 205-column kitty window
+    // with 7 by 12.5 CSS pixel cells: 100 columns wide, at scale 2.
+    let scale = 2.0;
+    for theme in [dark(), light()] {
+        let opts = Options {
+            width: 700.0,
+            theme,
+            cell_height: Some(12.5),
+        };
+        let s = e.scene(&intent, &opts).unwrap();
+        let hits = hit_map(&s, scale);
+        let germany = hits.iter().find(|h| h.row == Some(0)).unwrap();
+        assert!(germany.tip.contains("Germany"), "{:?}", germany.tip);
+        let pointer = f32::midpoint(germany.left as f32, germany.right as f32) / scale;
+        let mut clear = vec![text_box(&e, s.part(Part::Title).next().unwrap())];
+        assert!(
+            s.part(Part::Value).any(|v| v.text() == Some("6,900")),
+            "the Germany column has its value label"
+        );
+        clear.extend(s.part(Part::Value).map(|v| text_box(&e, v)));
+        for hint in [None, Some("click again to clear")] {
+            let cue = tiles_engine::pane::Cue {
+                pointer_x: Some(pointer),
+                hint,
+            };
+            let tip = e.hover(&s, germany, scale, cue).tip;
+            let tip_box = skia_safe::Rect::from_xywh(
+                tip.left as f32 / scale,
+                tip.top as f32 / scale,
+                tip.scene.width,
+                tip.scene.height,
+            );
+            assert!(
+                tip_box.right <= s.width && tip_box.bottom <= s.height,
+                "{tip_box:?} stays in the tile"
+            );
+            for r in &clear {
+                assert!(
+                    !skia_safe::Rect::intersects2(&tip_box, r),
+                    "the tooltip {tip_box:?} covers {r:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn intent_rules_refuse_with_one_line_naming_the_fix() {
     let e = engine();
     let mut v = fixture("column");

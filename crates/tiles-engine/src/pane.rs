@@ -194,11 +194,127 @@ fn mark_colour(card: &Scene, row: Option<usize>) -> Option<Rgba> {
         .map(|i| i.color)
 }
 
+/// The boxes a tooltip must leave clear: the card's title and the line
+/// under it, and every value label, each with a little room round it.
+fn keep_clear(fonts: &Fonts, card: &Scene) -> Vec<Rect> {
+    card.items
+        .iter()
+        .filter(|i| matches!(i.part, Part::Title | Part::Subtitle | Part::Value))
+        .filter_map(|i| match &i.shape {
+            Shape::Text {
+                text,
+                x,
+                y,
+                style,
+                anchor,
+            } => {
+                let w = fonts.width(text, *style);
+                let left = match anchor {
+                    Anchor::Start => *x,
+                    Anchor::Middle => x - w / 2.0,
+                    Anchor::End => x - w,
+                };
+                Some(
+                    Rect::from_ltrb(left, y - style.size, left + w, y + 0.3 * style.size)
+                        .with_outset((2.0, 2.0)),
+                )
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The box a tooltip at `left`, `top` covers with its hairline and shadow.
+fn footprint(left: f32, top: f32, w: f32, h: f32) -> Rect {
+    Rect::from_ltrb(
+        left - SHADOW.1,
+        top - 1.0,
+        left + w + SHADOW.1,
+        top + h + SHADOW.0 + SHADOW.1,
+    )
+}
+
+/// The place in `lo..=hi` nearest `pref`, a pixel at a time, where `free`
+/// holds.
+fn nearest(lo: f32, hi: f32, pref: f32, free: impl Fn(f32) -> bool) -> Option<f32> {
+    if hi < lo {
+        return None;
+    }
+    let pref = pref.clamp(lo, hi);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // A tile's span.
+    let steps = (hi - lo).ceil() as usize;
+    (0..=steps).find_map(|d| {
+        #[allow(clippy::cast_precision_loss)] // At most a tile's span.
+        let d = d as f32;
+        [pref - d, pref + d]
+            .into_iter()
+            .find(|at| (lo..=hi).contains(at) && free(*at))
+    })
+}
+
+/// Where a `w` by `h` tooltip for the mark `mark`, outlined by `ring`,
+/// goes on `card` (ADR-070): below the mark, from `pref_left`; else beside
+/// it, on the side with more room, inside the plot; else inside the mark's
+/// upper part when the mark is wide and tall enough; each only where it
+/// leaves the card's title and value labels clear. When none does, below
+/// the mark, or above it when the tile has no room below.
+fn place_tip(
+    fonts: &Fonts,
+    card: &Scene,
+    (mark, ring): (Rect, Rect),
+    (w, h): (f32, f32),
+    pref_left: f32,
+) -> (f32, f32) {
+    let clear = keep_clear(fonts, card);
+    let free = |left: f32, top: f32| {
+        let f = footprint(left, top, w, h);
+        clear.iter().all(|c| {
+            f.right <= c.left || c.right <= f.left || f.bottom <= c.top || c.bottom <= f.top
+        })
+    };
+    let reach = RING / 2.0 + HALO + TIP_GAP;
+    let below = ring.bottom + reach;
+    if below + h <= card.height
+        && let Some(left) = nearest(0.0, card.width - w, pref_left, |l| free(l, below))
+    {
+        return (left, below);
+    }
+    let plot = card.plot;
+    let right = ring.right + reach;
+    let left = ring.left - reach - w;
+    let mut sides = [
+        (plot.right - ring.right, right, right + w <= plot.right),
+        (ring.left - plot.left, left, left >= plot.left),
+    ];
+    if sides[1].0 > sides[0].0 {
+        sides.swap(0, 1);
+    }
+    for (_, left, fits) in sides {
+        if fits
+            && let Some(top) = nearest(plot.top, plot.bottom - h, ring.top, |t| free(left, t))
+        {
+            return (left, top);
+        }
+    }
+    let inside = (mark.center_x() - w / 2.0, mark.top + TIP_GAP);
+    if mark.width() >= w + 2.0 * TIP_GAP
+        && inside.1 + h <= mark.bottom
+        && free(inside.0, inside.1)
+    {
+        return inside;
+    }
+    let top = if below + h <= card.height {
+        below
+    } else {
+        (ring.top - reach - h).max(0.0)
+    };
+    (pref_left.min(card.width - w).max(0.0), top)
+}
+
 /// The overlay for `hit` on `card`, at device `scale`: the mark outlined
 /// in ink inside a card-coloured halo, and, as a picture of its own, a
-/// raised tooltip below it,
-/// starting just left of the pointer, or above when there is no room
-/// below, kept inside the tile (ADR-070).
+/// raised tooltip placed by [`place_tip`], starting just left of the
+/// pointer when it sits below the mark, kept inside the tile (ADR-070).
 pub(crate) fn overlay(
     tokens: &Tokens,
     fonts: &Fonts,
@@ -208,26 +324,19 @@ pub(crate) fn overlay(
     cue: Cue<'_>,
 ) -> Overlay {
     let pal = tokens.palette(card.theme);
-    let ring = Rect::from_ltrb(
+    let mark = Rect::from_ltrb(
         css(hit.left, scale),
         css(hit.top, scale),
         css(hit.right, scale),
         css(hit.bottom, scale),
-    )
-    .with_outset((RING_OUT, RING_OUT));
+    );
+    let ring = mark.with_outset((RING_OUT, RING_OUT));
     let laid = tip(fonts, &hit.tip, cue.hint, card.width);
     let reach = RING / 2.0 + HALO;
-    let below = ring.bottom + reach + TIP_GAP;
-    let top = if below + laid.h <= card.height {
-        below
-    } else {
-        (ring.top - reach - TIP_GAP - laid.h).max(0.0)
-    };
-    let left = cue
+    let pref_left = cue
         .pointer_x
-        .map_or(ring.center_x() - laid.w / 2.0, |px| px - TIP_LEAD)
-        .min(card.width - laid.w)
-        .max(0.0);
+        .map_or(ring.center_x() - laid.w / 2.0, |px| px - TIP_LEAD);
+    let (left, top) = place_tip(fonts, card, (mark, ring), (laid.w, laid.h), pref_left);
     let tip_box = Rect::from_xywh(left, top, laid.w, laid.h);
     let shadow = tip_box
         .with_offset((0.0, SHADOW.0))
