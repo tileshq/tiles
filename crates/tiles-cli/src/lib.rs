@@ -63,7 +63,7 @@ const USAGE: &str = "usage: tiles render <intent.json|-> -o <out.png> [--theme <
        tiles omni <topics | fields <topic> | rows <intent.json | ->>
        tiles run [--wrapper] [--allow-omni] [--terminal <name>] [--route <name>] [--dry-run] <pi|opencode|claude|codex> [harness arguments]
        tiles setup [--yes] [--dry-run] [--verbose]
-       tiles shell [off [--dry-run]]
+       tiles shell off [--dry-run]
        tiles install [--dry-run] <pi|opencode|claude|codex>
        tiles doctor
        tiles check [--tag <release tag>]
@@ -527,10 +527,14 @@ fn doctor_main(sources: &[&dyn Source]) -> String {
     if let Some(d) = dirs.as_ref() {
         // Whether a harness typed at a prompt starts through tiles run
         // (ADR-069).
-        let wiring = shell::plan(&shell::Places::new(d, &serve::env), &serve::env);
+        let wiring = shell::plan(
+            &shell::Places::new(d, &serve::env),
+            &serve::env,
+            &shell::this_tiles(),
+        );
         setup.push(format!(
             "  {}",
-            tiles_term::sanitize::line(&shell::status_line(wiring.as_ref(), &serve::env), 600)
+            tiles_term::sanitize::line(&shell::status_line(wiring.as_ref()), 600)
         ));
     }
     let opencode = which("opencode").map(|p| opencode::Found::read(&p));

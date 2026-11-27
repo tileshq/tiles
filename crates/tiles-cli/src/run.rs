@@ -429,13 +429,22 @@ pub fn main(args: &[String], sources: &[&dyn Source]) -> ExitCode {
         return plain(harness, &rest);
     }
     let shown = rest.clone();
+    let saved = rustix::termios::tcgetattr(rustix::stdio::stdin()).ok();
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        default(info);
         // A background thread's panic (the version probe, the update check)
         // leaves the launch going, as it does under `tiles run`.
         let main_thread = std::thread::current().name() == Some("main");
-        if main_thread && !LAUNCHED.load(std::sync::atomic::Ordering::SeqCst) {
+        let early = main_thread && !LAUNCHED.load(std::sync::atomic::Ordering::SeqCst);
+        if let Some(saved) = saved.as_ref().filter(|_| early) {
+            let _ = rustix::termios::tcsetattr(
+                rustix::stdio::stdin(),
+                rustix::termios::OptionalActions::Now,
+                saved,
+            );
+        }
+        default(info);
+        if early {
             plain(harness, &shown);
         }
     }));

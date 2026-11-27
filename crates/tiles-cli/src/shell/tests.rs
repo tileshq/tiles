@@ -1,8 +1,10 @@
 use std::fs;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use super::{
-    Edit, FISH, Kind, Places, SCRIPT, Undone, apply, block, plan, status_line, steps_aside, undo,
+    Edit, Kind, Places, Undone, apply, block, fish, follow, installed, plan, script, status_line,
+    steps_aside, undo,
 };
 use crate::harness::Harness;
 use crate::install::Dirs;
@@ -23,6 +25,14 @@ fn home(name: &str) -> (PathBuf, Places) {
 
 fn shell_is(name: &'static str) -> impl Fn(&str) -> Option<String> {
     move |k: &str| (k == "SHELL").then(|| format!("/bin/{name}"))
+}
+
+/// The `tiles` the tests' scripts run.
+const TILES: &str = "/opt/homebrew/bin/tiles";
+
+/// [`plan`] for scripts that run [`TILES`], with `name` as the login shell.
+fn plan_for(places: &Places, name: &'static str) -> Option<super::Plan> {
+    plan(places, &shell_is(name), Path::new(TILES))
 }
 
 #[test]
@@ -47,33 +57,40 @@ fn places_follow_the_tiles_config_dir_and_zdotdir() {
 
 #[test]
 fn the_block_reads_the_script_only_when_it_is_there_and_quotes_its_path() {
-    let b = block(Path::new("/Users/o'neil/.config/tiles/shell.sh"));
+    let b = block(Path::new("/Users/o'neil/.config/tiles/shell.sh"), false);
     assert_eq!(
         b,
         "# Added by tiles setup: plain claude, codex, opencode and pi draw cards; tiles shell off removes it\n\
          if [ -r '/Users/o'\\''neil/.config/tiles/shell.sh' ]; then . '/Users/o'\\''neil/.config/tiles/shell.sh'; fi\n"
     );
     assert_eq!(b.lines().count(), 2);
+    let only_bash = block(Path::new("/h/shell.sh"), true);
+    assert!(
+        only_bash.ends_with(
+            "\nif [ -n \"$BASH_VERSION\" ] && [ -r '/h/shell.sh' ]; then . '/h/shell.sh'; fi\n"
+        ),
+        "{only_bash}"
+    );
 }
 
 #[test]
 fn no_shell_found_means_no_plan() {
     let (root, places) = home("none");
-    assert_eq!(plan(&places, &|_| None), None);
+    assert_eq!(plan(&places, &|_| None, Path::new(TILES)), None);
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
 fn zsh_as_the_login_shell_gets_its_zshrc_and_the_script() {
     let (root, places) = home("zsh");
-    let p = plan(&places, &shell_is("zsh")).unwrap();
+    let p = plan_for(&places, "zsh").unwrap();
     assert_eq!(p.shells, [Kind::Zsh]);
     assert_eq!(p.files, std::slice::from_ref(&places.zshrc));
     assert_eq!(
         p.edits,
         [
-            Edit::Write(places.script.clone(), SCRIPT),
-            Edit::Append(places.zshrc.clone(), block(&places.script)),
+            Edit::Write(places.script.clone(), script(Path::new(TILES))),
+            Edit::Append(places.zshrc.clone(), block(&places.script, false)),
         ]
     );
     assert_eq!(
@@ -86,44 +103,117 @@ fn zsh_as_the_login_shell_gets_its_zshrc_and_the_script() {
     let _ = fs::remove_dir_all(root);
 }
 
+/// The bash startup files a plan wires on a home holding `files`, with
+/// `login` as the login shell.
+fn bash_files(name: &str, login: &'static str, files: &[&str]) -> Vec<String> {
+    let (root, places) = home(name);
+    for f in files {
+        fs::write(root.join(f), "export A=1\n").unwrap();
+    }
+    let p = plan_for(&places, login).unwrap();
+    let out = p
+        .files
+        .iter()
+        .map(|f| f.strip_prefix(&root).unwrap().display().to_string())
+        .collect();
+    let _ = fs::remove_dir_all(root);
+    out
+}
+
 #[test]
-fn bash_gets_each_startup_file_that_exists_or_its_bashrc() {
-    let (root, places) = home("bash");
-    let p = plan(&places, &shell_is("bash")).unwrap();
-    assert_eq!(p.files, [places.bash[0].clone()], "no file: .bashrc");
-    fs::write(&places.bash[1], "export A=1\n").unwrap();
-    let p = plan(&places, &shell_is("bash")).unwrap();
-    assert_eq!(p.files, [places.bash[1].clone()], "only .bash_profile");
-    fs::write(&places.bash[0], "").unwrap();
-    let p = plan(&places, &shell_is("zsh")).unwrap();
+fn bash_gets_its_bashrc_and_the_login_file_a_login_bash_reads() {
+    let cases: [(&str, &[&str], &[&str]); 7] = [
+        ("none", &[], &[".bash_profile"]),
+        ("profile", &[".profile"], &[".profile"]),
+        ("bashrc", &[".bashrc"], &[".bashrc", ".bash_profile"]),
+        (
+            "both",
+            &[".bashrc", ".bash_profile", ".profile"],
+            &[".bashrc", ".bash_profile"],
+        ),
+        ("login", &[".bash_login", ".profile"], &[".bash_login"]),
+        (
+            "first",
+            &[".bash_profile", ".bash_login"],
+            &[".bash_profile"],
+        ),
+        (
+            "rc-and-profile",
+            &[".bashrc", ".profile"],
+            &[".bashrc", ".profile"],
+        ),
+    ];
+    for (name, files, wired) in cases {
+        assert_eq!(
+            bash_files(&format!("bash-{name}"), "bash", files),
+            wired,
+            "{name}"
+        );
+    }
     assert_eq!(
-        p.shells,
-        [Kind::Zsh, Kind::Bash],
+        bash_files("bash-zsh", "zsh", &[".bashrc"]),
+        [".zshrc", ".bashrc", ".bash_profile"],
         "a bash file wires bash too"
     );
     assert_eq!(
-        p.files,
+        bash_files("bash-zsh-profile", "zsh", &[".profile"]),
+        [".zshrc"],
+        ".profile alone is not bash's"
+    );
+}
+
+#[test]
+fn profile_gets_a_block_only_bash_reads_and_undo_gives_every_file_back() {
+    let (root, places) = home("profile");
+    let profile = root.join(".profile");
+    let rc = root.join(".bashrc");
+    fs::write(&profile, "export B=2").unwrap();
+    fs::write(&rc, "alias l=ls\n").unwrap();
+    let p = plan_for(&places, "bash").unwrap();
+    assert_eq!(
+        p.edits[1..],
         [
-            places.zshrc.clone(),
-            places.bash[0].clone(),
-            places.bash[1].clone()
+            Edit::Append(rc.clone(), block(&places.script, false)),
+            Edit::Append(profile.clone(), block(&places.script, true)),
         ]
     );
+    apply(&p.edits).unwrap();
+    assert_eq!(plan_for(&places, "bash").unwrap().edits, Vec::<Edit>::new());
+    let done = undo(&places, false).unwrap();
+    assert!(done.contains(&Undone::Removed(profile.clone())), "{done:?}");
+    assert_eq!(fs::read_to_string(&profile).unwrap(), "export B=2");
+    assert_eq!(fs::read_to_string(&rc).unwrap(), "alias l=ls\n");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_bash_profile_setup_created_is_deleted_by_undo() {
+    let (root, places) = home("created");
+    let made = root.join(".bash_profile");
+    apply(&plan_for(&places, "bash").unwrap().edits).unwrap();
+    assert_eq!(
+        fs::read_to_string(&made).unwrap(),
+        block(&places.script, false)
+    );
+    assert!(
+        undo(&places, false)
+            .unwrap()
+            .contains(&Undone::Deleted(made.clone()))
+    );
+    assert!(!made.exists());
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
 fn fish_gets_a_file_of_tiles_own_and_no_startup_file_changes() {
     let (root, places) = home("fish");
-    let p = plan(&places, &shell_is("fish")).unwrap();
+    let p = plan_for(&places, "fish").unwrap();
     assert_eq!(p.shells, [Kind::Fish]);
-    assert_eq!(p.edits, [Edit::Write(places.fish.clone(), FISH)]);
+    let wanted = fish(Path::new(TILES));
+    assert_eq!(p.edits, [Edit::Write(places.fish.clone(), wanted.clone())]);
     apply(&p.edits).unwrap();
-    assert_eq!(fs::read_to_string(&places.fish).unwrap(), FISH);
-    assert_eq!(
-        plan(&places, &shell_is("fish")).unwrap().edits,
-        Vec::<Edit>::new()
-    );
+    assert_eq!(fs::read_to_string(&places.fish).unwrap(), wanted);
+    assert_eq!(plan_for(&places, "fish").unwrap().edits, Vec::<Edit>::new());
     let _ = fs::remove_dir_all(root);
 }
 
@@ -134,14 +224,17 @@ fn round_trip(name: &str, before: Option<&[u8]>) -> Option<Vec<u8>> {
     if let Some(bytes) = before {
         fs::write(&places.zshrc, bytes).unwrap();
     }
-    let p = plan(&places, &shell_is("zsh")).unwrap();
+    let p = plan_for(&places, "zsh").unwrap();
     apply(&p.edits).unwrap();
     let wired = fs::read_to_string(&places.zshrc).unwrap();
-    assert!(wired.ends_with(&block(&places.script)), "{wired}");
-    assert_eq!(fs::read_to_string(&places.script).unwrap(), SCRIPT);
-    let again = plan(&places, &shell_is("zsh")).unwrap();
+    assert!(wired.ends_with(&block(&places.script, false)), "{wired}");
+    assert_eq!(
+        fs::read_to_string(&places.script).unwrap(),
+        script(Path::new(TILES))
+    );
+    let again = plan_for(&places, "zsh").unwrap();
     assert!(again.edits.is_empty(), "{again:?}");
-    assert!(status_line(Some(&again), &|_| None).starts_with("shell: wired for zsh through "));
+    assert!(status_line(Some(&again)).starts_with("shell: wired for zsh through "));
     let done = undo(&places, false).unwrap();
     assert!(done.contains(&Undone::Deleted(places.script.clone())));
     assert!(!places.script.exists());
@@ -172,7 +265,7 @@ fn undo_restores_a_startup_file_byte_for_byte() {
 fn undo_keeps_lines_the_user_added_after_the_block() {
     let (root, places) = home("after");
     fs::write(&places.zshrc, "a\n").unwrap();
-    apply(&plan(&places, &shell_is("zsh")).unwrap().edits).unwrap();
+    apply(&plan_for(&places, "zsh").unwrap().edits).unwrap();
     let mut f = fs::OpenOptions::new()
         .append(true)
         .open(&places.zshrc)
@@ -192,7 +285,7 @@ fn a_linked_startup_file_stays_a_link() {
     let real = root.join("dotfiles-zshrc");
     fs::write(&real, "a\n").unwrap();
     std::os::unix::fs::symlink(&real, &places.zshrc).unwrap();
-    apply(&plan(&places, &shell_is("zsh")).unwrap().edits).unwrap();
+    apply(&plan_for(&places, "zsh").unwrap().edits).unwrap();
     assert!(fs::symlink_metadata(&places.zshrc).unwrap().is_symlink());
     assert!(fs::read_to_string(&real).unwrap().contains("tiles setup"));
     undo(&places, false).unwrap();
@@ -206,14 +299,14 @@ fn changed_tiles_lines_are_left_by_setup_and_by_undo() {
     let (root, places) = home("changed");
     let changed = "a\n# Added by tiles setup: mine now\nsource ~/elsewhere.sh\n";
     fs::write(&places.zshrc, changed).unwrap();
-    let p = plan(&places, &shell_is("zsh")).unwrap();
+    let p = plan_for(&places, "zsh").unwrap();
     assert_eq!(p.left, std::slice::from_ref(&places.zshrc));
     assert!(
         p.edits.is_empty(),
         "nothing reads the script, so it is not written"
     );
     assert!(
-        status_line(Some(&p), &|_| None).contains("holds changed Tiles lines"),
+        status_line(Some(&p)).contains("holds changed Tiles lines"),
         "{p:?}"
     );
     assert_eq!(
@@ -228,7 +321,7 @@ fn changed_tiles_lines_are_left_by_setup_and_by_undo() {
 fn a_dry_run_undo_changes_nothing() {
     let (root, places) = home("dry");
     fs::write(&places.zshrc, "a\n").unwrap();
-    apply(&plan(&places, &shell_is("zsh")).unwrap().edits).unwrap();
+    apply(&plan_for(&places, "zsh").unwrap().edits).unwrap();
     let wired = fs::read(&places.zshrc).unwrap();
     let said = undo(&places, true).unwrap();
     assert_eq!(
@@ -246,19 +339,125 @@ fn a_dry_run_undo_changes_nothing() {
 #[test]
 fn the_status_line_says_what_is_wired_and_what_is_not() {
     let (root, places) = home("status");
-    let p = plan(&places, &shell_is("zsh")).unwrap();
+    let tiles = root.join("bin/tiles");
+    fs::create_dir_all(root.join("bin")).unwrap();
+    fs::write(&tiles, "#!/bin/sh\n").unwrap();
+    fs::set_permissions(&tiles, fs::Permissions::from_mode(0o755)).unwrap();
+    let p = plan(&places, &shell_is("zsh"), &tiles).unwrap();
     assert_eq!(
-        status_line(Some(&p), &|_| None),
+        status_line(Some(&p)),
         "shell: not wired for zsh: plain sessions get no inline card; run tiles setup"
     );
     apply(&p.edits).unwrap();
-    let p = plan(&places, &shell_is("zsh")).unwrap();
-    let plain = |k: &str| (k == "TILES_PLAIN").then(|| "1".to_string());
-    assert!(
-        status_line(Some(&p), &plain)
-            .ends_with("; TILES_PLAIN is set, so this shell keeps them plain")
+    let p = plan(&places, &shell_is("zsh"), &tiles).unwrap();
+    assert_eq!(p.recorded.as_deref(), Some(tiles.as_path()));
+    assert_eq!(
+        status_line(Some(&p)),
+        format!(
+            "shell: wired for zsh through {}: claude, codex, opencode and pi typed in a new terminal start through tiles run",
+            places.zshrc.display()
+        )
     );
-    assert!(status_line(None, &|_| None).starts_with("shell: no zsh, bash or fish found"));
+    let other = plan_for(&places, "zsh").unwrap();
+    assert!(
+        status_line(Some(&other)).ends_with(&format!(
+            "start through {}; tiles setup rewrites the script for this tiles",
+            tiles.display()
+        )),
+        "{other:?}"
+    );
+    fs::remove_file(&tiles).unwrap();
+    let gone = plan(&places, &shell_is("zsh"), &tiles).unwrap();
+    assert_eq!(
+        status_line(Some(&gone)),
+        format!(
+            "shell: wired for zsh through {}, but {} is missing, so claude, codex, opencode and pi typed in a new terminal start plain; run tiles setup",
+            places.zshrc.display(),
+            tiles.display()
+        )
+    );
+    assert!(status_line(None).starts_with("shell: no zsh, bash or fish found"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn each_script_records_its_tiles_however_the_path_is_quoted() {
+    for (name, tiles) in [
+        ("plain", "/Users/me/.local/bin/tiles"),
+        ("quote", "/Users/o'neil/bin/tiles"),
+        ("backslash", "/opt/a\\b'\\/tiles"),
+        ("space", "/Users/me/my bin/tiles"),
+    ] {
+        let (root, places) = home(&format!("record-{name}"));
+        fs::create_dir_all(&places.fish_dir).unwrap();
+        let tiles = Path::new(tiles);
+        apply(&plan(&places, &shell_is("zsh"), tiles).unwrap().edits).unwrap();
+        assert_eq!(
+            plan(&places, &shell_is("zsh"), tiles)
+                .unwrap()
+                .recorded
+                .as_deref(),
+            Some(tiles),
+            "{name}"
+        );
+        fs::remove_file(&places.script).unwrap();
+        fs::remove_file(&places.zshrc).unwrap();
+        assert_eq!(
+            plan(&places, &shell_is("fish"), tiles)
+                .unwrap()
+                .recorded
+                .as_deref(),
+            Some(tiles),
+            "{name}: fish"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+}
+
+#[test]
+fn the_recorded_tiles_is_the_one_path_names_not_the_file_it_links_to() {
+    let (root, _) = home("installed");
+    let cellar = root.join("Cellar/tiles/0.2.0/bin");
+    let bin = root.join("bin");
+    let old = root.join("old");
+    for d in [&cellar, &bin, &old] {
+        fs::create_dir_all(d).unwrap();
+    }
+    let real = cellar.join("tiles");
+    fs::write(&real, "new").unwrap();
+    fs::write(old.join("tiles"), "old").unwrap();
+    std::os::unix::fs::symlink(&real, bin.join("tiles")).unwrap();
+    let path = std::env::join_paths([&old, &bin]).unwrap();
+    assert_eq!(installed(&path, &real), bin.join("tiles"));
+    assert_eq!(installed(&path, &bin.join("tiles")), bin.join("tiles"));
+    let elsewhere = root.join("elsewhere/tiles");
+    assert_eq!(installed(&path, &elsewhere), elsewhere);
+    let off_path = std::env::join_paths([&old]).unwrap();
+    assert_eq!(installed(&off_path, &real), real);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn an_update_points_the_scripts_at_the_new_tiles() {
+    let (root, places) = home("follow");
+    fs::create_dir_all(&places.fish_dir).unwrap();
+    let old = Path::new("/opt/homebrew/bin/tiles");
+    let new = root.join(".local/bin/tiles");
+    apply(&plan(&places, &shell_is("zsh"), old).unwrap().edits).unwrap();
+    assert_eq!(
+        follow(&places, &new).unwrap(),
+        [places.script.clone(), places.fish.clone()]
+    );
+    assert_eq!(fs::read_to_string(&places.script).unwrap(), script(&new));
+    assert_eq!(fs::read_to_string(&places.fish).unwrap(), fish(&new));
+    assert_eq!(
+        plan(&places, &shell_is("zsh"), &new).unwrap().edits,
+        Vec::<Edit>::new()
+    );
+    assert_eq!(
+        follow(&places, &new).unwrap(),
+        Vec::<std::path::PathBuf>::new()
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -327,27 +526,5 @@ fn one_shot_scripted_and_management_uses_start_the_harness_untouched() {
         (Harness::Pi, "--export out.html"),
     ] {
         assert!(steps_aside(h, &words(args)), "{} {args}", h.name());
-    }
-}
-
-#[test]
-fn both_scripts_define_one_function_per_harness_and_respect_the_switches() {
-    for h in Harness::ALL {
-        assert!(SCRIPT.contains(&format!(
-            "function {} {{ __tiles_start {} \"$@\"; }}",
-            h.name(),
-            h.name()
-        )));
-        assert!(FISH.contains(&format!(
-            "function {}\n    __tiles_start {} $argv\nend",
-            h.name(),
-            h.name()
-        )));
-    }
-    for script in [SCRIPT, FISH] {
-        assert!(script.starts_with(super::MARK));
-        for needed in ["TILES_PLAIN", "TILES_RUN", "tiles run --from-shell"] {
-            assert!(script.contains(needed), "{needed}");
-        }
     }
 }

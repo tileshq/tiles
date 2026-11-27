@@ -3,69 +3,98 @@
 //! through `tiles run`, so the card draws inline without a per-session
 //! command.
 //!
-//! For zsh and bash, setup writes Tiles' own [`SCRIPT`] to `shell.sh` in the
+//! For zsh and bash, setup writes Tiles' own [`script`] to `shell.sh` in the
 //! Tiles config directory and appends two lines ([`block`]) to each startup
-//! file it wires: `.zshrc`, and the `.bashrc` and `.bash_profile` that
-//! exist. For fish it writes [`FISH`] to `fish/conf.d/tiles.fish`, which fish
-//! reads by itself, so no file of the user's changes. Each script defines
-//! one function per harness that runs `tiles run --from-shell <harness>`
-//! when standard input and output are a terminal, `tiles` is on `PATH`,
-//! `TILES_PLAIN` is empty and no `tiles run` is already around the shell,
-//! and the harness itself otherwise. `tiles run --from-shell` starts the
-//! harness untouched for the uses [`steps_aside`] names, and when Tiles fails
-//! before the harness starts; a harness not on `PATH` gets the shell's own
-//! `command not found` line and status 127.
+//! file it wires ([`startup_files`]). For fish it writes [`fish`] to
+//! `fish/conf.d/tiles.fish`, which fish reads by itself, so no file of the
+//! user's changes. Each script records the `tiles` that ran setup, as
+//! installed ([`installed`]), and defines one function per harness that runs
+//! `<that tiles> run --from-shell <harness>` when standard input and output
+//! are a terminal, that file is executable and no `tiles run` is already
+//! around the shell, and the harness itself otherwise. `tiles run
+//! --from-shell` starts the harness untouched for the uses [`steps_aside`]
+//! names, and when Tiles fails before the harness starts; a harness not on
+//! `PATH` gets the shell's own `command not found` line and status 127.
 //!
 //! [`undo`], behind `tiles shell off`, removes exactly the bytes setup
 //! appended, deletes a startup file setup created, and deletes Tiles' own
 //! scripts.
 
+use std::ffi::OsStr;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::Write as _;
+use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
 use crate::harness::Harness;
 use crate::install::Dirs;
 
 /// Usage of `tiles shell`.
-pub const USAGE: &str = "tiles shell [off [--dry-run]]";
-
-/// The variable that keeps a shell's harnesses plain.
-pub const PLAIN: &str = "TILES_PLAIN";
+pub const USAGE: &str = "tiles shell off [--dry-run]";
 
 /// The first line of every block setup appends, and of each Tiles script.
 const MARK: &str = "# Added by tiles setup:";
 
-/// The zsh and bash script, `shell.sh` in the Tiles config directory.
-/// `function name {` keeps an alias of the same name, which a shell expands
-/// before a `name()` definition, from breaking the file.
-pub const SCRIPT: &str = r#"# Added by tiles setup: claude, codex, opencode and pi typed at an interactive
+/// What starts the line of the zsh and bash script that records `tiles`.
+const SH_TILES: &str = "\n  local tiles=";
+
+/// What starts the line of the fish script that records `tiles`.
+const FISH_TILES: &str = "\n    set -l tiles ";
+
+/// `p` as one single-quoted zsh or bash word.
+fn sh_word(p: &Path) -> String {
+    format!("'{}'", p.display().to_string().replace('\'', "'\\''"))
+}
+
+/// `p` as one single-quoted fish word.
+fn fish_word(p: &Path) -> String {
+    format!(
+        "'{}'",
+        p.display()
+            .to_string()
+            .replace('\\', "\\\\")
+            .replace('\'', "\\'")
+    )
+}
+
+/// The zsh and bash script, `shell.sh` in the Tiles config directory, which
+/// runs `tiles`. `function name {` keeps an alias of the same name, which a
+/// shell expands before a `name()` definition, from breaking the file.
+#[must_use]
+pub fn script(tiles: &Path) -> String {
+    format!(
+        r#"{MARK} claude, codex, opencode and pi typed at an interactive
 # prompt start through `tiles run`, which draws chart cards in this terminal.
-# TILES_PLAIN=1 keeps them plain; `command claude` skips Tiles once;
-# `tiles shell off` removes this file and the lines that read it.
-function __tiles_start {
-  if [ -t 0 ] && [ -t 1 ] && [ -z "${TILES_PLAIN-}" ] && [ -z "${TILES_RUN-}" ] \
-    && command -v tiles >/dev/null 2>&1; then
-    command tiles run --from-shell "$@"
+# `command claude` skips Tiles once; `tiles shell off` removes this file and
+# the lines that read it.
+function __tiles_start {{{SH_TILES}{tiles}
+  if [ -t 0 ] && [ -t 1 ] && [ -z "${{TILES_RUN-}}" ] && [ -f "$tiles" ] && [ -x "$tiles" ]; then
+    "$tiles" run --from-shell "$@"
   else
     command "$@"
   fi
+}}
+function claude {{ __tiles_start claude "$@"; }}
+function codex {{ __tiles_start codex "$@"; }}
+function opencode {{ __tiles_start opencode "$@"; }}
+function pi {{ __tiles_start pi "$@"; }}
+"#,
+        tiles = sh_word(tiles)
+    )
 }
-function claude { __tiles_start claude "$@"; }
-function codex { __tiles_start codex "$@"; }
-function opencode { __tiles_start opencode "$@"; }
-function pi { __tiles_start pi "$@"; }
-"#;
 
-/// The fish script, `fish/conf.d/tiles.fish` in the XDG config directory.
-pub const FISH: &str = r#"# Added by tiles setup: claude, codex, opencode and pi typed at an interactive
+/// The fish script, `fish/conf.d/tiles.fish` in the XDG config directory,
+/// which runs `tiles`.
+#[must_use]
+pub fn fish(tiles: &Path) -> String {
+    format!(
+        r#"{MARK} claude, codex, opencode and pi typed at an interactive
 # prompt start through `tiles run`, which draws chart cards in this terminal.
-# TILES_PLAIN=1 keeps them plain; `command claude` skips Tiles once;
-# `tiles shell off` removes this file.
-function __tiles_start
-    if isatty stdin; and isatty stdout; and test -z "$TILES_PLAIN"; and test -z "$TILES_RUN"; and command -q tiles
-        command tiles run --from-shell $argv
+# `command claude` skips Tiles once; `tiles shell off` removes this file.
+function __tiles_start{FISH_TILES}{tiles}
+    if isatty stdin; and isatty stdout; and test -z "$TILES_RUN"; and test -f $tiles; and test -x $tiles
+        command $tiles run --from-shell $argv
     else
         command $argv
     end
@@ -82,7 +111,77 @@ end
 function pi
     __tiles_start pi $argv
 end
-"#;
+"#,
+        tiles = fish_word(tiles)
+    )
+}
+
+/// The `tiles` a script [`script`] or [`fish`] wrote runs, read back from
+/// its quoted word.
+fn recorded(text: &str) -> Option<PathBuf> {
+    if let Some((_, rest)) = text.split_once(SH_TILES) {
+        let mut rest = rest.strip_prefix('\'')?;
+        let mut out = String::new();
+        loop {
+            let end = rest.find('\'')?;
+            out.push_str(&rest[..end]);
+            rest = &rest[end + 1..];
+            match rest.strip_prefix("\\''") {
+                Some(more) => {
+                    out.push('\'');
+                    rest = more;
+                }
+                None => return Some(out.into()),
+            }
+        }
+    }
+    let (_, rest) = text.split_once(FISH_TILES)?;
+    let mut chars = rest.strip_prefix('\'')?.chars();
+    let mut out = String::new();
+    loop {
+        match chars.next()? {
+            '\'' => return Some(out.into()),
+            '\\' => match chars.next()? {
+                c @ ('\\' | '\'') => out.push(c),
+                c => {
+                    out.push('\\');
+                    out.push(c);
+                }
+            },
+            c => out.push(c),
+        }
+    }
+}
+
+/// Whether `p` is a file the shell can run.
+fn runnable(p: &Path) -> bool {
+    fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
+/// `this`, the running `tiles`, as installed: the first `tiles` in `path`, a
+/// `PATH` value, that is the same file, such as Homebrew's link in its `bin`
+/// rather than the versioned file it points to; else `this` itself.
+#[must_use]
+pub fn installed(path: &OsStr, this: &Path) -> PathBuf {
+    let id = |p: &Path| fs::metadata(p).ok().map(|m| (m.dev(), m.ino()));
+    let Some(here) = id(this) else {
+        return this.to_path_buf();
+    };
+    std::env::split_paths(path)
+        .filter(|d| d.is_absolute())
+        .map(|d| d.join("tiles"))
+        .find(|p| id(p) == Some(here))
+        .unwrap_or_else(|| this.to_path_buf())
+}
+
+/// [`installed`] for the running `tiles` and this process's `PATH`.
+#[must_use]
+pub fn this_tiles() -> PathBuf {
+    installed(
+        &std::env::var_os("PATH").unwrap_or_default(),
+        &crate::this_tiles(),
+    )
+}
 
 /// A shell setup can wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,7 +210,7 @@ impl Kind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Edit {
     /// Write Tiles' own script.
-    Write(PathBuf, &'static str),
+    Write(PathBuf, String),
     /// Append [`block`] to a startup file of the user's, creating it when
     /// missing.
     Append(PathBuf, String),
@@ -139,6 +238,8 @@ pub struct Plan {
     pub edits: Vec<Edit>,
     /// Startup files whose Tiles lines were changed by hand, left as they are.
     pub left: Vec<PathBuf>,
+    /// The `tiles` Tiles' script on disk runs, `None` when there is none.
+    pub recorded: Option<PathBuf>,
 }
 
 /// Where the wiring's files are.
@@ -150,8 +251,11 @@ pub struct Places {
     pub fish: PathBuf,
     /// zsh's startup file.
     pub zshrc: PathBuf,
-    /// bash's startup files, interactive then login.
-    pub bash: [PathBuf; 2],
+    /// The startup file of a bash that is not a login shell.
+    pub bashrc: PathBuf,
+    /// The files a login bash reads the first of that exists:
+    /// `.bash_profile`, `.bash_login`, `.profile`.
+    pub bash_login: [PathBuf; 3],
     /// fish's config directory.
     pub fish_dir: PathBuf,
 }
@@ -171,19 +275,36 @@ impl Places {
             script: config.join("shell.sh"),
             fish: dirs.config_home.join("fish/conf.d/tiles.fish"),
             zshrc: zdotdir.join(".zshrc"),
-            bash: [dirs.home.join(".bashrc"), dirs.home.join(".bash_profile")],
+            bashrc: dirs.home.join(".bashrc"),
+            bash_login: [
+                dirs.home.join(".bash_profile"),
+                dirs.home.join(".bash_login"),
+                dirs.home.join(".profile"),
+            ],
             fish_dir: dirs.config_home.join("fish"),
         }
+    }
+
+    /// The block for `rc`: guarded by `BASH_VERSION` in `.profile`, which
+    /// `sh` reads too.
+    fn block(&self, rc: &Path) -> String {
+        block(&self.script, rc == self.bash_login[2])
     }
 }
 
 /// The two lines appended to a startup file: the mark, and a guarded read
-/// of `script`, which leaves the status at 0 when the script is gone.
+/// of `script`, which leaves the status at 0 when the script is gone. With
+/// `bash_only`, only bash reads it.
 #[must_use]
-pub fn block(script: &Path) -> String {
-    let quoted = format!("'{}'", script.display().to_string().replace('\'', "'\\''"));
+pub fn block(script: &Path, bash_only: bool) -> String {
+    let quoted = sh_word(script);
+    let bash = if bash_only {
+        "[ -n \"$BASH_VERSION\" ] && "
+    } else {
+        ""
+    };
     format!(
-        "{MARK} plain claude, codex, opencode and pi draw cards; tiles shell off removes it\nif [ -r {quoted} ]; then . {quoted}; fi\n"
+        "{MARK} plain claude, codex, opencode and pi draw cards; tiles shell off removes it\nif {bash}[ -r {quoted} ]; then . {quoted}; fi\n"
     )
 }
 
@@ -217,54 +338,75 @@ fn login_shell(env: &dyn Fn(&str) -> Option<String>) -> Option<Kind> {
     }
 }
 
-/// The startup files to wire for zsh and bash: `.zshrc` when zsh is the
-/// login shell or the file exists; the `.bashrc` and `.bash_profile` that
-/// exist, or `.bashrc` when bash is the login shell and neither does.
+/// The startup files to wire for zsh and bash. `.zshrc` when zsh is the
+/// login shell or the file exists. bash when it is the login shell or
+/// `.bashrc`, `.bash_profile` or `.bash_login` exists: the `.bashrc` that
+/// exists, and the login file a login bash reads, as macOS terminals start
+/// bash: the first of `.bash_profile`, `.bash_login` and `.profile` that
+/// exists, else a new `.bash_profile`.
 fn startup_files(places: &Places, login: Option<Kind>) -> Vec<(Kind, PathBuf)> {
     let mut out = Vec::new();
     if login == Some(Kind::Zsh) || places.zshrc.exists() {
         out.push((Kind::Zsh, places.zshrc.clone()));
     }
-    let bash: Vec<PathBuf> = places.bash.iter().filter(|p| p.exists()).cloned().collect();
-    if bash.is_empty() && login == Some(Kind::Bash) {
-        out.push((Kind::Bash, places.bash[0].clone()));
+    let [profile, bash_login, _] = &places.bash_login;
+    let bash = login == Some(Kind::Bash)
+        || [&places.bashrc, profile, bash_login]
+            .iter()
+            .any(|p| p.exists());
+    if bash {
+        if places.bashrc.exists() {
+            out.push((Kind::Bash, places.bashrc.clone()));
+        }
+        let read = places
+            .bash_login
+            .iter()
+            .find(|p| p.exists())
+            .unwrap_or(profile);
+        out.push((Kind::Bash, read.clone()));
     }
-    out.extend(bash.into_iter().map(|p| (Kind::Bash, p)));
     out
 }
 
-/// The plan on this machine; `None` when no zsh, bash or fish is found.
+/// The plan on this machine for scripts that run `tiles`; `None` when no
+/// zsh, bash or fish is found.
 #[must_use]
-pub fn plan(places: &Places, env: &dyn Fn(&str) -> Option<String>) -> Option<Plan> {
+pub fn plan(places: &Places, env: &dyn Fn(&str) -> Option<String>, tiles: &Path) -> Option<Plan> {
     let login = login_shell(env);
     let read = |p: &Path| fs::read_to_string(p).ok();
-    let block = block(&places.script);
     let mut out = Plan::default();
-    let rcs = startup_files(places, login);
-    for (kind, rc) in &rcs {
-        if !out.shells.contains(kind) {
-            out.shells.push(*kind);
+    for (kind, rc) in startup_files(places, login) {
+        if !out.shells.contains(&kind) {
+            out.shells.push(kind);
         }
-        match held(read(rc).as_deref(), &block) {
-            Held::Block => out.files.push(rc.clone()),
+        let block = places.block(&rc);
+        match held(read(&rc).as_deref(), &block) {
+            Held::Block => out.files.push(rc),
             Held::None => {
-                out.files.push(rc.clone());
-                out.edits.push(Edit::Append(rc.clone(), block.clone()));
+                out.edits.push(Edit::Append(rc.clone(), block));
+                out.files.push(rc);
             }
-            Held::Changed => out.left.push(rc.clone()),
+            Held::Changed => out.left.push(rc),
         }
     }
-    if !out.files.is_empty() && read(&places.script).as_deref() != Some(SCRIPT) {
-        out.edits
-            .insert(0, Edit::Write(places.script.clone(), SCRIPT));
+    let written = read(&places.script);
+    if !out.files.is_empty() {
+        let wanted = script(tiles);
+        if written.as_deref() != Some(wanted.as_str()) {
+            out.edits
+                .insert(0, Edit::Write(places.script.clone(), wanted));
+        }
     }
+    let fished = read(&places.fish);
     if login == Some(Kind::Fish) || places.fish_dir.is_dir() {
         out.shells.push(Kind::Fish);
         out.files.push(places.fish.clone());
-        if read(&places.fish).as_deref() != Some(FISH) {
-            out.edits.push(Edit::Write(places.fish.clone(), FISH));
+        let wanted = fish(tiles);
+        if fished.as_deref() != Some(wanted.as_str()) {
+            out.edits.push(Edit::Write(places.fish.clone(), wanted));
         }
     }
+    out.recorded = [written, fished].iter().flatten().find_map(|t| recorded(t));
     (!out.shells.is_empty()).then_some(out)
 }
 
@@ -303,6 +445,30 @@ pub fn apply(edits: &[Edit]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Points each Tiles script that runs another `tiles` at `tiles`, as `tiles
+/// update` does after writing `tiles`. Returns the scripts it rewrote.
+///
+/// # Errors
+///
+/// The first script that could not be written, with why.
+pub fn follow(places: &Places, tiles: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut out = Vec::new();
+    for (path, make) in [
+        (&places.script, script as fn(&Path) -> String),
+        (&places.fish, fish),
+    ] {
+        let Ok(text) = fs::read_to_string(path) else {
+            continue;
+        };
+        if text.starts_with(MARK) && recorded(&text).is_some_and(|r| r != tiles) {
+            fs::write(path, make(tiles))
+                .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+            out.push(path.clone());
+        }
+    }
+    Ok(out)
 }
 
 /// What [`undo`] did, or would do, to one file.
@@ -359,13 +525,15 @@ fn without(text: &str, block: &str) -> Option<String> {
 ///
 /// The first file that could not be changed, with why.
 pub fn undo(places: &Places, dry_run: bool) -> Result<Vec<Undone>, String> {
-    let block = block(&places.script);
     let mut out = Vec::new();
-    let rcs = [&places.zshrc, &places.bash[0], &places.bash[1]];
+    let rcs = [&places.zshrc, &places.bashrc]
+        .into_iter()
+        .chain(&places.bash_login);
     for rc in rcs {
         let Ok(text) = fs::read_to_string(rc) else {
             continue;
         };
+        let block = places.block(rc);
         match held(Some(&text), &block) {
             Held::None => {}
             Held::Changed => out.push(Undone::Left(rc.clone())),
@@ -399,30 +567,35 @@ pub fn undo(places: &Places, dry_run: bool) -> Result<Vec<Undone>, String> {
     Ok(out)
 }
 
-/// `tiles doctor`'s and `tiles shell`'s line.
+/// `tiles doctor`'s line: the shells wired and through which files, the
+/// `tiles` their script runs when it is missing, or not wired.
 #[must_use]
-pub fn status_line(plan: Option<&Plan>, env: &dyn Fn(&str) -> Option<String>) -> String {
-    let kept = env(PLAIN)
-        .filter(|v| !v.is_empty())
-        .map(|_| format!("; {PLAIN} is set, so this shell keeps them plain"))
-        .unwrap_or_default();
+pub fn status_line(plan: Option<&Plan>) -> String {
     let Some(plan) = plan else {
         return "shell: no zsh, bash or fish found; start a session with tiles run <harness>"
             .to_string();
     };
     let names: Vec<&str> = plan.shells.iter().map(|k| k.name()).collect();
+    let names = names.join(", ");
     let files: Vec<String> = plan.files.iter().map(|p| p.display().to_string()).collect();
-    let mut line = if plan.edits.is_empty() && !plan.files.is_empty() {
-        format!(
-            "shell: wired for {} through {}: claude, codex, opencode and pi typed in a new terminal start through tiles run{kept}",
-            names.join(", "),
-            files.join(", ")
-        )
-    } else {
-        format!(
-            "shell: not wired for {}: plain sessions get no inline card; run tiles setup",
-            names.join(", ")
-        )
+    let files = files.join(", ");
+    let typed = "claude, codex, opencode and pi typed in a new terminal";
+    let read = !plan.files.is_empty() && plan.edits.iter().all(|e| matches!(e, Edit::Write(..)));
+    let mut line = match &plan.recorded {
+        Some(tiles) if read && !runnable(tiles) => format!(
+            "shell: wired for {names} through {files}, but {} is missing, so {typed} start plain; run tiles setup",
+            tiles.display()
+        ),
+        _ if read && plan.edits.is_empty() => {
+            format!("shell: wired for {names} through {files}: {typed} start through tiles run")
+        }
+        Some(tiles) if read => format!(
+            "shell: wired for {names} through {files}: {typed} start through {}; tiles setup rewrites the script for this tiles",
+            tiles.display()
+        ),
+        _ => format!(
+            "shell: not wired for {names}: plain sessions get no inline card; run tiles setup"
+        ),
     };
     for p in &plan.left {
         let _ = write!(
@@ -577,9 +750,18 @@ pub fn steps_aside(harness: Harness, args: &[String]) -> bool {
     }
 }
 
-/// Runs `tiles shell`: the wiring's line, or with `off` its removal.
+/// Runs `tiles shell off [--dry-run]`: removes the wiring.
 pub fn main(args: &[String]) -> std::process::ExitCode {
     use std::process::ExitCode;
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    let dry_run = match args.as_slice() {
+        ["off"] => false,
+        ["off", "--dry-run"] => true,
+        _ => {
+            eprintln!("tiles: usage: {USAGE}");
+            return ExitCode::from(2);
+        }
+    };
     let env = crate::serve::env;
     let Some(dirs) = Dirs::from_env(&env) else {
         eprintln!("tiles: HOME is not set");
@@ -587,46 +769,25 @@ pub fn main(args: &[String]) -> std::process::ExitCode {
     };
     let places = Places::new(&dirs, &env);
     let clean = |s: &str| tiles_term::sanitize::line(s, 600);
-    match args
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .as_slice()
-    {
-        [] => {
-            println!(
-                "{}",
-                clean(&status_line(plan(&places, &env).as_ref(), &env))
-            );
+    match undo(&places, dry_run) {
+        Ok(done) if done.is_empty() => {
+            println!("Nothing to remove: no shell is wired.");
             ExitCode::SUCCESS
         }
-        ["off", rest @ ..] if rest.is_empty() || rest == ["--dry-run"] => {
-            let dry_run = !rest.is_empty();
-            match undo(&places, dry_run) {
-                Ok(done) if done.is_empty() => {
-                    println!("Nothing to remove: no shell is wired.");
-                    ExitCode::SUCCESS
-                }
-                Ok(done) => {
-                    for d in &done {
-                        println!("{}", clean(&d.describe(dry_run)));
-                    }
-                    if !dry_run {
-                        println!(
-                            "Open a new terminal tab: claude, codex, opencode and pi start plain there. tiles setup wires them again."
-                        );
-                    }
-                    ExitCode::SUCCESS
-                }
-                Err(e) => {
-                    eprintln!("tiles: {}", clean(&e));
-                    ExitCode::FAILURE
-                }
+        Ok(done) => {
+            for d in &done {
+                println!("{}", clean(&d.describe(dry_run)));
             }
+            if !dry_run {
+                println!(
+                    "Open a new terminal tab: claude, codex, opencode and pi start plain there. tiles setup wires them again."
+                );
+            }
+            ExitCode::SUCCESS
         }
-        _ => {
-            eprintln!("tiles: usage: {USAGE}");
-            ExitCode::from(2)
+        Err(e) => {
+            eprintln!("tiles: {}", clean(&e));
+            ExitCode::FAILURE
         }
     }
 }

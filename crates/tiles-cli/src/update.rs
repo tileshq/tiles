@@ -6,8 +6,9 @@
 //! archive downloaded by hand and named by `TILES_ARCHIVE` and `TILES_SUMS`. It checks the archive against the
 //! release's `SHA256SUMS`, removes macOS's quarantine flag from a by-hand
 //! archive and from the unpacked binary, writes the binary beside the
-//! installed one, runs its `--version`, and renames it over. Nothing updates
-//! without the command.
+//! installed one, runs its `--version`, and renames it over. A shell script
+//! `tiles setup` wrote that runs another `tiles` is pointed at the new one
+//! ([`crate::shell::follow`]). Nothing updates without the command.
 //!
 //! The notice: at most once a day, `tiles run` and `tiles doctor` send one
 //! anonymous `GET` of the releases location's latest-release metadata to
@@ -687,7 +688,23 @@ pub fn update(args: &Args, cx: &Context<'_>) -> Result<Vec<String>, String> {
         ));
     }
     beside.rename_over(&cx.dest)?;
-    Ok(updated(cx, current, new))
+    let mut out = updated(cx, current, new);
+    if let Some(dirs) = crate::install::Dirs::from_env(cx.env) {
+        let places = crate::shell::Places::new(&dirs, cx.env);
+        match crate::shell::follow(&places, &cx.dest) {
+            Ok(rewritten) => out.extend(rewritten.iter().map(|p| {
+                format!(
+                    "pointed {} at {}",
+                    sanitize::line(&p.display().to_string(), 200),
+                    sanitize::line(&cx.dest.display().to_string(), 200)
+                )
+            })),
+            Err(e) => out.push(format!(
+                "{e}; run tiles setup to point the shell at the new tiles"
+            )),
+        }
+    }
+    Ok(out)
 }
 
 /// The lines after an update: the old and new versions, and where the

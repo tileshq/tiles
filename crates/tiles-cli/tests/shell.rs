@@ -1,15 +1,20 @@
 //! The shell wiring end to end (ADR-069): `tiles setup` wires zsh after its
-//! one question and a second run changes nothing, `tiles shell` and `tiles
-//! doctor` say so, and `tiles shell off` gives the `.zshrc` back byte for
-//! byte. `tiles run --from-shell` passes a one-shot use to the harness
-//! untouched, starts an interactive one with Tiles loaded, starts the harness
-//! plain when Tiles fails before it, and keeps the harness's exit status.
-//! The script setup writes runs the harness plain when its input is not a
-//! terminal, in each of zsh and bash found on this machine.
+//! one question and a second run changes nothing, `tiles doctor` says so,
+//! and `tiles shell off` gives the `.zshrc` back byte for byte. `tiles run
+//! --from-shell` passes a one-shot use to the harness untouched, starts an
+//! interactive one with Tiles loaded, starts the harness plain when Tiles
+//! fails before it, and keeps the harness's exit status. The script setup
+//! writes, run by each of zsh, bash and fish found on this machine, starts a
+//! harness typed in a terminal through the `tiles` that ran setup, with no
+//! `tiles` on `PATH` or an older one ahead of it, and starts it plain when
+//! its input is not a terminal, inside `tiles run`, or once that `tiles` is
+//! gone.
 
+use std::io::Read as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 const TILES: &str = env!("CARGO_BIN_EXE_tiles");
 
@@ -141,19 +146,17 @@ fn setup_wires_zsh_once_and_shell_off_gives_the_zshrc_back() {
     assert!(!said.contains("[y/N]"), "{said}");
     assert_eq!(std::fs::read_to_string(&zshrc).unwrap(), wired);
 
-    let status = text(&tiles(&root, &["shell"], None));
-    assert!(
-        status.starts_with(&format!(
-            "shell: wired for zsh through {}: ",
-            zshrc.display()
-        )),
-        "{status}"
-    );
     let doctor = text(&tiles(&root, &["doctor"], None));
     assert!(
-        doctor.contains("\n  shell: wired for zsh through "),
+        doctor.contains(&format!(
+            "\n  shell: wired for zsh through {}: ",
+            zshrc.display()
+        )),
         "{doctor}"
     );
+    let bare = tiles(&root, &["shell"], None);
+    assert_eq!(bare.status.code(), Some(2));
+    assert_eq!(text(&bare), "tiles: usage: tiles shell off [--dry-run]\n");
 
     let out = tiles(&root, &["shell", "off", "--dry-run"], None);
     assert!(
@@ -285,5 +288,172 @@ fn the_script_runs_the_harness_plain_when_its_input_is_not_a_terminal() {
         ran += 1;
     }
     assert!(ran > 0, "no zsh or bash here");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A machine wired by `tiles setup --yes` run as `bin/tiles`, a link to the
+/// binary under test, from a `PATH` that names it first; a fish config
+/// directory makes setup write the fish script too.
+fn wired(name: &str) -> PathBuf {
+    let root = machine(name);
+    std::fs::create_dir_all(root.join("bin")).unwrap();
+    std::fs::create_dir_all(root.join("home/.config/fish")).unwrap();
+    std::os::unix::fs::symlink(TILES, root.join("bin/tiles")).unwrap();
+    let out = command(&root, root.join("bin/tiles").to_str().unwrap())
+        .arg("setup")
+        .arg("--yes")
+        .env(
+            "PATH",
+            format!(
+                "{}:{}:/usr/bin:/bin",
+                root.join("bin").display(),
+                root.join("path").display()
+            ),
+        )
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out));
+    root
+}
+
+/// Each shell found here with the line that reads Tiles' script for it.
+fn shells(root: &Path) -> Vec<(&'static str, String)> {
+    let sh = format!(". '{}' &&", root.join("config/shell.sh").display());
+    let fish = format!(
+        "source '{}'; and",
+        root.join("home/.config/fish/conf.d/tiles.fish").display()
+    );
+    [
+        ("/bin/zsh", &sh),
+        ("/usr/bin/zsh", &sh),
+        ("/bin/bash", &sh),
+        ("/usr/bin/bash", &sh),
+        ("/opt/homebrew/bin/fish", &fish),
+        ("/usr/local/bin/fish", &fish),
+        ("/usr/bin/fish", &fish),
+    ]
+    .into_iter()
+    .filter(|(shell, _)| Path::new(shell).exists())
+    .map(|(shell, read)| (shell, read.clone()))
+    .collect()
+}
+
+/// Types `pi 'a b'` in `shell` after `read`, with standard input and output
+/// a pseudo-terminal and `path` as `PATH`, and returns all it wrote.
+fn at_prompt(root: &Path, shell: &str, read: &str, path: &str, run: Option<&str>) -> String {
+    let (mut pty, pts) = pty_process::blocking::open().unwrap();
+    pty.resize(pty_process::Size::new(24, 80)).unwrap();
+    let mut c = pty_process::blocking::Command::new(shell);
+    if shell.ends_with("fish") {
+        c = c.arg("--no-config");
+    }
+    c = c
+        .arg("-c")
+        .arg(format!("{read} pi 'a b'"))
+        .env_clear()
+        .env("HOME", root.join("home"))
+        .env("SHELL", "/bin/zsh")
+        .env("PATH", path)
+        .env("TILES_CONFIG_DIR", root.join("config"))
+        .env("TILES_STATE_DIR", root.join("config"))
+        .env("TILES_CACHE_DIR", root.join("cache"))
+        .env("TILES_UPDATE_CHECK", "off")
+        .env("TERM_PROGRAM", "WarpTerminal")
+        .env("TERM", "xterm-256color")
+        .current_dir(root);
+    if let Some(run) = run {
+        c = c.env("TILES_RUN", run);
+    }
+    let mut child = c.spawn(pts).unwrap();
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 65536];
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while Instant::now() < deadline {
+        match pty.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => out.extend_from_slice(&buf[..n]),
+        }
+    }
+    let _ = child.wait();
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[test]
+fn a_harness_typed_in_a_terminal_starts_through_the_tiles_that_ran_setup() {
+    let root = wired("typed");
+    let bare = "/usr/bin:/bin".to_string();
+    let path = format!("{}:{bare}", root.join("path").display());
+    let found = shells(&root);
+    assert!(!found.is_empty(), "no zsh, bash or fish here");
+    for (shell, read) in &found {
+        let said = at_prompt(&root, shell, read, &path, None);
+        assert!(
+            said.contains("pi [-e "),
+            "{shell}, no tiles on PATH: {said}"
+        );
+        assert!(
+            said.contains("/pi/index.ts a b] TILES_RUN=[1]"),
+            "{shell}, no tiles on PATH: {said}"
+        );
+    }
+    let old = root.join("old");
+    std::fs::create_dir_all(&old).unwrap();
+    std::fs::write(
+        old.join("tiles"),
+        "#!/bin/sh\necho \"old tiles [$*]\"\nexit 2\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(old.join("tiles"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let ahead = format!("{}:{path}", old.display());
+    for (shell, read) in &found {
+        let said = at_prompt(&root, shell, read, &ahead, None);
+        assert!(
+            !said.contains("old tiles"),
+            "{shell}, older copy ahead: {said}"
+        );
+        assert!(
+            said.contains("/pi/index.ts a b] TILES_RUN=[1]"),
+            "{shell}, older copy ahead: {said}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_harness_typed_in_a_terminal_starts_plain_inside_tiles_run_or_once_its_tiles_is_gone() {
+    let root = wired("typed-plain");
+    let path = format!("{}:/usr/bin:/bin", root.join("path").display());
+    let found = shells(&root);
+    assert!(!found.is_empty(), "no zsh, bash or fish here");
+    for (shell, read) in &found {
+        let said = at_prompt(&root, shell, read, &path, Some("1"));
+        assert!(
+            said.contains("pi [a b] TILES_RUN=[1]"),
+            "{shell}, inside tiles run: {said}"
+        );
+    }
+    std::fs::remove_file(root.join("bin/tiles")).unwrap();
+    let doctor = text(
+        &command(&root, TILES)
+            .arg("doctor")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap(),
+    );
+    assert!(
+        doctor.contains(&format!(
+            "but {} is missing, so claude, codex, opencode and pi typed in a new terminal start plain; run tiles setup",
+            root.join("bin/tiles").display()
+        )),
+        "{doctor}"
+    );
+    for (shell, read) in &found {
+        let said = at_prompt(&root, shell, read, &path, None);
+        assert!(
+            said.contains("pi [a b] TILES_RUN=[]"),
+            "{shell}, tiles gone: {said}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&root);
 }

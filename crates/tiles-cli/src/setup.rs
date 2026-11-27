@@ -1307,6 +1307,7 @@ pub fn main(args: &[String], sources: &[&dyn Source]) -> std::process::ExitCode 
     report.shell = crate::shell::plan(
         &crate::shell::Places::new(&dirs, &crate::serve::env),
         &crate::serve::env,
+        &crate::shell::this_tiles(),
     );
     let mut answer = || {
         let mut line = String::new();

@@ -1390,7 +1390,11 @@ fn zsh_machine(name: &str) -> (PathBuf, crate::shell::Places, Report) {
         &copies,
         &[],
     );
-    r.shell = crate::shell::plan(&places, &|k| (k == "SHELL").then(|| "/bin/zsh".into()));
+    r.shell = crate::shell::plan(
+        &places,
+        &|k| (k == "SHELL").then(|| "/bin/zsh".into()),
+        Path::new("/opt/homebrew/bin/tiles"),
+    );
     (dirs.home.parent().unwrap().to_path_buf(), places, r)
 }
 
@@ -1438,11 +1442,11 @@ Nothing changed. To set it up, run tiles setup again, or tiles install <harness>
     );
     assert_eq!(
         std::fs::read_to_string(&places.zshrc).unwrap(),
-        crate::shell::block(&places.script)
+        crate::shell::block(&places.script, false)
     );
     assert_eq!(
         std::fs::read_to_string(&places.script).unwrap(),
-        crate::shell::SCRIPT
+        crate::shell::script(Path::new("/opt/homebrew/bin/tiles"))
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -1453,7 +1457,11 @@ fn a_wired_shell_is_left_as_it_is_and_listed_with_its_files_under_verbose() {
     crate::shell::apply(&r.shell.as_ref().unwrap().edits).unwrap();
     let (_, _, again) = zsh_machine("shell-again-plan");
     let mut again = again;
-    again.shell = crate::shell::plan(&places, &|k| (k == "SHELL").then(|| "/bin/zsh".into()));
+    again.shell = crate::shell::plan(
+        &places,
+        &|k| (k == "SHELL").then(|| "/bin/zsh".into()),
+        Path::new("/opt/homebrew/bin/tiles"),
+    );
     let (text, _, ok) = drive(Args::default(), &again, None);
     assert!(ok);
     assert_eq!(
