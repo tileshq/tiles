@@ -201,20 +201,24 @@ test("an installed copy stands down under tiles run", () => {
   assert.equal(standsDown({}, "/home/u/.pi/agent/extensions/tiles/"), false);
 });
 
-// Pi 1.5.1 and later import an extension from its real path, so the launch's
-// copy sees the folder with its links resolved while TILES_ADDONS names the
-// link, as with a cache under /tmp on macOS.
-test("the launch's own copy stays up when its folder is reached through a link", () => {
+// Pi 1.5.1 and later import an extension from its real path, so with the
+// cache reached through a link, as under /tmp on macOS, the launch's copy at
+// <cache>/pi/ sees the real folder while TILES_ADDONS names the link.
+test("under tiles run an installed copy stands down and the launch's copy loads, through a linked cache too", () => {
   const root = mkdtempSync(join(tmpdir(), "tiles-pi-link-"));
+  const spec = JSON.stringify(fakeTiles(""));
   mkdirSync(join(root, "real", "run", "42", "pi"), { recursive: true });
+  mkdirSync(join(root, "real", "pi"));
+  writeFileSync(join(root, "real", "run", "42", "pi", "tool.json"), spec);
   mkdirSync(join(root, "installed"));
+  writeFileSync(join(root, "installed", "tool.json"), JSON.stringify(fakeTiles("")));
   symlinkSync(join(root, "real"), join(root, "link"));
   const real = realpathSync(join(root, "real"));
-  const env = { TILES_RUN: "1", TILES_ADDONS: join(root, "link", "run", "42") + "/" };
-  assert.equal(standsDown(env, join(real, "run", "42", "pi") + "/"), false);
-  assert.equal(standsDown(env, join(root, "link", "run", "42", "pi") + "/"), false);
-  assert.equal(standsDown(env, realpathSync(join(root, "installed")) + "/"), true);
-  assert.equal(standsDown({ ...env, TILES_ADDONS: join(real, "run", "42") + "/" }, join(root, "link", "run", "42", "pi") + "/"), false);
+  for (const cache of [join(root, "link"), real]) {
+    const env = { TILES_RUN: "1", TILES_ADDONS: join(cache, "run", "42") + "/" };
+    assert.equal(specFile(env, realpathSync(join(root, "installed")) + "/"), null);
+    assert.equal(readFileSync(specFile(env, join(real, "pi") + "/")!, "utf8"), spec);
+  }
 });
 
 // Pi 1.7.0 hands a terminal restoring a session the `-e` it started with, so

@@ -40,7 +40,7 @@
 // `tiles warehouse models` and `tiles warehouse columns` with no shell.
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -438,23 +438,10 @@ export function stack(parts: Component[]): Component {
 
 type Theme = { fg: (role: string, text: string) => string; bold: (text: string) => string };
 
-/** A folder with every link resolved and a final `/`; the path as given
- * when it cannot be resolved. */
-function folder(path: string): string {
-  let real = path;
-  try {
-    real = realpathSync(path);
-  } catch {}
-  return real.endsWith("/") ? real : `${real}/`;
-}
-
 /** Whether this copy should stand down: under `tiles run pi` the launch loads
- * its own copy from TILES_ADDONS, so an installed one does nothing. Both
- * folders are compared with their links resolved: from 1.5.1 Pi imports an
- * extension from its real path, so a cache reached through a link, such as
- * /tmp on macOS, would make the launch's own copy stand down too. */
+ * its own copy from TILES_ADDONS, so an installed one does nothing. */
 export function standsDown(env: Record<string, string | undefined>, here: string): boolean {
-  return env.TILES_RUN === "1" && typeof env.TILES_ADDONS === "string" && !folder(here).startsWith(folder(env.TILES_ADDONS));
+  return env.TILES_RUN === "1" && typeof env.TILES_ADDONS === "string" && !here.startsWith(env.TILES_ADDONS);
 }
 
 /** The tool.json this copy reads, or null when it registers nothing. An
