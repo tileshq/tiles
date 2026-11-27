@@ -192,24 +192,52 @@ fn tip<'a>(fonts: &Fonts, text: &'a str, hint: Option<&'a str>, card_w: f32) -> 
     }
 }
 
+/// Whether `item` is a bar, a box or a dot: a shape a ring can follow.
+fn ringed(item: &Item) -> bool {
+    matches!(item.shape, Shape::Rect { .. } | Shape::Circle { .. })
+}
+
+/// The largest bar, box or dot of `item`'s row whose box holds `item`'s,
+/// the first of equals: the one mark a row is ringed by, so a named point's
+/// larger dot stands for its smaller one and a range band's outer band for
+/// its inner band and middle dot. `item` itself when nothing holds it.
+fn outermost<'a>(card: &'a Scene, item: &'a Item) -> &'a Item {
+    let b = item.bounds();
+    let area = |r: Rect| r.width() * r.height();
+    card.items
+        .iter()
+        .filter(|i| i.part == Part::Mark && i.datum.is_some() && i.datum == item.datum)
+        .filter(|i| ringed(i))
+        .filter(|i| {
+            let o = i.bounds();
+            o.left <= b.left && o.top <= b.top && o.right >= b.right && o.bottom >= b.bottom
+        })
+        .fold(None, |best: Option<&Item>, i| match best {
+            Some(b) if area(b.bounds()) >= area(i.bounds()) => best,
+            _ => Some(i),
+        })
+        .unwrap_or(item)
+}
+
 /// The mark `hit` lights at device `scale`: the item under the pointer
 /// when it is a bar, a box or a dot (a line chart's undrawn point
 /// included), else the row's first bar, box or dot, so a lollipop's stem
-/// or a value label lights the head. Never a series line or a stem.
+/// or a value label lights the head; then its row's [`outermost`] mark
+/// that holds it. Never a series line or a stem.
 fn mark_item<'a>(card: &'a Scene, hit: &Hit, scale: f32) -> Option<&'a Item> {
     let row = hit.row?;
-    let ringed = |i: &&Item| matches!(i.shape, Shape::Rect { .. } | Shape::Circle { .. });
     card.items
         .iter()
         .filter(|i| i.datum == Some(row))
         .find(|i| crate::hit::target(i, scale).as_ref() == Some(hit))
-        .filter(ringed)
+        .filter(|i| ringed(i))
         .or_else(|| {
             card.items
                 .iter()
                 .filter(|i| i.part == Part::Mark && i.datum == Some(row))
-                .find(ringed)
+                .find(|i| ringed(i))
         })
+        .map(|i| outermost(card, i))
 }
 
 /// The colour the card draws `hit`'s mark in, for the tooltip's swatch.
@@ -352,9 +380,10 @@ fn text_box(fonts: &Fonts, item: &Item) -> Option<Rect> {
 
 /// `card` with a value focused (ADR-070): each mark the highlight names
 /// gets a one-pixel ring in the accent, broken round any value label it
-/// passes, and every other mark moves a
-/// little towards the card. A card whose highlight names no mark is
-/// returned as it is.
+/// passes, one per row unless the row's marks lie apart (a mark inside a
+/// larger one of its row is ringed by that one, [`outermost`]), and every
+/// other mark moves a little towards the card. A card whose highlight
+/// names no mark is returned as it is.
 pub(crate) fn focus(tokens: &Tokens, fonts: &Fonts, card: &Scene) -> Scene {
     if !card
         .items
@@ -373,18 +402,18 @@ pub(crate) fn focus(tokens: &Tokens, fonts: &Fonts, card: &Scene) -> Scene {
         .collect();
     let mut out = card.clone();
     let mut rings = Vec::new();
-    for item in &mut out.items {
+    for (item, drawn) in card.items.iter().zip(&mut out.items) {
         if item.part != Part::Mark {
             continue;
         }
-        if item.highlighted {
-            if let Some(path) = ring_path(item) {
-                for run in gapped(&path, &labels) {
-                    rings.push(line(run, RING, pal.accent));
-                }
+        if !item.highlighted {
+            drawn.color = item.color.mix(pal.card, DIM);
+        } else if std::ptr::eq(outermost(card, item), item)
+            && let Some(path) = ring_path(item)
+        {
+            for run in gapped(&path, &labels) {
+                rings.push(line(run, RING, pal.accent));
             }
-        } else {
-            item.color = item.color.mix(pal.card, DIM);
         }
     }
     out.items.extend(rings);

@@ -1117,6 +1117,138 @@ fn a_ring_rounds_only_the_corners_its_bar_rounds() {
     }
 }
 
+/// How far `(x, y)` lies outside the edge of `item`, a dot or a bar
+/// rounded all round; negative inside it.
+fn edge_distance(item: &Item, (x, y): (f32, f32)) -> f32 {
+    let (b, r) = match item.shape {
+        Shape::Circle { r, .. } => (item.bounds(), r),
+        Shape::Rect {
+            rect,
+            radius,
+            corners: Corners::All,
+        } => (
+            rect,
+            radius.min(rect.width() / 2.0).min(rect.height() / 2.0),
+        ),
+        _ => panic!("a dot or a mark rounded all round: {:?}", item.shape),
+    };
+    let qx = (x - b.center_x()).abs() - (b.width() / 2.0 - r);
+    let qy = (y - b.center_y()).abs() - (b.height() / 2.0 - r);
+    qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - r
+}
+
+/// A row the card draws as marks inside a larger one, a line card's named
+/// point (a larger dot laid over its dot) or a range band (an inner band
+/// and a middle dot inside the outer band), gets one ring, round the outer
+/// mark, when focused and when any of its targets is hovered, and the
+/// hover's wash takes the outer mark's shape (ADR-070).
+#[test]
+#[allow(clippy::cast_precision_loss, clippy::too_many_lines)] // Pixel offsets; focus and every hover target.
+fn a_row_drawn_as_nested_marks_gets_one_ring_round_the_outer_one() {
+    let e = engine();
+    let scale = 2.0;
+    let off = 2.5;
+    let area = |i: &&Item| i.bounds().width() * i.bounds().height();
+    for form in ["area", "range-bands"] {
+        let s = scene(form);
+        let accent = e.tokens().palette(s.theme).accent;
+        let focused = e.pane_focus(&s);
+        let focus_ring: Vec<(f32, f32)> = focused
+            .items
+            .iter()
+            .filter_map(|i| match &i.shape {
+                Shape::Line { points, .. } if i.part == Part::Guide && i.color == accent => {
+                    Some(points.clone())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let mut rows: Vec<usize> = s
+            .items
+            .iter()
+            .filter(|i| i.part == Part::Mark && i.highlighted)
+            .filter_map(|i| i.datum)
+            .collect();
+        rows.sort_unstable();
+        rows.dedup();
+        assert!(!rows.is_empty(), "{form} highlights a row");
+        for row in rows {
+            let marks: Vec<&Item> = s
+                .items
+                .iter()
+                .filter(|i| i.part == Part::Mark && i.datum == Some(row))
+                .filter(|i| matches!(i.shape, Shape::Rect { .. } | Shape::Circle { .. }))
+                .collect();
+            assert!(marks.len() > 1, "{form} draws row {row} as nested marks");
+            let outer = *marks
+                .iter()
+                .max_by(|a, b| area(a).total_cmp(&area(b)))
+                .unwrap();
+            let near = outer.bounds().with_outset((off + 1.0, off + 1.0));
+            let ring: Vec<(f32, f32)> = focus_ring
+                .iter()
+                .copied()
+                .filter(|&(x, y)| {
+                    x >= near.left && x <= near.right && y >= near.top && y <= near.bottom
+                })
+                .collect();
+            assert!(!ring.is_empty(), "{form} row {row} has a focus ring");
+            for p in ring {
+                let d = edge_distance(outer, p);
+                assert!(
+                    (d - off).abs() < 0.1,
+                    "{form} row {row}: every focus ring point is {off} off the outer mark, {p:?} is {d}"
+                );
+            }
+            for hit in hit_map(&s, scale).iter().filter(|h| h.row == Some(row)) {
+                let over = e.hover(&s, hit, scale, tiles_engine::pane::Cue::default());
+                let shift = (over.ring.left as f32 / scale, over.ring.top as f32 / scale);
+                let ring: Vec<(f32, f32)> = over
+                    .ring
+                    .scene
+                    .items
+                    .iter()
+                    .filter_map(|i| match &i.shape {
+                        Shape::Line { points, .. } if i.color == accent.with_opacity(0.6) => {
+                            Some(points.clone())
+                        }
+                        _ => None,
+                    })
+                    .flatten()
+                    .map(|(x, y)| (x + shift.0, y + shift.1))
+                    .collect();
+                assert!(!ring.is_empty(), "{form}: a hover ring for {:?}", hit.tip);
+                for p in ring {
+                    let d = edge_distance(outer, p);
+                    assert!(
+                        (d - off).abs() < 0.1,
+                        "{form}: hovering {:?}, every ring point is {off} off the outer mark, {p:?} is {d}",
+                        hit.tip
+                    );
+                }
+                let washes: Vec<skia_safe::Rect> = over
+                    .ring
+                    .scene
+                    .items
+                    .iter()
+                    .filter(|i| i.color == Rgba::white(0.12))
+                    .map(|i| i.bounds().with_offset(shift))
+                    .collect();
+                let want = outer.bounds();
+                assert!(
+                    matches!(washes.as_slice(), [w] if (w.left - want.left).abs() < 0.01
+                        && (w.top - want.top).abs() < 0.01
+                        && (w.right - want.right).abs() < 0.01
+                        && (w.bottom - want.bottom).abs() < 0.01),
+                    "{form}: hovering {:?} washes the outer mark alone, got {washes:?}",
+                    hit.tip
+                );
+            }
+        }
+    }
+}
+
 /// Hovering a dot (ADR-070), a lollipop's head or a line chart's point
 /// whether the card draws it or only targets it, rings the dot with a
 /// circle and gives the tooltip the dot's colour; hovering a lollipop's
