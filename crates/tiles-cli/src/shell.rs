@@ -160,10 +160,12 @@ pub fn answers_as_pi(answer: &str) -> bool {
                 .iter()
                 .all(|p| (1..=6).contains(&p.len()) && p.chars().all(|c| c.is_ascii_digit()))
     };
-    answer.lines().any(|line| match line.split_whitespace().collect::<Vec<_>>()[..] {
-        [v] => version(v),
-        _ => false,
-    })
+    answer.lines().any(
+        |line| match line.split_whitespace().collect::<Vec<_>>()[..] {
+            [v] => version(v),
+            _ => false,
+        },
+    )
 }
 
 /// The harnesses on this machine's `PATH`. Only `pi`, a common name for
@@ -789,11 +791,26 @@ pub fn status_line(plan: Option<&Plan>) -> String {
     if !wired.is_empty() && !pending.is_empty() {
         let _ = write!(line, "; {} not wired yet: run tiles setup", names(&pending));
     }
+    harness_clauses(plan, !wired.is_empty(), &mut line);
+    for p in &plan.left {
+        let _ = write!(
+            line,
+            "; {} holds changed Tiles lines, left as they are",
+            p.display()
+        );
+    }
+    line
+}
+
+/// [`status_line`]'s clauses about the harnesses: those found since setup
+/// ran or gone from `PATH` since, when a shell is `wired`, and a `pi` that
+/// answered `--version` as another program or gave no answer in time.
+fn harness_clauses(plan: &Plan, wired: bool, line: &mut String) {
     let commands = |hs: Vec<Harness>| {
         let names: Vec<&str> = hs.iter().map(|h| h.name()).collect();
         crate::setup::listed(&names)
     };
-    if !wired.is_empty() {
+    if wired {
         let missing: Vec<Harness> = plan
             .harnesses
             .iter()
@@ -835,14 +852,6 @@ pub fn status_line(plan: Option<&Plan>) -> String {
             h.name()
         );
     }
-    for p in &plan.left {
-        let _ = write!(
-            line,
-            "; {} holds changed Tiles lines, left as they are",
-            p.display()
-        );
-    }
-    line
 }
 
 /// Claude Code's subcommands (2.1.332's `--help`); none opens a conversation
