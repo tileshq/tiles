@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "form": "calendar-heatmap",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "compare",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "col",
+    "row": "row",
+    "y": "value"
+  },
+  "unit": "usd",
+  "data": {
+    "rows": [
+      {
+        "col": "07:00",
+        "row": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 12345678.9
+      }
+    ]
+  }
+}

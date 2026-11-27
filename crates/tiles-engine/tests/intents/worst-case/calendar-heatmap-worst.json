@@ -1,0 +1,173 @@
+{
+  "v": 1,
+  "form": "calendar-heatmap",
+  "title": "Senior Product Design Engineer, Platform Infrastructure, leads every team on hires in 2026",
+  "claim": {
+    "kind": "compare",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "col",
+    "row": "row",
+    "y": "value"
+  },
+  "unit": "usd",
+  "highlight": [
+    "王秀英",
+    "نور الهدى عبد الرحمن"
+  ],
+  "data": {
+    "rows": [
+      {
+        "col": "Benachrichtigungseinstellungen",
+        "row": "Benachrichtigungseinstellungen",
+        "value": 12345678.9
+      },
+      {
+        "col": "王秀英",
+        "row": "Benachrichtigungseinstellungen",
+        "value": 1284000.5
+      },
+      {
+        "col": "🦊",
+        "row": "Benachrichtigungseinstellungen",
+        "value": 1000000
+      },
+      {
+        "col": "07:00",
+        "row": "Benachrichtigungseinstellungen",
+        "value": 1284
+      },
+      {
+        "col": "08:00",
+        "row": "Benachrichtigungseinstellungen",
+        "value": 1
+      },
+      {
+        "col": "Benachrichtigungseinstellungen",
+        "row": "王秀英",
+        "value": 1284000.5
+      },
+      {
+        "col": "王秀英",
+        "row": "王秀英",
+        "value": 1000000
+      },
+      {
+        "col": "🦊",
+        "row": "王秀英",
+        "value": 1284
+      },
+      {
+        "col": "07:00",
+        "row": "王秀英",
+        "value": 1
+      },
+      {
+        "col": "08:00",
+        "row": "王秀英",
+        "value": -1284
+      },
+      {
+        "col": "Benachrichtigungseinstellungen",
+        "row": "نور الهدى عبد الرحمن",
+        "value": 1000000
+      },
+      {
+        "col": "王秀英",
+        "row": "نور الهدى عبد الرحمن",
+        "value": 1284
+      },
+      {
+        "col": "🦊",
+        "row": "نور الهدى عبد الرحمن",
+        "value": 1
+      },
+      {
+        "col": "07:00",
+        "row": "نور الهدى عبد الرحمن",
+        "value": -1284
+      },
+      {
+        "col": "08:00",
+        "row": "نور الهدى عبد الرحمن",
+        "value": 12345678.9
+      },
+      {
+        "col": "Benachrichtigungseinstellungen",
+        "row": "🦊 Fox",
+        "value": 1284
+      },
+      {
+        "col": "王秀英",
+        "row": "🦊 Fox",
+        "value": 1
+      },
+      {
+        "col": "🦊",
+        "row": "🦊 Fox",
+        "value": -1284
+      },
+      {
+        "col": "07:00",
+        "row": "🦊 Fox",
+        "value": 12345678.9
+      },
+      {
+        "col": "08:00",
+        "row": "🦊 Fox",
+        "value": 1284000.5
+      },
+      {
+        "col": "Benachrichtigungseinstellungen",
+        "row": "👩🏽 Priya",
+        "value": 1
+      },
+      {
+        "col": "王秀英",
+        "row": "👩🏽 Priya",
+        "value": -1284
+      },
+      {
+        "col": "🦊",
+        "row": "👩🏽 Priya",
+        "value": 12345678.9
+      },
+      {
+        "col": "07:00",
+        "row": "👩🏽 Priya",
+        "value": 1284000.5
+      },
+      {
+        "col": "08:00",
+        "row": "👩🏽 Priya",
+        "value": 1000000
+      },
+      {
+        "col": "Benachrichtigungseinstellungen",
+        "row": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -1284
+      },
+      {
+        "col": "王秀英",
+        "row": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 12345678.9
+      },
+      {
+        "col": "🦊",
+        "row": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 1284000.5
+      },
+      {
+        "col": "07:00",
+        "row": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 1000000
+      },
+      {
+        "col": "08:00",
+        "row": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 1284
+      }
+    ]
+  }
+}

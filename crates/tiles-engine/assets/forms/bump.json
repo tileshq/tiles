@@ -1,0 +1,26 @@
+{
+  "name": "bump",
+  "summary": "How rankings change over time: one line per series through its rank in each period, first at the top. Send the measure and Tiles ranks the series in each period, largest first.",
+  "layout": "bump",
+  "width": { "min": 52, "max": 80, "per_point": 1.5 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the period, in time order"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the measure each series is ranked by in its period, such as payment volume"
+    },
+    {
+      "name": "series",
+      "kind": "category",
+      "required": true,
+      "doc": "what is ranked, such as each payment method"
+    }
+  ]
+}

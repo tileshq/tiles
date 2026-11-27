@@ -5,7 +5,7 @@
 ## Sub-features
 
 - `mcp-initialize` negotiates the protocol version and carries the instruction.
-- `mcp-tools` lists `tiles_chart` with the generated schema (20 forms in `form.enum`) and read-only annotations; with Omni configured every tool but `tiles_theme` has `readOnlyHint: false` and `openWorldHint: true`; `tiles_theme` never reaches the network, so its `openWorldHint` is always false.
+- `mcp-tools` lists `tiles_chart` with the generated schema (24 forms in `form.enum`) and read-only annotations; with Omni configured every tool but `tiles_theme` has `readOnlyHint: false` and `openWorldHint: true`; `tiles_theme` never reaches the network, so its `openWorldHint` is always false.
 - `mcp-chart-block` under `TILES_DRAW=block` returns the placeholder block, the values and the PNG path.
 - `mcp-width` sizes each card from its form's `width` range and its rows, capped by `TILES_COLS` less 8.
 - `mcp-row` draws an intent with up to three more under `row` as one picture and one block, side by side, each card as wide as its chart needs and every card of a row the same height with its title, subtitle and the rest on the same lines; a scorecard among other cards is compact (no default subtitle, a short sparkline, no period labels, about half a lone card's height); when they do not fit at their forms' minimum widths it puts them on more lines in the same picture and the result text says so. A refusal inside the row names the card, such as `row[0].fields.y:`.

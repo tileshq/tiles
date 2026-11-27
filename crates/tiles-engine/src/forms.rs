@@ -45,6 +45,16 @@ pub const EMBEDDED: &[(&str, &[u8])] = &[
         "range-bands",
         crate::seal::sealed!("forms/range-bands.json"),
     ),
+    ("funnel", crate::seal::sealed!("forms/funnel.json")),
+    (
+        "diverging-bar",
+        crate::seal::sealed!("forms/diverging-bar.json"),
+    ),
+    ("bump", crate::seal::sealed!("forms/bump.json")),
+    (
+        "calendar-heatmap",
+        crate::seal::sealed!("forms/calendar-heatmap.json"),
+    ),
 ];
 
 /// The mark layouts the compiled core provides. A form picks one; a form
@@ -87,6 +97,14 @@ pub enum Layout {
     /// Horizontal bands from low to high per row, with an inner band and a
     /// middle dot.
     Bands,
+    /// Steps in order, each bar over the one before as a ghost.
+    Funnel,
+    /// Signed bars either side of a zero rule.
+    Diverging,
+    /// Lines of ranks across periods.
+    Bump,
+    /// A grid of cells shaded by value.
+    Heatmap,
 }
 
 impl Layout {
@@ -96,9 +114,13 @@ impl Layout {
     pub fn roles(self) -> &'static [(&'static str, RoleKind, bool)] {
         use RoleKind::{Category, Number};
         match self {
-            Layout::Columns | Layout::Bars | Layout::Dots | Layout::Waterfall | Layout::Boxes => {
-                &[("x", Category, true), ("y", Number, true)]
-            }
+            Layout::Columns
+            | Layout::Bars
+            | Layout::Dots
+            | Layout::Waterfall
+            | Layout::Boxes
+            | Layout::Funnel
+            | Layout::Diverging => &[("x", Category, true), ("y", Number, true)],
             Layout::Histogram => &[
                 ("x", Number, true),
                 ("y", Number, false),
@@ -112,7 +134,11 @@ impl Layout {
                 ("inner_lo", Number, false),
                 ("inner_hi", Number, false),
             ],
-
+            Layout::Heatmap => &[
+                ("x", Category, true),
+                ("row", Category, true),
+                ("y", Number, true),
+            ],
             Layout::Lollipop => &[
                 ("x", Category, true),
                 ("y", Number, true),
@@ -123,7 +149,7 @@ impl Layout {
                 ("y", Number, true),
                 ("series", Category, false),
             ],
-            Layout::Grouped | Layout::Stacked | Layout::Shares | Layout::Slope => &[
+            Layout::Grouped | Layout::Stacked | Layout::Shares | Layout::Slope | Layout::Bump => &[
                 ("x", Category, true),
                 ("y", Number, true),
                 ("series", Category, true),
@@ -157,7 +183,8 @@ impl Layout {
     pub fn highlight_roles(self) -> &'static [&'static str] {
         match self {
             Layout::Kpi | Layout::Histogram => &[],
-            Layout::Stacked | Layout::Shares | Layout::Slope => &["series"],
+            Layout::Stacked | Layout::Shares | Layout::Slope | Layout::Bump => &["series"],
+            Layout::Heatmap => &["x", "row"],
             Layout::Line | Layout::Grouped => &["series", "x"],
             Layout::Scatter => &["label"],
             Layout::Columns
@@ -168,7 +195,9 @@ impl Layout {
             | Layout::Waterfall
             | Layout::Dumbbell
             | Layout::Boxes
-            | Layout::Bands => &["x"],
+            | Layout::Bands
+            | Layout::Funnel
+            | Layout::Diverging => &["x"],
         }
     }
 }

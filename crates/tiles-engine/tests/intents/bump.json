@@ -1,0 +1,247 @@
+{
+  "v": 1,
+  "form": "bump",
+  "title": "Wallets climbed from 4th to 1st in payment volume this year",
+  "subtitle": "Rank of each payment method by monthly volume, 2026",
+  "claim": {
+    "kind": "rank",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "month",
+    "y": "volume",
+    "series": "method"
+  },
+  "highlight": [
+    "Wallets"
+  ],
+  "data": {
+    "rows": [
+      {
+        "month": "Jan",
+        "method": "Wallets",
+        "volume": 292
+      },
+      {
+        "month": "Feb",
+        "method": "Wallets",
+        "volume": 295
+      },
+      {
+        "month": "Mar",
+        "method": "Wallets",
+        "volume": 370
+      },
+      {
+        "month": "Apr",
+        "method": "Wallets",
+        "volume": 373
+      },
+      {
+        "month": "May",
+        "method": "Wallets",
+        "volume": 448
+      },
+      {
+        "month": "Jun",
+        "method": "Wallets",
+        "volume": 451
+      },
+      {
+        "month": "Jul",
+        "method": "Wallets",
+        "volume": 454
+      },
+      {
+        "month": "Aug",
+        "method": "Wallets",
+        "volume": 539
+      },
+      {
+        "month": "Sep",
+        "method": "Wallets",
+        "volume": 542
+      },
+      {
+        "month": "Jan",
+        "method": "Cards",
+        "volume": 518
+      },
+      {
+        "month": "Feb",
+        "method": "Cards",
+        "volume": 521
+      },
+      {
+        "month": "Mar",
+        "method": "Cards",
+        "volume": 524
+      },
+      {
+        "month": "Apr",
+        "method": "Cards",
+        "volume": 527
+      },
+      {
+        "month": "May",
+        "method": "Cards",
+        "volume": 530
+      },
+      {
+        "month": "Jun",
+        "method": "Cards",
+        "volume": 533
+      },
+      {
+        "month": "Jul",
+        "method": "Cards",
+        "volume": 536
+      },
+      {
+        "month": "Aug",
+        "method": "Cards",
+        "volume": 457
+      },
+      {
+        "month": "Sep",
+        "method": "Cards",
+        "volume": 460
+      },
+      {
+        "month": "Jan",
+        "method": "Bank transfer",
+        "volume": 436
+      },
+      {
+        "month": "Feb",
+        "method": "Bank transfer",
+        "volume": 439
+      },
+      {
+        "month": "Mar",
+        "method": "Bank transfer",
+        "volume": 442
+      },
+      {
+        "month": "Apr",
+        "method": "Bank transfer",
+        "volume": 445
+      },
+      {
+        "month": "May",
+        "method": "Bank transfer",
+        "volume": 376
+      },
+      {
+        "month": "Jun",
+        "method": "Bank transfer",
+        "volume": 379
+      },
+      {
+        "month": "Jul",
+        "method": "Bank transfer",
+        "volume": 382
+      },
+      {
+        "month": "Aug",
+        "method": "Bank transfer",
+        "volume": 385
+      },
+      {
+        "month": "Sep",
+        "method": "Bank transfer",
+        "volume": 388
+      },
+      {
+        "month": "Jan",
+        "method": "Buy now pay later",
+        "volume": 210
+      },
+      {
+        "month": "Feb",
+        "method": "Buy now pay later",
+        "volume": 213
+      },
+      {
+        "month": "Mar",
+        "method": "Buy now pay later",
+        "volume": 216
+      },
+      {
+        "month": "Apr",
+        "method": "Buy now pay later",
+        "volume": 301
+      },
+      {
+        "month": "May",
+        "method": "Buy now pay later",
+        "volume": 304
+      },
+      {
+        "month": "Jun",
+        "method": "Buy now pay later",
+        "volume": 307
+      },
+      {
+        "month": "Jul",
+        "method": "Buy now pay later",
+        "volume": 310
+      },
+      {
+        "month": "Aug",
+        "method": "Buy now pay later",
+        "volume": 313
+      },
+      {
+        "month": "Sep",
+        "method": "Buy now pay later",
+        "volume": 316
+      },
+      {
+        "month": "Jan",
+        "method": "Direct debit",
+        "volume": 364
+      },
+      {
+        "month": "Feb",
+        "method": "Direct debit",
+        "volume": 367
+      },
+      {
+        "month": "Mar",
+        "method": "Direct debit",
+        "volume": 298
+      },
+      {
+        "month": "Apr",
+        "method": "Direct debit",
+        "volume": 219
+      },
+      {
+        "month": "May",
+        "method": "Direct debit",
+        "volume": 222
+      },
+      {
+        "month": "Jun",
+        "method": "Direct debit",
+        "volume": 225
+      },
+      {
+        "month": "Jul",
+        "method": "Direct debit",
+        "volume": 228
+      },
+      {
+        "month": "Aug",
+        "method": "Direct debit",
+        "volume": 231
+      },
+      {
+        "month": "Sep",
+        "method": "Direct debit",
+        "volume": 234
+      }
+    ]
+  }
+}

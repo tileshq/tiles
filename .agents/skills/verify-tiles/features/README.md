@@ -61,4 +61,8 @@ Chart forms, one per file:
 - [histogram](./histogram.md): "Three in ten demo requests wait longer than the 15-minute SLA".
 - [box-plot](./box-plot.md): "Enterprise deals take six times longer to close than SMB deals".
 - [range-bands](./range-bands.md): "Card and wallet payouts land within a day; transfers and BNPL take up to five".
+- [funnel](./funnel.md): "Four in ten shoppers give up at the payment-details step".
+- [diverging-bar](./diverging-bar.md): "Three markets are above the 2.0% refund target".
+- [bump](./bump.md): "Wallets climbed from 4th to 1st in payment volume this year".
+- [calendar-heatmap](./calendar-heatmap.md): "Monday 9 to 11am is the worst two hours of the support week".
 

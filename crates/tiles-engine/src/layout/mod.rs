@@ -9,9 +9,13 @@ mod bands;
 mod bars;
 mod boxes;
 mod bullet;
+mod bump;
 mod columns;
+mod diverging;
 mod dumbbell;
+mod funnel;
 mod grouped;
+mod heatmap;
 mod histogram;
 mod kpi;
 mod line;
@@ -37,9 +41,13 @@ use bands::bands;
 use bars::{BarStyle, bars};
 use boxes::boxes;
 use bullet::bullet;
+use bump::bump;
 use columns::columns;
+use diverging::diverging;
 use dumbbell::dumbbell;
+use funnel::funnel;
 use grouped::grouped;
+use heatmap::heatmap;
 use histogram::histogram;
 use kpi::kpi;
 use line::line;
@@ -275,6 +283,10 @@ pub(crate) fn scene(
         Layout::Histogram => histogram(&mut ctx),
         Layout::Boxes => boxes(&mut ctx),
         Layout::Bands => bands(&mut ctx),
+        Layout::Funnel => funnel(&mut ctx),
+        Layout::Diverging => diverging(&mut ctx),
+        Layout::Bump => bump(&mut ctx),
+        Layout::Heatmap => heatmap(&mut ctx),
     };
     if ctx.note_unplaced {
         return Err(IntentError::new(
@@ -418,6 +430,18 @@ fn default_subtitle(form: &Form, intent: &Intent) -> String {
             col("hi").unwrap_or_default(),
             col("x").unwrap_or_default()
         ),
+        Layout::Bump => format!(
+            "Rank of each {} by {}, per {}",
+            col("series").unwrap_or_default(),
+            col("y").unwrap_or_default(),
+            col("x").unwrap_or_default()
+        ),
+        Layout::Heatmap => format!(
+            "{} by {} and {}",
+            col("y").unwrap_or_default(),
+            col("x").unwrap_or_default(),
+            col("row").unwrap_or_default()
+        ),
         _ => match (col("y"), col("x")) {
             (Some(y), Some(x)) => format!("{y} by {x}"),
             (Some(y), None) => y,
@@ -507,6 +531,7 @@ pub(crate) fn validate(form: &Form, intent: &Intent, pal: &Palette) -> Result<()
             ));
         }
         Layout::Slope => slope_pairs(intent)?,
+        Layout::Bump => periods(form, intent)?,
         Layout::Bands => band_rows(intent)?,
         Layout::Histogram => histogram::check(intent)?,
         _ => {}
@@ -556,6 +581,9 @@ pub(crate) fn validate(form: &Form, intent: &Intent, pal: &Palette) -> Result<()
             | Layout::Dumbbell
             | Layout::Boxes
             | Layout::Bands
+            | Layout::Funnel
+            | Layout::Diverging
+            | Layout::Heatmap
     ) && let Some(x) = intent.column("x")
     {
         let mut seen: Vec<String> = Vec::new();
@@ -592,8 +620,16 @@ pub(crate) fn validate(form: &Form, intent: &Intent, pal: &Palette) -> Result<()
         );
         distinct_series_colours(form, &named, filled, pal, intent.claim.tone)?;
     }
-    if matches!(form.layout, Layout::Stacked | Layout::Shares)
-        && let Some(y) = intent.column("y")
+    if let Some(row) = intent
+        .column("row")
+        .filter(|_| form.layout == Layout::Heatmap)
+    {
+        heatmap::check(intent, row)?;
+    }
+    if matches!(
+        form.layout,
+        Layout::Stacked | Layout::Shares | Layout::Funnel
+    ) && let Some(y) = intent.column("y")
         && intent
             .table
             .rows
@@ -603,7 +639,11 @@ pub(crate) fn validate(form: &Form, intent: &Intent, pal: &Palette) -> Result<()
         return Err(IntentError::new(
             "data.rows",
             format!("{} needs values of zero or more", form.name),
-            "use grouped-bar for signed values",
+            if form.layout == Layout::Funnel {
+                "send how many reached each step, a count of zero or more"
+            } else {
+                "use grouped-bar for signed values"
+            },
         ));
     }
     Ok(())
@@ -815,6 +855,42 @@ fn mend_highlight(form: &Form, intent: &mut Intent, pal: &Palette) {
             ));
         }
     }
+}
+
+/// A form that draws a line across periods needs two of them.
+fn periods(form: &Form, intent: &Intent) -> Result<(), IntentError> {
+    let (Some(x), Some(y)) = (intent.column("x"), intent.column("y")) else {
+        return Ok(());
+    };
+    let mut seen: Vec<String> = Vec::new();
+    for row in intent.table.rows.iter().filter(|r| r[y].number().is_some()) {
+        let l = row[x].label();
+        if !seen.contains(&l) {
+            seen.push(l);
+        }
+    }
+    if seen.len() < 2 {
+        return Err(IntentError::new(
+            "data.rows",
+            format!(
+                "{} needs at least two periods in x with a y number",
+                form.name
+            ),
+            "add rows for a second period, or use bar to compare one period",
+        ));
+    }
+    if seen.len() > MAX_CATEGORIES {
+        return Err(IntentError::new(
+            "data.rows",
+            format!(
+                "{} periods is more than form {} can label ({MAX_CATEGORIES})",
+                seen.len(),
+                form.name
+            ),
+            "aggregate to fewer periods, such as weeks or months",
+        ));
+    }
+    Ok(())
 }
 
 /// Range bands take one row per category, each band running from low to

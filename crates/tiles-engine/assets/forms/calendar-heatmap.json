@@ -1,0 +1,26 @@
+{
+  "name": "calendar-heatmap",
+  "summary": "When something happens across two time scales, such as hour of day by weekday: a grid of cells shaded from light to the accent by value. Name a row, a column or both in highlight to write those cells' values.",
+  "layout": "heatmap",
+  "width": { "min": 52, "max": 88, "per_point": 1.6 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the column, such as the hour"
+    },
+    {
+      "name": "row",
+      "kind": "category",
+      "required": true,
+      "doc": "the row, such as the weekday"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the value that shades each cell, such as contacts per hour"
+    }
+  ]
+}

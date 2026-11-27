@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "form": "funnel",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "rank",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "name",
+    "y": "value"
+  },
+  "data": {
+    "rows": [
+      {
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 12345678.9
+      }
+    ]
+  }
+}

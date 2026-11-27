@@ -1,0 +1,20 @@
+{
+  "name": "funnel",
+  "summary": "How many reach each step of a process, in order: a bar per step over a ghost of the step before, each written with its share of the step before.",
+  "layout": "funnel",
+  "width": { "min": 48, "max": 72, "per_label_char": 1.2 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the step, in the order people pass through them"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "how many reached the step"
+    }
+  ]
+}

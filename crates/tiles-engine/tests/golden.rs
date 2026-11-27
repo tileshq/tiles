@@ -306,6 +306,11 @@ const NO_ROWS: &str = "data.rows: is empty; send at least one row";
 /// The worst cases a form refuses today, with the refusal each gets.
 const WORST_REFUSED: &[(&str, &str)] = &[
     (
+        "bump-one-row",
+        "data.rows: bump needs at least two periods in x with a y number; add rows for a \
+         second period, or use bar to compare one period",
+    ),
+    (
         "slope-one-row",
         "data.rows: slope needs at least two periods in x; add rows for a second period",
     ),

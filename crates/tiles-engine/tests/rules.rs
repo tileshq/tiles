@@ -138,6 +138,9 @@ const SINGLE_EMPHASIS: &[&str] = &[
     "histogram",
     "box-plot",
     "range-bands",
+    "funnel",
+    "diverging-bar",
+    "bump",
 ];
 
 #[test]
@@ -190,7 +193,16 @@ fn k2_bad_tone_colours_the_highlight_red_and_good_tone_does_not() {
 
 #[test]
 fn k3_single_series_without_highlight_is_all_accent() {
-    for form in ["column", "bar", "lollipop", "dot-plot", "line", "bullet"] {
+    for form in [
+        "column",
+        "bar",
+        "lollipop",
+        "dot-plot",
+        "line",
+        "bullet",
+        "funnel",
+        "diverging-bar",
+    ] {
         let s = without_highlight(form);
         assert!(
             s.marks().all(|m| m.emphasis == Emphasis::Accent),
@@ -201,7 +213,15 @@ fn k3_single_series_without_highlight_is_all_accent() {
 
 #[test]
 fn k4_value_labels_take_their_marks_emphasis() {
-    for form in ["column", "bar", "lollipop", "dot-plot", "bullet"] {
+    for form in [
+        "column",
+        "bar",
+        "lollipop",
+        "dot-plot",
+        "bullet",
+        "funnel",
+        "diverging-bar",
+    ] {
         let s = scene(form);
         // One value per row: a lollipop's stem and head draw the same row.
         let mut marks: Vec<&Item> = s.marks().collect();
@@ -209,9 +229,9 @@ fn k4_value_labels_take_their_marks_emphasis() {
         let values: Vec<&Item> = s.part(Part::Value).collect();
         assert_eq!(marks.len(), values.len(), "K4 {form}: one value per mark");
         // Ranked rows write the named value in ink, as the gallery does;
-        // a column's value and a bullet's share of target take their mark's
-        // colour.
-        let ranked = !matches!(form, "column" | "bullet");
+        // a column's value, a bullet's share of target and a funnel step's
+        // share of the step before take their mark's colour.
+        let ranked = !matches!(form, "column" | "bullet" | "funnel");
         for (m, v) in marks.iter().zip(&values) {
             if m.highlighted && ranked {
                 assert_eq!(
@@ -285,6 +305,8 @@ fn m1_bars_carry_their_values_and_have_no_y_axis() {
         "grouped-bar",
         "stacked-bar",
         "waterfall",
+        "funnel",
+        "diverging-bar",
     ] {
         let s = scene(form);
         assert!(!s.y_axis, "M1 {form}: a bar chart has no y axis");
@@ -3668,6 +3690,412 @@ fn m16_range_bands_nest_the_middle_band_and_dot_inside_the_outer_band() {
             "M16: {e}"
         );
     }
+}
+
+#[test]
+fn m17_a_funnel_keeps_its_steps_in_order_against_the_step_before() {
+    let s = scene("funnel");
+    assert_eq!(
+        texts(&s, Part::AxisLabel),
+        [
+            "Checkout started",
+            "Method chosen",
+            "Details entered",
+            "Authorised",
+            "Paid"
+        ],
+        "M17: steps keep the order they are sent in"
+    );
+    assert_eq!(
+        texts(&s, Part::Value),
+        [
+            "10,000",
+            "8,200 (82%)",
+            "5,100 (62%)",
+            "4,700 (92%)",
+            "4,550 (97%)"
+        ],
+        "M17: each step's share of the one before"
+    );
+    let bars: Vec<skia_safe::Rect> = s.marks().map(rect).collect();
+    let ghosts: Vec<skia_safe::Rect> = s
+        .part(Part::Guide)
+        .filter(|g| g.emphasis == Emphasis::Track)
+        .map(rect)
+        .collect();
+    assert_eq!(
+        ghosts.len(),
+        bars.len() - 1,
+        "M17: a ghost behind each later step"
+    );
+    for (g, before) in ghosts.iter().zip(&bars) {
+        assert!(
+            (g.width() - before.width()).abs() < 0.01,
+            "M17: the ghost is the step before"
+        );
+    }
+    let rows: Vec<serde_json::Value> = [("a", 100_000.0), ("b", 120.0), ("c", 0.0)]
+        .iter()
+        .map(|(k, v)| serde_json::json!({"k": k, "v": v}))
+        .collect();
+    let s = scene_of(&intent(
+        "funnel",
+        &serde_json::json!({"x": "k", "y": "v"}),
+        &rows,
+    ))
+    .unwrap();
+    assert_eq!(
+        texts(&s, Part::Value),
+        ["100,000", "120 (<1%)", "0 (0%)"],
+        "M17: a share that only rounds to 0 reads <1"
+    );
+    let rows = [
+        serde_json::json!({"k": "a", "v": 5}),
+        serde_json::json!({"k": "b", "v": -1}),
+    ];
+    let e = scene_of(&intent(
+        "funnel",
+        &serde_json::json!({"x": "k", "y": "v"}),
+        &rows,
+    ))
+    .unwrap_err();
+    assert!(
+        e.to_string()
+            .starts_with("data.rows: funnel needs values of zero or more")
+    );
+}
+
+#[test]
+fn m18_a_bump_chart_ranks_each_period_largest_first() {
+    let s = scene("bump");
+    let ranks = texts(&s, Part::AxisLabel);
+    assert_eq!(&ranks[..5], ["#1", "#2", "#3", "#4", "#5"], "M18");
+    let rank_y = |label: &str| {
+        s.part(Part::AxisLabel)
+            .find(|i| i.text() == Some(label))
+            .map(|i| match &i.shape {
+                Shape::Text { y, style, .. } => y - (0.30 * style.size).round(),
+                _ => unreachable!(),
+            })
+            .unwrap()
+    };
+    let point = |series: &str, month: &str| {
+        s.marks()
+            .find(|m| {
+                let tip = m.tip.as_deref().unwrap_or("");
+                tip.contains(&format!("method: {series}\n"))
+                    && tip.contains(&format!("month: {month}\n"))
+            })
+            .unwrap()
+    };
+    // Wallets climbs from 4th in January to 1st in September.
+    for (month, rank) in [("Jan", "#4"), ("Sep", "#1")] {
+        let p = point("Wallets", month);
+        assert!(p.highlighted && p.emphasis == Emphasis::Accent, "M18");
+        let cy = p.bounds().center_y();
+        assert!(
+            (cy - rank_y(rank)).abs() < 0.5,
+            "M18: Wallets is {rank} in {month}"
+        );
+        assert!(
+            p.tip.as_deref().unwrap().contains(&format!("rank: {rank}")),
+            "M18"
+        );
+    }
+    // The rest take the ordered context greys; each line is named at its end.
+    assert!(
+        s.marks()
+            .filter(|m| !m.highlighted)
+            .all(|m| matches!(m.emphasis, Emphasis::Context(_))),
+        "K1: the unnamed lines take context greys"
+    );
+    assert_eq!(
+        texts(&s, Part::Legend).len(),
+        5,
+        "M18: each line is named at its end"
+    );
+    let rows = [serde_json::json!({"x": "Jan", "s": "a", "v": 1})];
+    let e = scene_of(&intent(
+        "bump",
+        &serde_json::json!({"x": "x", "y": "v", "series": "s"}),
+        &rows,
+    ))
+    .unwrap_err();
+    assert!(
+        e.to_string().contains("bump needs at least two periods"),
+        "{e}"
+    );
+    let bump_of = |rows: &[serde_json::Value]| {
+        scene_of(&intent(
+            "bump",
+            &serde_json::json!({"x": "x", "y": "v", "series": "s"}),
+            rows,
+        ))
+        .unwrap()
+    };
+    // A top two that changes members ranks no deeper than #2.
+    let s = bump_of(&[
+        serde_json::json!({"x": "Jan", "s": "A", "v": 3}),
+        serde_json::json!({"x": "Jan", "s": "B", "v": 2}),
+        serde_json::json!({"x": "Feb", "s": "B", "v": 3}),
+        serde_json::json!({"x": "Feb", "s": "C", "v": 2}),
+    ]);
+    assert_eq!(texts(&s, Part::AxisLabel)[..2], ["#1", "#2"], "M18");
+    assert!(
+        !texts(&s, Part::AxisLabel).contains(&"#3".to_string()),
+        "M18"
+    );
+    assert_eq!(
+        texts(&s, Part::Legend),
+        ["B", "C"],
+        "M18: A drops out before the end"
+    );
+    // A series with no number in any period takes no rank and no name.
+    let s = bump_of(&[
+        serde_json::json!({"x": "Jan", "s": "A", "v": 1}),
+        serde_json::json!({"x": "Feb", "s": "A", "v": 2}),
+        serde_json::json!({"x": "Jan", "s": "B", "v": null}),
+        serde_json::json!({"x": "Feb", "s": "B", "v": null}),
+    ]);
+    assert!(
+        !texts(&s, Part::AxisLabel).contains(&"#2".to_string()),
+        "M18"
+    );
+    assert_eq!(texts(&s, Part::Legend), ["A"], "M18");
+}
+
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+fn bump_top_n(rows: &[serde_json::Value], highlight: &str) -> Scene {
+    let mut i = intent(
+        "bump",
+        &serde_json::json!({"x": "x", "y": "v", "series": "s"}),
+        rows,
+    );
+    i["highlight"] = serde_json::json!([highlight]);
+    scene_of(&i).unwrap()
+}
+
+/// A text's anchor x and its centre y.
+fn text_at(s: &Scene, part: Part, label: &str) -> (f32, f32) {
+    s.part(part)
+        .find(|i| i.text() == Some(label))
+        .map(|i| match &i.shape {
+            Shape::Text { x, y, style, .. } => (*x, y - (0.30 * style.size).round()),
+            _ => unreachable!(),
+        })
+        .unwrap()
+}
+
+/// The centre x of a bump series' point in one month.
+fn bump_point_x(s: &Scene, series: &str, month: &str) -> f32 {
+    s.marks()
+        .find(|m| {
+            let tip = m.tip.as_deref().unwrap_or("");
+            tip.contains(&format!("s: {series}\n")) && tip.contains(&format!("x: {month}\n"))
+        })
+        .unwrap()
+        .bounds()
+        .center_x()
+}
+
+#[test]
+fn m18_a_bump_chart_names_the_lines_still_ranked_at_the_right_edge() {
+    // A top five over twelve months with fifteen members: three take #1 in
+    // turn and the first two drop out after March and July.
+    let mut rows: Vec<serde_json::Value> = Vec::new();
+    for (m, month) in MONTHS.iter().enumerate() {
+        let leader = if m < 3 {
+            "Early"
+        } else if m < 7 {
+            "Middle"
+        } else {
+            "Late"
+        };
+        rows.push(serde_json::json!({"x": month, "s": leader, "v": 100}));
+        for k in 0..4 {
+            rows.push(
+                serde_json::json!({"x": month, "s": format!("F{}", (m + k) % 12), "v": 50 - k}),
+            );
+        }
+    }
+    let s = bump_top_n(&rows, "Late");
+    assert_eq!(
+        texts(&s, Part::AxisLabel)[..5],
+        ["#1", "#2", "#3", "#4", "#5"],
+        "M18"
+    );
+    let mut names = texts(&s, Part::Legend);
+    names.sort();
+    assert_eq!(
+        names,
+        ["F0", "F1", "F11", "F2", "Late"],
+        "M18: only December's five are named"
+    );
+    let dec = bump_point_x(&s, "Late", "Dec");
+    for name in &names {
+        let (x, _) = text_at(&s, Part::Legend, name);
+        assert!(x > dec, "M18: {name} is named mid-plot at {x}");
+    }
+    let rank_y = |r: &str| text_at(&s, Part::AxisLabel, r).1;
+    let (_, late_y) = text_at(&s, Part::Legend, "Late");
+    assert!(
+        (late_y - rank_y("#1")).abs() < (rank_y("#2") - rank_y("#1")) / 2.0,
+        "M18: December's #1 is named beside its own lane"
+    );
+}
+
+#[test]
+fn m18_a_bump_chart_leaves_a_dropped_out_highlight_unnamed() {
+    // A highlight that falls out of the top five in December keeps its
+    // accent line but takes no name, so December's #5 sits alone in its lane.
+    let mut rows: Vec<serde_json::Value> = Vec::new();
+    for month in MONTHS {
+        for (k, name) in ["A", "B", "C", "D"].iter().enumerate() {
+            rows.push(serde_json::json!({"x": month, "s": name, "v": 90 - 10 * k}));
+        }
+        let fifth = if month == "Dec" {
+            "Bank transfers"
+        } else {
+            "Wallets and cards"
+        };
+        rows.push(serde_json::json!({"x": month, "s": fifth, "v": 10}));
+    }
+    let s = bump_top_n(&rows, "Wallets and cards");
+    assert!(
+        s.marks()
+            .filter(|m| m.highlighted)
+            .all(|m| m.emphasis == Emphasis::Accent),
+        "K1: the dropped-out highlight keeps its accent"
+    );
+    assert_eq!(
+        texts(&s, Part::Legend),
+        ["A", "B", "C", "D", "Bank transfers"],
+        "M18"
+    );
+    let dec = bump_point_x(&s, "Bank transfers", "Dec");
+    let e = engine();
+    let card = &e.tokens().card;
+    let content_right = s.card.right() - card.border - card.padding;
+    for item in s.part(Part::Legend) {
+        let b = text_box(&e, item);
+        assert!(
+            b.left() > dec,
+            "M18: a name is drawn mid-plot at {}",
+            b.left()
+        );
+        assert!(
+            b.right() <= content_right + 0.5,
+            "M18: a name runs into the card's padding to {}",
+            b.right()
+        );
+    }
+    let rank_y = |r: &str| text_at(&s, Part::AxisLabel, r).1;
+    let (_, e_y) = text_at(&s, Part::Legend, "Bank transfers");
+    assert!(
+        (e_y - rank_y("#5")).abs() < (rank_y("#5") - rank_y("#4")) / 2.0,
+        "M18: December's #5 is named beside its own lane"
+    );
+}
+
+#[test]
+fn m19_diverging_bars_meet_at_a_zero_rule_and_carry_signed_values() {
+    let s = scene("diverging-bar");
+    let rule = s
+        .part(Part::Guide)
+        .find(|g| matches!(g.shape, Shape::Line { .. }))
+        .expect("M19: a zero rule");
+    let Shape::Line { points, .. } = &rule.shape else {
+        unreachable!()
+    };
+    let zero = points[0].0;
+    assert!(
+        (points[1].0 - zero).abs() < 1e-3,
+        "M19: the rule is upright"
+    );
+    let values = texts(&s, Part::Value);
+    assert_eq!(
+        values,
+        [
+            "+0.6",
+            "+0.3",
+            "+0.1",
+            "\u{2212}0.2",
+            "\u{2212}0.3",
+            "\u{2212}0.4",
+            "\u{2212}0.6",
+            "\u{2212}0.9"
+        ],
+        "M19: largest first, each with its sign"
+    );
+    for (bar, label) in s.marks().zip(s.part(Part::Value)) {
+        let r = rect(bar);
+        let Shape::Text { x, anchor, .. } = &label.shape else {
+            unreachable!()
+        };
+        if r.right > zero + 0.5 {
+            assert!(
+                (r.left - zero).abs() < 1e-3 && *x > r.right,
+                "M19: above zero to the right"
+            );
+            assert_eq!(*anchor, tiles_engine::scene::Anchor::Start);
+        } else {
+            assert!(
+                (r.right - zero).abs() < 1e-3 && *x < r.left,
+                "M19: below zero to the left"
+            );
+            assert_eq!(*anchor, tiles_engine::scene::Anchor::End);
+        }
+    }
+}
+
+#[test]
+fn m20_a_heatmap_shades_each_cell_by_value_and_writes_the_named_cells() {
+    let v = fixture("calendar-heatmap");
+    let s = scene_of(&v).unwrap();
+    let cells: Vec<&Item> = s.marks().collect();
+    assert_eq!(cells.len(), 7 * 15, "M20: a cell per day and hour");
+    let mut shaded: Vec<(f64, u8)> = cells
+        .iter()
+        .map(|c| {
+            let n = tip_value(c.tip.as_deref().unwrap(), "contacts").unwrap();
+            (n.replace(',', "").parse::<f64>().unwrap(), c.color.a)
+        })
+        .collect();
+    shaded.sort_by(|a, b| a.0.total_cmp(&b.0));
+    assert!(
+        shaded.windows(2).all(|w| w[0].1 <= w[1].1),
+        "M20: a larger value is never lighter"
+    );
+    assert!(
+        shaded[0].1 < shaded[shaded.len() - 1].1,
+        "M20: the shades spread"
+    );
+    assert_eq!(
+        texts(&s, Part::Value),
+        ["154", "136"],
+        "M20: the named cells' values"
+    );
+    let named = cells.iter().filter(|c| c.highlighted).count();
+    assert_eq!(named, 2, "M20: Monday at 09:00 and 10:00");
+    let key = texts(&s, Part::Legend);
+    assert_eq!(
+        key,
+        ["0", "154"],
+        "M20: the key runs from zero to the highest"
+    );
+    let rows: Vec<serde_json::Value> = (0..32)
+        .map(|d| serde_json::json!({"h": "09:00", "d": format!("D{d}"), "v": d}))
+        .collect();
+    let e = scene_of(&intent(
+        "calendar-heatmap",
+        &serde_json::json!({"x": "h", "row": "d", "y": "v"}),
+        &rows,
+    ))
+    .unwrap_err();
+    assert!(e.to_string().contains("more than 31 distinct rows"), "{e}");
 }
 
 #[test]
