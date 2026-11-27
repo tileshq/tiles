@@ -166,7 +166,7 @@ fn bins(intent: &Intent, threshold: Option<f64>) -> Vec<Bin> {
         nice(min, max, f64::from(target))
     };
     let step = tick_step(lo, hi, f64::from(target));
-    let first = match threshold.filter(|t| *t > lo && *t <= hi) {
+    let first = match threshold.filter(|t| *t <= hi) {
         Some(t) => t - ((t - lo) / step).ceil() * step,
         None => (lo / step).floor() * step,
     };

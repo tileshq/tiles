@@ -3330,6 +3330,33 @@ fn m14_a_histogram_counts_every_value_in_touching_bins_split_at_its_threshold() 
         (past - 63.0).abs() < 1e-9,
         "M14: the named bins hold the share"
     );
+    // A threshold at or below the smallest value still sits on a bin edge,
+    // so every value is past it.
+    for (values, limit, want) in [
+        ([17, 20, 25, 30, 40], 17, "100% at 17 or more"),
+        ([18, 20, 25, 30, 40], 16, "100% at 16 or more"),
+    ] {
+        let rows: Vec<serde_json::Value> = values
+            .iter()
+            .map(|v| serde_json::json!({"wait": v, "limit": limit}))
+            .collect();
+        let s = scene_of(&intent(
+            "histogram",
+            &serde_json::json!({"x": "wait", "threshold": "limit"}),
+            &rows,
+        ))
+        .unwrap();
+        assert_eq!(texts(&s, Part::Value), [want], "M14");
+        let past: f64 = s
+            .marks()
+            .filter(|m| m.highlighted)
+            .filter_map(|m| tip_value(m.tip.as_deref()?, "count")?.parse::<f64>().ok())
+            .sum();
+        assert!(
+            (past - 5.0).abs() < 1e-9,
+            "M14: the named bins hold every value past {limit}"
+        );
+    }
     // One value: whole count ticks.
     let s = scene_of(&intent(
         "histogram",
