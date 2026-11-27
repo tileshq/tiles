@@ -120,7 +120,7 @@ fn push_runs(out: &mut String, spans: &[Span<'_>], mut room: usize) {
 }
 
 /// The status line on 0-based `row` of a `cols`-column screen, in colour
-/// (ADR-069): the line cleared, `left` from its first column and `right`
+/// (ADR-070): the line cleared, `left` from its first column and `right`
 /// against its last but one when both fit with two columns between them,
 /// else `left` alone, cut to the line. Each run's text passes through
 /// [`crate::sanitize`]; the only control sequences are the cursor moves and

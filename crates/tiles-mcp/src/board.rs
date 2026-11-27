@@ -213,7 +213,7 @@ pub fn plan(rows: &[Vec<Ask>], look: &Look) -> Plan {
     plan_in(rows, look, look.room(), false)
 }
 
-/// The lines for `rows` of cards on the interactive pane (ADR-069): as
+/// The lines for `rows` of cards on the interactive pane (ADR-070): as
 /// [`plan`] arranges and splits them, but over `room` columns, and every
 /// line, a scorecard line too, fitted to the whole `room`, so every line
 /// shares the same outer edges at any width.

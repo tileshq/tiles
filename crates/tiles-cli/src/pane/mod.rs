@@ -12,7 +12,7 @@
 //! picture over its card, the mark's outline and its tooltip. What the user
 //! picks is one [`state::State`] every card is laid out from: a click on a
 //! mark focuses its value on every card that holds it, in the accent and
-//! named in the heading (ADR-069), a click on a legend entry
+//! named in the heading (ADR-070), a click on a legend entry
 //! hides its series, `s` sorts the card under the pointer, `d` drills into
 //! the period under it by asking Omni for the next finer timeframe, `u`
 //! goes back up and `r` clears it all; each sends only the cards whose
@@ -64,8 +64,7 @@ const FIRST_ID: u32 = 7_000_000;
 /// one's id plus [`TIP_OFFSET`].
 const OVERLAY_IDS: [u32; 2] = [6_999_990, 6_999_991];
 const TIP_OFFSET: u32 = 2;
-/// The page colour's image id: three by three pixels, the middle one
-/// stretched over the window ([`kitty::fill`]).
+/// The page colour's image id: one pixel stretched over the window.
 const PAGE_ID: u32 = 6_999_980;
 /// Stacking order of the page: below -1,073,741,824, kitty's line under
 /// which a picture goes beneath cells that have a background colour of
@@ -291,30 +290,21 @@ impl App<'_> {
         self.look = look;
         let scale = look.scale;
         self.slots = match &self.content {
-            Content::Dashboard {
-                call, shown, state, ..
-            } => {
+            Content::Dashboard { call, shown, .. } => {
                 let (laid, order) = call
                     .lay_out_pane(shown, &self.painter, &look)
                     .map_err(|e| e.to_string())?;
                 let mut order = order.into_iter();
                 laid.cards
                     .into_iter()
-                    .map(|c| {
-                        let intent = c.align.and_then(|_| order.next());
-                        let scene = match intent {
-                            Some(k) => self.treat(&shown[k], c.scene, state.focus.as_ref()),
-                            None => c.scene,
-                        };
-                        Slot {
-                            intent,
-                            align: c.align,
-                            at: c.at,
-                            cells: c.cells,
-                            hits: tiles_engine::hit::hit_map(&scene, scale),
-                            legend: self.painter.engine().legend(&scene, scale),
-                            scene,
-                        }
+                    .map(|c| Slot {
+                        intent: c.align.and_then(|_| order.next()),
+                        align: c.align,
+                        at: c.at,
+                        cells: c.cells,
+                        hits: tiles_engine::hit::hit_map(&c.scene, scale),
+                        legend: self.painter.engine().legend(&c.scene, scale),
+                        scene: c.scene,
                     })
                     .collect()
             }
@@ -343,7 +333,7 @@ impl App<'_> {
     }
 
     /// The heading slot's scene for the state as it stands, the focused
-    /// value's chip on it (ADR-069); `None` when the pane has no heading.
+    /// value's chip on it (ADR-070); `None` when the pane has no heading.
     fn heading_scene(&self) -> Option<Scene> {
         let Content::Dashboard { call, state, .. } = &self.content else {
             return None;
@@ -371,8 +361,8 @@ impl App<'_> {
         )
     }
 
-    /// The page: the theme's page colour stretched over the whole window
-    /// under the text and the cards ([`kitty::fill`]).
+    /// The page: one pixel of the theme's page colour stretched over the
+    /// whole window under the text and the cards.
     fn page_bytes(&self) -> Vec<u8> {
         let c = self.engine().tokens().palette(self.look.theme).page();
         let mut out = pane::move_to(0, 0).into_bytes();
@@ -448,7 +438,7 @@ impl App<'_> {
         Ok(out)
     }
 
-    /// The status line (ADR-069): the pane and what it shows, what the
+    /// The status line (ADR-070): the pane and what it shows, what the
     /// user picked or a hint, any note, and the keys at the right, in the
     /// theme's colours.
     fn status_bytes(&self) -> Vec<u8> {
@@ -646,7 +636,7 @@ impl App<'_> {
     ) -> Result<Option<Vec<u8>>, String> {
         let slot = &self.slots[s];
         let scale = self.look.scale;
-        let (hint, focused) = self.hint(slot, &slot.hits[h]);
+        let hint = self.hint(slot, &slot.hits[h]);
         let pointer_x = self.pointer.map(|(x, _)| {
             #[allow(clippy::cast_precision_loss)] // Pixel coordinates far below 2^24.
             let dx = x as f32 - f32::from(slot.at.0) * f32::from(self.cell.0);
@@ -655,7 +645,6 @@ impl App<'_> {
         let cue = tiles_engine::pane::Cue {
             pointer_x,
             hint: hint.as_deref(),
-            focused,
         };
         let overlay = self.engine().hover(&slot.scene, &slot.hits[h], scale, cue);
         let ring = self.piece_bytes(slot, &overlay.ring, id)?;
@@ -710,21 +699,17 @@ impl App<'_> {
     }
 
     /// What a click on `hit` in `slot` would do, for the tooltip's foot:
-    /// focus its value, or clear the focus when that value is focused; and
-    /// whether it is, which rings the mark in the full accent.
-    fn hint(&self, slot: &Slot, hit: &tiles_engine::hit::Hit) -> (Option<String>, bool) {
+    /// focus its value, or clear the focus when that value is focused.
+    fn hint(&self, slot: &Slot, hit: &tiles_engine::hit::Hit) -> Option<String> {
         let Content::Dashboard { shown, state, .. } = &self.content else {
-            return (None, false);
+            return None;
         };
-        let picked = slot
-            .intent
-            .zip(hit.row)
-            .and_then(|(card, row)| board::pick(shown, card, row, self.engine().forms()));
-        match picked {
-            Some(p) if state.focuses(&p) => (Some("click again to clear".to_string()), true),
-            Some(p) => (Some(format!("click to focus {}", p.value)), false),
-            None => (None, false),
-        }
+        let picked = board::pick(shown, slot.intent?, hit.row?, self.engine().forms())?;
+        Some(if state.focus.as_ref() == Some(&picked) {
+            "click again to clear".to_string()
+        } else {
+            format!("click to focus {}", picked.value)
+        })
     }
 
     /// The card under device pixel `x`, `y`, as its intent's index.
@@ -776,11 +761,14 @@ impl App<'_> {
         let picked = self
             .mark_at(x, y)
             .and_then(|(card, row)| board::pick(shown, card, row, self.engine().forms()));
-        next.focus = match picked {
-            Some(p) if !state.focuses(&p) => Some(p),
-            _ if state.focus.is_none() => return Ok(None),
-            _ => None,
-        };
+        if picked == state.focus {
+            if picked.is_none() {
+                return Ok(None);
+            }
+            next.focus = None;
+        } else {
+            next.focus = picked;
+        }
         self.restate(next, "click", None).map(Some)
     }
 
@@ -922,16 +910,13 @@ impl App<'_> {
         kind: &str,
         note: Option<String>,
     ) -> Result<Update, String> {
-        let Content::Dashboard { call, state, .. } = &self.content else {
+        let Content::Dashboard { call, .. } = &self.content else {
             return Err("not a dashboard".into());
         };
         let wanted = next.apply(&call.intents, self.engine().forms());
-        let refocus = next.focus != state.focus;
         self.begin(kind);
         let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
-        let focus = next.focus.clone();
-        let (intents, mut cards, refused) =
-            self.relay(wanted, focus.as_ref(), refocus, &mut bytes)?;
+        let (intents, mut cards, refused) = self.relay(wanted, &mut bytes)?;
         if self.note.is_none() {
             self.note = note;
         }
@@ -968,28 +953,14 @@ impl App<'_> {
         self.painter.lay_card(&tile, &look, align).ok()
     }
 
-    /// `scene`, drawn from `intent`, with the focus treatment (a ring round
-    /// the focused mark, the other marks dimmed) when `focus` is the value
-    /// its highlight names (ADR-069).
-    fn treat(&self, intent: &Intent, scene: Scene, focus: Option<&board::Selection>) -> Scene {
-        if focus.is_some_and(|f| intent.highlight.len() == 1 && intent.highlight[0] == f.value) {
-            self.engine().pane_focus(&scene)
-        } else {
-            scene
-        }
-    }
-
-    /// Lays out again each card whose intent `intents` changes, or every
-    /// card when `refocus` says the focus changed, in its own
-    /// slot, and sends those whose scene changed. A card that cannot be
-    /// drawn with its focus, hidden series, sort or drill keeps its picture
-    /// and its intent, and names itself on the status line. Returns the intents the cards now show, how many
+    /// Lays out again each card whose intent `intents` changes, in its own
+    /// slot, and sends those whose scene changed. A card that refuses its
+    /// filtered rows keeps its picture and its intent, and names itself on
+    /// the status line. Returns the intents the cards now show, how many
     /// cards it sent, and the cards that refused.
     fn relay(
         &mut self,
         mut intents: Vec<Intent>,
-        focus: Option<&board::Selection>,
-        refocus: bool,
         bytes: &mut Vec<u8>,
     ) -> Result<(Vec<Intent>, usize, Vec<usize>), String> {
         let Content::Dashboard { shown, .. } = &self.content else {
@@ -1002,13 +973,10 @@ impl App<'_> {
             let (Some(k), Some(_)) = (slot.intent, slot.align) else {
                 continue;
             };
-            if intents[k] == shown[k] && !refocus {
+            if intents[k] == shown[k] {
                 continue;
             }
-            match self
-                .lay(slot, &intents[k])
-                .map(|s| self.treat(&intents[k], s, focus))
-            {
+            match self.lay(slot, &intents[k]) {
                 Some(scene) if scene != slot.scene => changed.push((i, scene)),
                 Some(_) => {}
                 None => refused.push(k),

@@ -142,7 +142,7 @@ pub struct Palette {
     pub about: String,
     pub card: Rgba,
     /// The page behind the cards on a surface that fills a window, the
-    /// interactive pane (ADR-069); a theme without one takes
+    /// interactive pane (ADR-070); a theme without one takes
     /// [`Palette::page`]'s fallback, so a design pack written before it
     /// still loads.
     #[serde(default)]

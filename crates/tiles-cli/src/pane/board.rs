@@ -1,5 +1,5 @@
 //! The pane's cards and what a click does to them (ADR-063, ADR-065,
-//! ADR-069): which column a clicked mark selects, the value focused on
+//! ADR-070): which column a clicked mark selects, the value focused on
 //! every card that highlights by it, and which card, mark and legend entry
 //! sit under a pixel.
 //! Pure logic, no terminal.
@@ -133,7 +133,7 @@ pub fn highlighted(intent: &Intent, forms: &[Form], column: &str, value: &str) -
     out
 }
 
-/// The intents a selection draws, from the call's own `base` (ADR-069):
+/// The intents a selection draws, from the call's own `base` (ADR-070):
 /// every card keeps all its rows, and each that highlights by the
 /// selected column and holds the value focuses it in the accent; the rest
 /// stay as they are.

@@ -312,26 +312,20 @@ fn a_hover_sends_only_the_overlay_and_a_click_sends_only_the_cards_it_focuses() 
         .parse()
         .unwrap();
     assert!(bytes < 64 * 1024, "{line}");
-    // The first frame lays the page colour under everything, below the
-    // text: the middle of three by three pixels, so kitty's filtering
-    // fades no edge of the window.
+    // The first frame lays the page colour under everything, below the text.
     assert!(
-        has(
-            &out,
-            b"i=6999980,p=1,s=3,v=3,x=1,y=1,w=1,h=1,c=200,r=60,z=-1073741825"
-        ),
+        has(&out, b"i=6999980,p=1,s=1,v=1,c=200,r=60,z=-1073741825"),
         "the page"
     );
     // Clicking Germany's bar focuses Germany: the lollipop, which named
-    // Spain, now names Germany; the bar, the columns and the lines, which
-    // already named it, take the focus ring and dim their other marks; and
-    // the heading takes the chip. The stacked bars colour by method and the
-    // scorecards hold no region: they stay.
+    // Spain, now names Germany, and the heading takes the chip. The bar,
+    // the columns and the lines already name Germany, the stacked bars
+    // colour by method, and the scorecards hold no region: they stay.
     let click = trace
         .lines()
         .find(|l| l.contains("kind=click bytes"))
         .unwrap();
-    assert!(click.ends_with("cards=5"), "{click}");
+    assert!(click.ends_with("cards=2"), "{click}");
     assert!(
         has(&out, "region = Germany".as_bytes()),
         "the status line names the selection"
@@ -372,8 +366,8 @@ fn a_click_keeps_the_tooltip_on_the_mark_still_under_the_pointer() {
         .collect();
     assert_eq!(clicks.len(), 2, "{trace}");
     // Focusing and clearing change the same cards back and forth.
-    assert!(clicks[0].ends_with("cards=5"), "{}", clicks[0]);
-    assert!(clicks[1].ends_with("cards=5"), "{}", clicks[1]);
+    assert!(clicks[0].ends_with("cards=2"), "{}", clicks[0]);
+    assert!(clicks[1].ends_with("cards=2"), "{}", clicks[1]);
 
     // The first click places the bar's tooltip again, as the other overlay
     // id, above the cards, and deletes the one the hover placed.
@@ -400,33 +394,6 @@ fn a_click_keeps_the_tooltip_on_the_mark_still_under_the_pointer() {
         2,
         "each click draws the tooltip again: {trace}"
     );
-}
-
-#[test]
-fn a_click_on_the_focused_value_on_another_card_clears_the_focus() {
-    let board = Dashboard::new();
-    let (column, card) = board.card("column");
-    let hit = &tiles_engine::hit::hit_map(&card.scene, board.look.scale)[0];
-    let x = column.column("x").unwrap();
-    assert_eq!(column.table.rows[hit.row.unwrap()][x].label(), "Germany");
-    let (cx, cy) = first_mark(&board, "column");
-    let (bx, by) = first_bar();
-    let mut pane = Pane::start("focus-elsewhere", &fixture("dashboard.json"), &[]);
-    pane.first_frame();
-    // Focus Germany on the bar chart, then click Germany on the columns.
-    pane.send(&[report(0, bx, by, 'M'), report(0, bx, by, 'm')].concat());
-    pane.wait_trace("kind=click bytes", 1);
-    pane.send(&[report(0, cx, cy, 'M'), report(0, cx, cy, 'm')].concat());
-    pane.wait_trace("kind=click bytes", 2);
-    pane.send(b"q");
-    let (status, _, trace) = pane.finish();
-    assert!(status.success(), "{status:?}");
-    let clicks = updates(&trace, "click");
-    assert_eq!(clicks.len(), 2, "{trace}");
-    // The second click clears the focus: the four cards and the heading go
-    // back, as a second click on the bar itself does.
-    assert!(clicks[0].ends_with("cards=5"), "{}", clicks[0]);
-    assert!(clicks[1].ends_with("cards=5"), "{}", clicks[1]);
 }
 
 #[test]

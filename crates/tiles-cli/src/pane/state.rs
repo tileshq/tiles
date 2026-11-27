@@ -1,6 +1,6 @@
 //! The pane's interaction state (ADR-065): what the user picked, as one
 //! value every card's scene is laid out from. A click on a mark focuses
-//! its value on every card (ADR-069), a click on a legend entry hides that series on its card,
+//! its value on every card (ADR-070), a click on a legend entry hides that series on its card,
 //! `s` sorts the card under the pointer, and `d` drills into a period of a
 //! card drawn from an Omni date field. Pure logic over intents, no terminal
 //! and no network: a drill's rows arrive through [`Drilled`], fetched by
@@ -77,7 +77,7 @@ pub struct Drilled {
 /// What the user picked on the pane.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
-    /// The value a click on a mark focused (ADR-069).
+    /// The value a click on a mark focused (ADR-070).
     pub focus: Option<Selection>,
     /// Series hidden per card, by its index, through its legend.
     pub hidden: BTreeMap<usize, BTreeSet<String>>,
@@ -148,15 +148,6 @@ impl State {
         }
         self.hidden.retain(|_, h| !h.is_empty());
         Ok(())
-    }
-
-    /// Whether `picked` is the focused value: the same column and value,
-    /// on whichever card it was clicked.
-    #[must_use]
-    pub fn focuses(&self, picked: &Selection) -> bool {
-        self.focus
-            .as_ref()
-            .is_some_and(|f| f.column == picked.column && f.value == picked.value)
     }
 
     /// Drops the focus when its card's drill level differs from
@@ -503,27 +494,6 @@ mod tests {
         assert_eq!(legend_series(&g, "Espr…").as_deref(), Some("Espresso"));
         assert_eq!(legend_series(&g, "…"), None, "both begin with nothing");
         assert_eq!(legend_series(&g, "Latte"), None);
-    }
-
-    #[test]
-    fn the_focused_value_is_focused_on_whichever_card_it_is_clicked() {
-        let pick = |card: usize, value: &str| Selection {
-            card,
-            column: "region".into(),
-            value: value.into(),
-        };
-        let state = State {
-            focus: Some(pick(0, "Germany")),
-            ..State::default()
-        };
-        assert!(state.focuses(&pick(0, "Germany")));
-        assert!(state.focuses(&pick(1, "Germany")), "another card");
-        assert!(!state.focuses(&pick(1, "France")));
-        assert!(!state.focuses(&Selection {
-            column: "city".into(),
-            ..pick(0, "Germany")
-        }));
-        assert!(!State::default().focuses(&pick(0, "Germany")));
     }
 
     #[test]
