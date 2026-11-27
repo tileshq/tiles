@@ -43,6 +43,17 @@ impl Rgba {
         }
     }
 
+    /// White at the given opacity.
+    #[must_use]
+    pub fn white(alpha: f32) -> Self {
+        Self {
+            r: 255,
+            g: 255,
+            b: 255,
+            a: unit_to_byte(alpha),
+        }
+    }
+
     /// The same colour at `opacity` times its alpha.
     #[must_use]
     pub fn with_opacity(self, opacity: f32) -> Self {
@@ -70,13 +81,7 @@ impl Rgba {
     /// Whether black stands out more on it than white does: a light colour.
     #[must_use]
     pub fn is_light(self) -> bool {
-        let white = Self {
-            r: 255,
-            g: 255,
-            b: 255,
-            a: 255,
-        };
-        self.contrast(Self::black(1.0)) > self.contrast(white)
+        self.contrast(Self::black(1.0)) > self.contrast(Self::white(1.0))
     }
 
     /// The WCAG contrast ratio between two opaque colours, 1 to 21.

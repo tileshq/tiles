@@ -46,7 +46,7 @@ const RING: f32 = 1.0;
 const RING_HOVER: f32 = 0.6;
 /// The ring's corner radius round a mark that has none of its own.
 const RING_RADIUS: f32 = 3.0;
-/// How far a hovered mark's fill moves towards the ink.
+/// How far a hovered mark's fill moves towards white.
 const LIGHTEN: f32 = 0.12;
 /// How far a focus moves the other marks towards the card.
 const DIM: f32 = 0.3;
@@ -206,16 +206,42 @@ fn mark_colour(card: &Scene, row: Option<usize>) -> Option<Rgba> {
 }
 
 /// The ring round `item`, [`RING_OUT`] off its edge and following its
-/// shape: a circle round a dot, a rectangle with the bar's corners grown
-/// by the gap round a bar; `None` for a mark of another shape.
+/// shape: a circle round a dot, a rectangle round a bar whose rounded
+/// corners are the bar's grown by the gap and whose square corners take
+/// the gap's radius alone; `None` for a mark of another shape.
 fn ring_path(item: &Item) -> Option<Vec<(f32, f32)>> {
     let off = RING_OUT + RING / 2.0;
     match &item.shape {
-        Shape::Rect { rect, radius, .. } => {
-            Some(rounded(rect.with_outset((off, off)), radius + off))
+        Shape::Rect {
+            rect,
+            radius,
+            corners,
+        } => {
+            let round = radius
+                .min(rect.width() / 2.0)
+                .min(rect.height() / 2.0)
+                .max(0.0)
+                + off;
+            Some(rounded(
+                rect.with_outset((off, off)),
+                corner_radii(*corners, round, off),
+            ))
         }
         Shape::Circle { cx, cy, r } => Some(circle(*cx, *cy, r + off)),
         _ => None,
+    }
+}
+
+/// Each corner's radius in Skia's order (top left, top right, bottom
+/// right, bottom left): `round` where `corners` rounds it, else `square`.
+fn corner_radii(corners: Corners, round: f32, square: f32) -> [f32; 4] {
+    let (v, z) = (round, square);
+    match corners {
+        Corners::Top => [v, v, z, z],
+        Corners::Bottom => [z, z, v, v],
+        Corners::Right => [z, v, v, z],
+        Corners::Left => [v, z, z, v],
+        Corners::All => [v, v, v, v],
     }
 }
 
@@ -283,6 +309,28 @@ fn bounds_of(points: &[(f32, f32)]) -> Rect {
         b = b.max(y);
     }
     Rect::from_ltrb(l, t, r, b)
+}
+
+/// The box `item` covers: a text item's glyphs, a line with its stroke,
+/// an area down to its baseline.
+fn item_box(fonts: &Fonts, item: &Item) -> Option<Rect> {
+    match &item.shape {
+        Shape::Rect { rect, .. } => Some(*rect),
+        Shape::Circle { cx, cy, r } => Some(Rect::from_ltrb(cx - r, cy - r, cx + r, cy + r)),
+        Shape::Line { points, width } => {
+            Some(bounds_of(points).with_outset((width / 2.0, width / 2.0)))
+        }
+        Shape::Area { points, base } => {
+            let b = bounds_of(points);
+            Some(Rect::from_ltrb(
+                b.left,
+                b.top.min(*base),
+                b.right,
+                b.bottom.max(*base),
+            ))
+        }
+        Shape::Text { .. } => text_box(fonts, item),
+    }
 }
 
 /// The box a text item's glyphs cover: from its cap height down to a
@@ -562,10 +610,12 @@ pub(crate) fn overlay(
     }
 }
 
-/// The hover ring's picture: the mark a little lighter, a one-pixel ring
-/// in the accent round it (at [`RING_HOVER`] unless the mark is the
-/// focused value), and, above the ring, any value label the ring's box
-/// reaches, so no label is ever cut.
+/// The hover ring's picture: the mark a little lighter, as it reads on
+/// the card moved towards white, with every item the card draws after it
+/// over its box drawn again above it; a one-pixel ring in the accent round
+/// it (at [`RING_HOVER`] unless the mark is the focused value); and, above
+/// the ring, any value label the ring's box reaches, so no label is ever
+/// cut.
 fn ring_items(
     fonts: &Fonts,
     pal: &crate::tokens::Palette,
@@ -575,20 +625,41 @@ fn ring_items(
     focused: bool,
 ) -> Vec<Item> {
     let mut items = Vec::new();
-    let mark = mark_item(card, hit.row);
-    let path = match mark {
-        Some(m) => {
+    let at = hit.row.and_then(|row| {
+        card.items
+            .iter()
+            .position(|i| i.part == Part::Mark && i.datum == Some(row))
+    });
+    let path = match at {
+        Some(at) => {
+            let m = &card.items[at];
             if matches!(m.shape, Shape::Rect { .. } | Shape::Circle { .. }) {
+                let solid = Rgba { a: 255, ..m.color };
                 let mut lit = m.clone();
-                lit.color = m.color.mix(pal.ink, LIGHTEN);
+                lit.color = pal
+                    .card
+                    .mix(solid, f32::from(m.color.a) / 255.0)
+                    .mix(Rgba::white(1.0), LIGHTEN);
                 lit.part = Part::Guide;
                 lit.datum = None;
                 lit.tip = None;
                 items.push(lit);
+                let under = item_box(fonts, m);
+                items.extend(
+                    card.items[at + 1..]
+                        .iter()
+                        .filter(|i| !matches!(i.part, Part::Value | Part::Hit))
+                        .filter(|i| {
+                            item_box(fonts, i)
+                                .zip(under)
+                                .is_some_and(|(b, u)| Rect::intersects(&b, u))
+                        })
+                        .cloned(),
+                );
             }
-            ring_path(m).unwrap_or_else(|| rounded(ring, RING_RADIUS))
+            ring_path(m).unwrap_or_else(|| rounded(ring, [RING_RADIUS; 4]))
         }
-        None => rounded(ring, RING_RADIUS),
+        None => rounded(ring, [RING_RADIUS; 4]),
     };
     let colour = if focused {
         pal.accent
@@ -696,18 +767,20 @@ fn tip_text(
     items
 }
 
-/// A closed outline of `r` with corners rounded by `radius`, as points.
-fn rounded(r: Rect, radius: f32) -> Vec<(f32, f32)> {
+/// A closed outline of `r` with its corners rounded by `radii`, in
+/// Skia's order (top left, top right, bottom right, bottom left), as
+/// points.
+fn rounded(r: Rect, radii: [f32; 4]) -> Vec<(f32, f32)> {
     const STEPS: usize = 6;
-    let radius = radius.min(r.width() / 2.0).min(r.height() / 2.0).max(0.0);
+    let [tl, tr, br, bl] = radii.map(|v| v.min(r.width() / 2.0).min(r.height() / 2.0).max(0.0));
     let corners = [
-        (r.right - radius, r.top + radius, -90.0f32),
-        (r.right - radius, r.bottom - radius, 0.0),
-        (r.left + radius, r.bottom - radius, 90.0),
-        (r.left + radius, r.top + radius, 180.0),
+        (r.right - tr, r.top + tr, tr, -90.0f32),
+        (r.right - br, r.bottom - br, br, 0.0),
+        (r.left + bl, r.bottom - bl, bl, 90.0),
+        (r.left + tl, r.top + tl, tl, 180.0),
     ];
     let mut points = Vec::with_capacity(4 * (STEPS + 1) + 1);
-    for (cx, cy, start) in corners {
+    for (cx, cy, radius, start) in corners {
         for s in 0..=STEPS {
             #[allow(clippy::cast_precision_loss)] // A handful of steps.
             let a = (start + 90.0 * s as f32 / STEPS as f32).to_radians();

@@ -925,6 +925,185 @@ fn the_pane_ring_is_one_accent_pixel_and_leaves_the_value_label_whole() {
     }
 }
 
+/// The device pixel of `frame` at CSS (`x`, `y`) over a piece placed at
+/// device (`left`, `top`).
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // Pixels inside the frame.
+fn pixel_at(
+    frame: &tiles_engine::Frame,
+    (left, top): (i32, i32),
+    (x, y): (f32, f32),
+    scale: f32,
+) -> Rgba {
+    let px = (x * scale).floor() as i32 - left;
+    let py = (y * scale).floor() as i32 - top;
+    assert!(
+        px >= 0 && py >= 0 && px < frame.width && py < frame.height,
+        "({x}, {y}) is in the piece"
+    );
+    let at = ((py * frame.width + px) * 4) as usize;
+    Rgba {
+        r: frame.rgba[at],
+        g: frame.rgba[at + 1],
+        b: frame.rgba[at + 2],
+        a: frame.rgba[at + 3],
+    }
+}
+
+/// Hovering a box on the box plot (ADR-069) lightens the box towards
+/// white on every theme, and the median the card draws over the box stays
+/// in the card colour above the lighter box.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel offsets.
+fn a_hovered_box_lightens_and_keeps_its_median() {
+    let e = engine();
+    let intent = tiles_intent::parse(&fixture("box-plot").to_string()).unwrap();
+    let scale = 2.0;
+    for theme in [light(), dark()] {
+        let opts = Options {
+            theme,
+            ..Options::default()
+        };
+        let s = e.scene(&intent, &opts).unwrap();
+        let pal = e.tokens().palette(theme);
+        let at = s
+            .items
+            .iter()
+            .position(|i| i.part == Part::Mark && i.highlighted)
+            .expect("the highlighted box");
+        let mark = &s.items[at];
+        let boxed = rect(mark);
+        let (mx, cy) = s.items[at + 1..]
+            .iter()
+            .find_map(|i| match &i.shape {
+                Shape::Line { points, .. } if i.part == Part::Guide && i.color == pal.card => {
+                    Some((points[0].0, f32::midpoint(points[0].1, points[1].1)))
+                }
+                _ => None,
+            })
+            .expect("the median over the box");
+        let hit = hit_map(&s, scale)
+            .into_iter()
+            .find(|h| h.row == mark.datum)
+            .expect("the box's hit");
+        let ring = e
+            .hover(&s, &hit, scale, tiles_engine::pane::Cue::default())
+            .ring;
+        let frame = e.frame_at(&ring.scene, scale, Moment::FINAL).unwrap();
+        let origin = (ring.left, ring.top);
+        let median = pixel_at(&frame, origin, (mx, cy), scale);
+        assert_eq!(
+            (median.r, median.g, median.b),
+            (pal.card.r, pal.card.g, pal.card.b),
+            "the median stays above the hovered box"
+        );
+        let inside = if mx - boxed.left > boxed.right - mx {
+            f32::midpoint(boxed.left, mx)
+        } else {
+            f32::midpoint(mx, boxed.right)
+        };
+        let lit = pixel_at(&frame, origin, (inside, cy), scale);
+        let sum = |c: Rgba| u32::from(c.r) + u32::from(c.g) + u32::from(c.b);
+        assert!(
+            lit.r >= mark.color.r && lit.g >= mark.color.g && lit.b >= mark.color.b,
+            "{lit:?} is no darker than {:?}",
+            mark.color
+        );
+        assert!(sum(lit) > sum(mark.color), "the hovered box is lighter");
+    }
+}
+
+/// The hover ring and the focus ring round a column (ADR-069) round only
+/// the corners the column rounds: the column's top corners grown by the
+/// gap, its baseline corners by the gap alone.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel offsets.
+fn a_ring_rounds_only_the_corners_its_bar_rounds() {
+    let e = engine();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
+    let board: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let column = tiles_intent::parse(&board["rows"][0][1].to_string()).unwrap();
+    let scale = 2.0;
+    let plain = e.scene(&column, &Options::default()).unwrap();
+    let focused = e.pane_focus(&plain);
+    let mark = plain
+        .items
+        .iter()
+        .find(|i| i.part == Part::Mark && i.datum == Some(0))
+        .expect("the Germany column");
+    let Shape::Rect {
+        rect: bar,
+        radius,
+        corners: Corners::Top,
+    } = mark.shape
+    else {
+        panic!("a column rounds its top: {:?}", mark.shape)
+    };
+    let off = 2.5;
+    let round = radius.min(bar.width() / 2.0).min(bar.height() / 2.0);
+    assert!(round > 0.0, "the column has rounded corners");
+    let out = bar.with_outset((off, off));
+    let nearest = |points: &[(f32, f32)], (cx, cy): (f32, f32)| {
+        points
+            .iter()
+            .map(|&(x, y)| (x - cx).hypot(y - cy))
+            .fold(f32::MAX, f32::min)
+    };
+    let hit = hit_map(&plain, scale)
+        .into_iter()
+        .find(|h| h.row == Some(0))
+        .expect("Germany's column");
+    let accent = e.tokens().palette(plain.theme).accent;
+    let hover = e
+        .hover(&plain, &hit, scale, tiles_engine::pane::Cue::default())
+        .ring;
+    let shift = (hover.left as f32 / scale, hover.top as f32 / scale);
+    let rings: Vec<(Vec<(f32, f32)>, &str)> = hover
+        .scene
+        .items
+        .iter()
+        .filter_map(|i| match &i.shape {
+            Shape::Line { points, .. } if i.color == accent.with_opacity(0.6) => Some((
+                points
+                    .iter()
+                    .map(|&(x, y)| (x + shift.0, y + shift.1))
+                    .collect(),
+                "hover",
+            )),
+            _ => None,
+        })
+        .chain(focused.items.iter().filter_map(|i| match &i.shape {
+            Shape::Line { points, .. } if i.part == Part::Guide && i.color == accent => {
+                Some((points.clone(), "focus"))
+            }
+            _ => None,
+        }))
+        .collect();
+    let corner_gap = std::f32::consts::SQRT_2 - 1.0;
+    for kind in ["hover", "focus"] {
+        let points: Vec<(f32, f32)> = rings
+            .iter()
+            .filter(|(_, k)| *k == kind)
+            .flat_map(|(p, _)| p.iter().copied())
+            .collect();
+        assert!(!points.is_empty(), "a {kind} ring");
+        for base in [(out.left, out.bottom), (out.right, out.bottom)] {
+            let d = nearest(&points, base);
+            assert!(
+                (d - off * corner_gap).abs() < 0.05,
+                "the {kind} ring's baseline corner at {base:?} takes the gap's radius alone, {d} off"
+            );
+        }
+        for top in [(out.left, out.top), (out.right, out.top)] {
+            let d = nearest(&points, top);
+            assert!(
+                d >= (round + off) * corner_gap - 0.05,
+                "the {kind} ring's top corner at {top:?} keeps the column's rounding, {d} off"
+            );
+        }
+    }
+}
+
 #[test]
 fn intent_rules_refuse_with_one_line_naming_the_fix() {
     let e = engine();
