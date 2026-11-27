@@ -8,7 +8,9 @@
 //! harness's row names its version and the newest one Tiles was proved on,
 //! and the update check's setting and last run have a line (ADR-032). After the
 //! harness rows, a `setup:` line names the harnesses `tiles setup` would set
-//! up (ADR-035). On the text route a `pictures:` line says cards will not draw
+//! up (ADR-035), and a `shell:` line says whether a harness typed at a
+//! zsh, bash or fish prompt starts through `tiles run`, and through which
+//! files (ADR-069). On the text route a `pictures:` line says cards will not draw
 //! inline there and how they open instead (ADR-046).
 
 use std::path::PathBuf;

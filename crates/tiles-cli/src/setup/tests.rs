@@ -1371,3 +1371,134 @@ fn an_older_tiles_later_on_path_is_only_named_and_blocks_nothing() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A report for a Mac with Pi set up and zsh as the login shell under a home
+/// of its own, and where the shell wiring goes there.
+fn zsh_machine(name: &str) -> (PathBuf, crate::shell::Places, Report) {
+    let dirs = dirs(name);
+    std::fs::create_dir_all(&dirs.home).unwrap();
+    let places = crate::shell::Places::new(&dirs, &|_| None);
+    let copies = Copies {
+        this: PathBuf::from("/opt/homebrew/bin/tiles"),
+        current: "0.2.0".into(),
+        on_path: true,
+        ..Copies::default()
+    };
+    let mut r = report(
+        vec![(Harness::Pi, Plan::Current(PathBuf::from("/bin/pi")))],
+        warp(),
+        &copies,
+        &[],
+    );
+    r.shell = crate::shell::plan(&places, &|k| (k == "SHELL").then(|| "/bin/zsh".into()));
+    (dirs.home.parent().unwrap().to_path_buf(), places, r)
+}
+
+#[test]
+fn the_shell_is_wired_only_after_the_one_question() {
+    let (root, places, r) = zsh_machine("shell-ask");
+    for reply in [None, Some("n\n")] {
+        let (text, _, ok) = drive(Args::default(), &r, reply);
+        assert!(ok);
+        assert_eq!(
+            text,
+            format!(
+                "{}  Shell          (will wire zsh: claude, codex, opencode and pi typed in a new terminal tab start through tiles run)
+tiles setup --dry-run --verbose lists each change.
+Set up Tiles for zsh? [y/N] 
+
+  Tiles on PATH  (installed)
+  Terminal       (warp: nothing to set up)
+  Pi             (already set up)
+  Shell          (skipped: not confirmed)
+Nothing changed. To set it up, run tiles setup again, or tiles install <harness> for one harness.
+",
+                header()
+            )
+        );
+        assert!(!places.zshrc.exists() && !places.script.exists());
+    }
+    let (text, _, _) = drive(answered(false, true), &r, None);
+    assert!(
+        text.contains("  Shell          (would wire zsh: "),
+        "{text}"
+    );
+    assert!(text.ends_with("Dry run: nothing changed.\n"), "{text}");
+    assert!(!places.zshrc.exists());
+
+    let (text, _, ok) = drive(Args::default(), &r, Some("y\n"));
+    assert!(ok);
+    assert!(
+        text.contains("  Shell          (wired zsh; open a new terminal tab to use it)\n"),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("Next: run tiles check, then open a new terminal tab and type pi.\n"),
+        "{text}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&places.zshrc).unwrap(),
+        crate::shell::block(&places.script)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&places.script).unwrap(),
+        crate::shell::SCRIPT
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_wired_shell_is_left_as_it_is_and_listed_with_its_files_under_verbose() {
+    let (root, places, r) = zsh_machine("shell-again");
+    crate::shell::apply(&r.shell.as_ref().unwrap().edits).unwrap();
+    let (_, _, again) = zsh_machine("shell-again-plan");
+    let mut again = again;
+    again.shell = crate::shell::plan(&places, &|k| (k == "SHELL").then(|| "/bin/zsh".into()));
+    let (text, _, ok) = drive(Args::default(), &again, None);
+    assert!(ok);
+    assert_eq!(
+        text,
+        format!(
+            "{}  Tiles on PATH  (already set up)
+  Terminal       (warp: nothing to set up)
+  Pi             (already set up)
+  Shell          (already wired for zsh)
+Next: run tiles check, then open a new terminal tab and type pi.
+",
+            header()
+        )
+    );
+    let verbose = Args {
+        verbose: true,
+        ..Args::default()
+    };
+    let (text, _, _) = drive(verbose, &again, None);
+    assert!(
+        text.contains(&format!(
+            "  Shell          (already wired for zsh)\n      read from {}\n",
+            places.zshrc.display()
+        )),
+        "{text}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn the_shell_edits_are_listed_under_verbose_before_the_question() {
+    let (root, places, r) = zsh_machine("shell-verbose");
+    let args = Args {
+        verbose: true,
+        dry_run: true,
+        ..Args::default()
+    };
+    let (text, _, _) = drive(args, &r, None);
+    assert!(
+        text.contains(&format!(
+            "      write {}\n      add 2 lines to the end of {}\n",
+            places.script.display(),
+            places.zshrc.display()
+        )),
+        "{text}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}

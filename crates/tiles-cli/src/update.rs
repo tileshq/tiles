@@ -1092,6 +1092,14 @@ impl Pending {
         let wait = (CHECK_DEADLINE + Duration::from_millis(250)).saturating_sub(self.1.elapsed());
         self.0.recv_timeout(wait).ok().flatten()
     }
+
+    /// The notice if the check has already finished, without waiting; a
+    /// check still running keeps going and saves what it finds for the
+    /// next launch.
+    #[must_use]
+    pub fn ready(self) -> Option<String> {
+        self.0.try_recv().ok().flatten()
+    }
 }
 
 /// `tiles doctor`'s line on the check: the setting as read, and how long

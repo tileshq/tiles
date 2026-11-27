@@ -21,14 +21,15 @@ What the package cannot do yet ([ADR-035](adr/ADR-035-macos-package-and-tiles-se
 
 ## `tiles setup`: every harness in one step
 
-`tiles setup` finds each harness Tiles supports on your `PATH` (Claude Code, Codex, OpenCode and Pi), the terminal, and the data login it can see without reading a secret, an Omni URL in the Keychain or `TILES_OMNI_URL`. It names what it would change and asks once; nothing changes unless you answer `y`. Then it prints one line per step ([ADR-060](adr/ADR-060-setup-prints-a-step-list.md)):
+`tiles setup` finds each harness Tiles supports on your `PATH` (Claude Code, Codex, OpenCode and Pi), your shell (zsh, bash or fish), the terminal, and the data login it can see without reading a secret, an Omni URL in the Keychain or `TILES_OMNI_URL`. It names what it would change and asks once; nothing changes unless you answer `y`. Then it prints one line per step ([ADR-060](adr/ADR-060-setup-prints-a-step-list.md)):
 
 ```text
 Tiles 0.2.0 setup
   Claude Code    (will configure)
   Codex          (will configure)
+  Shell          (will wire zsh: claude, codex, opencode and pi typed in a new terminal tab start through tiles run)
 tiles setup --dry-run --verbose lists each change.
-Set up Tiles for Claude Code and Codex? [y/N] y
+Set up Tiles for Claude Code, Codex and zsh? [y/N] y
 
   Tiles on PATH  (installed)
   Terminal       (warp: nothing to set up)
@@ -36,15 +37,16 @@ Set up Tiles for Claude Code and Codex? [y/N] y
   OpenCode       (skipped: not on PATH)
   Claude Code    (configured)
   Codex          (configured)
+  Shell          (wired zsh; open a new terminal tab to use it)
   Omni           (the Keychain names acme.omniapp.co but holds no API key for it; to finish: tiles omni set-key https://acme.omniapp.co; then tiles setup again)
-Next: run tiles check, then start a session with tiles run pi.
+Next: run tiles check, then open a new terminal tab and type pi.
 ```
 
 In a terminal each line starts with a mark: a green check for a finished step, a dot for a pending one, `-` for a skipped one, `!` for one left to you and a red cross for a failure. Piped, or with `NO_COLOR` set, the words stay the same and the marks go. `tiles setup --verbose` adds each path and each change under its step, and shows what each harness's own command prints; `tiles doctor` shows the paths as well.
 
-On `y` it runs, for each harness, the steps `tiles install <harness>` runs ([surfaces.md](surfaces.md)). A data source's line names the commands that finish it, which need a key or a choice only you have: `tiles omni set-key https://<host>` ([omni.md](omni.md)). After those, run `tiles setup` again so each harness gets the data tools and asks before each Tiles tool call.
+On `y` it runs, for each harness, the steps `tiles install <harness>` runs, and wires the shell: from the next terminal tab, `claude`, `codex`, `opencode` and `pi` typed at the prompt start through `tiles run`, which draws the cards inline ([surfaces.md](surfaces.md#from-your-shell), [ADR-069](adr/ADR-069-shell-starts-a-typed-harness-through-tiles-run.md)). A data source's line names the commands that finish it, which need a key or a choice only you have: `tiles omni set-key https://<host>` ([omni.md](omni.md)). After those, run `tiles setup` again so each harness gets the data tools and asks before each Tiles tool call.
 
-Running it again changes nothing and prints the same list with `(already set up)`. `tiles setup --dry-run` prints the list and changes nothing; `tiles setup --yes` answers for a script. A harness installed later shows up in `tiles doctor` as `setup: Tiles is not set up, or is out of date, for <harness>; run tiles setup`; for Claude Code, doctor reads its registration from `~/.claude.json` and starts nothing. `tiles setup` leaves alone an OpenCode `config.json` or a Codex approval setting of your own, as `tiles install` does, and says so.
+Running it again changes nothing and prints the same list with `(already set up)` and `Shell (already wired for zsh)`. `tiles setup --dry-run` prints the list and changes nothing; `tiles setup --yes` answers for a script. A harness installed later shows up in `tiles doctor` as `setup: Tiles is not set up, or is out of date, for <harness>; run tiles setup`; for Claude Code, doctor reads its registration from `~/.claude.json` and starts nothing. `tiles setup` leaves alone an OpenCode `config.json` or a Codex approval setting of your own, as `tiles install` does, and says so.
 
 When Claude Code already has a user-scope `tiles` server that runs another `tiles`, such as `~/.local/bin/tiles` from an earlier `install.sh`, its line reads `Claude Code (set up with another tiles, /Users/<you>/.local/bin/tiles; Tiles will replace it)`, and on `y` setup runs `claude mcp remove tiles --scope user` and then `claude mcp add` ([ADR-039](adr/ADR-039-setup-replaces-a-stale-claude-code-server.md)). If the remove fails it adds nothing and its line names the two commands to run yourself. A `tiles` server in a project's or a folder's Claude Code config, or one that sets variables of your own, is named with the commands that replace it and left as it is.
 
@@ -131,8 +133,9 @@ The signed `SHA256SUMS` lists it as well, so the commands above check it the sam
 tiles --version     # tiles 0.1.1 (intent schema 1): the release tag, without its v
 tiles check --tag v0.1.1   # one pass or fail line per check of how cards draw here
 tiles doctor        # terminal, route, harnesses and their versions, Omni setup, the update check
-tiles run pi        # or opencode, claude, codex
 ```
+
+Then open a new terminal tab and type `pi`, `opencode`, `claude` or `codex` as usual; `tiles run pi` starts the same session in a shell `tiles setup` did not wire.
 
 The release job stamps the tag into the binary and stops when `tiles --version` does not print it ([ADR-025](adr/ADR-025-warp-cell-size-rows-and-laptop-check.md)); a build made outside the release job prints 0.0.0.
 
@@ -159,10 +162,10 @@ TILES_SUMS=~/Downloads/SHA256SUMS tiles update
 
 Either way it checks the archive against `SHA256SUMS` and refuses a mismatch with nothing replaced. It does not check `SHA256SUMS.sig` yet; to be sure of a release before `tiles update`, check its `SHA256SUMS` as [above](#checking-a-download-by-hand). It removes the quarantine flag a browser download carries, so no `xattr` step is needed. It writes the new binary beside `~/.local/bin/tiles` (or `$TILES_BIN_DIR/tiles`), runs its `--version`, and renames it over in one step. It refuses an older release unless you pass `--allow-older`, and tells you when `~/.local/bin` is not on your `PATH`. `TILES_RELEASES_REPO=<owner>/<repo>` reads releases from another repository, for `tiles update`, the daily check and `install.sh`.
 
-At most once a day, `tiles run` and `tiles doctor` ask GitHub whether a newer release exists and print one line before the harness starts and again after it exits: `Tiles v0.1.5 is available; run tiles update`. The check is one anonymous request to `api.github.com` carrying only `User-Agent: tiles/<version>` and `Accept: application/json` ([ADR-032](adr/ADR-032-update-command-and-harness-versions.md)). `TILES_UPDATE_CHECK=off` (or `0`, `false`, `no`) turns the check off, and `tiles doctor` shows the value it read and how long ago the check last ran. Tiles never updates itself; only `tiles update` or a newer package replaces the binary.
+At most once a day, `tiles run` and `tiles doctor` ask GitHub whether a newer release exists and print one line before the harness starts and again after it exits: `Tiles v0.1.5 is available; run tiles update`. A harness typed at a wired prompt does not wait for that answer; the line shows on a later launch once the check has saved it. The check is one anonymous request to `api.github.com` carrying only `User-Agent: tiles/<version>` and `Accept: application/json` ([ADR-032](adr/ADR-032-update-command-and-harness-versions.md)). `TILES_UPDATE_CHECK=off` (or `0`, `false`, `no`) turns the check off, and `tiles doctor` shows the value it read and how long ago the check last ran. Tiles never updates itself; only `tiles update` or a newer package replaces the binary.
 
-`tiles run` also names a harness version Tiles was not proved on, before the harness starts and again after it exits: `Tiles was proved on Claude Code 2.1.316, and this is 2.2.0; if a card misdraws, run tiles check`. `tiles check` fails that harness's `version:` line, and `tiles doctor` prints each harness's version beside the newest one Tiles was proved on.
+`tiles run` also names a harness version Tiles was not proved on, before the harness starts and again after it exits: `Tiles was proved on Claude Code 2.1.316, and this is 2.2.0; if a card misdraws, run tiles check`. From a wired prompt it prints that line only when the harness has already answered `--version`, so the harness never waits on it. `tiles check` fails that harness's `version:` line, and `tiles doctor` prints each harness's version beside the newest one Tiles was proved on.
 
 ## Removing it
 
-For a Homebrew install: `brew uninstall tiles`. For a package install: `sudo rm /usr/local/bin/tiles && sudo rm -r /usr/local/share/tiles && sudo pkgutil --forget io.github.tileshq.tiles`. For an `install.sh` install: `rm ~/.local/bin/tiles`. Then remove Tiles from each harness: `claude mcp remove tiles --scope user`, `codex mcp remove tiles`, and the files [surfaces.md](surfaces.md) lists for Pi and OpenCode.
+First run `tiles shell off`, which takes the two lines `tiles setup` added out of your shell's startup files and deletes Tiles' shell scripts. For a Homebrew install: `brew uninstall tiles`. For a package install: `sudo rm /usr/local/bin/tiles && sudo rm -r /usr/local/share/tiles && sudo pkgutil --forget io.github.tileshq.tiles`. For an `install.sh` install: `rm ~/.local/bin/tiles`. Then remove Tiles from each harness: `claude mcp remove tiles --scope user`, `codex mcp remove tiles`, and the files [surfaces.md](surfaces.md) lists for Pi and OpenCode.
