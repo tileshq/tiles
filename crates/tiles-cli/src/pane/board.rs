@@ -3,9 +3,9 @@
 //! it in memory, and which card, mark and legend entry sit under a pixel.
 //! Pure logic, no terminal.
 
-use tiles_engine::Scene;
 use tiles_engine::hit::Hit;
 use tiles_engine::pane::LegendHit;
+use tiles_engine::{Form, Scene};
 use tiles_intent::{Cell, Intent};
 
 /// The roles whose column a click selects by, in the order tried: a
@@ -47,18 +47,27 @@ pub struct Slot {
 
 /// The column a click on `row` of `intent` selects by: the first of
 /// [`SELECT_ROLES`] whose cell is text and whose column another card's
-/// table also holds; else the first such text cell, which highlights the
-/// card and filters nothing. `None` for a row with no text cell in those
-/// roles, such as a scorecard's.
+/// table also holds; else the first such text cell its form highlights
+/// by, which highlights the card and filters nothing. `None` for a row
+/// with no text cell in those roles, such as a scorecard's.
 #[must_use]
-pub fn choose(intent: &Intent, row: usize, others: &[&Intent], card: usize) -> Option<Selection> {
+pub fn choose(
+    intent: &Intent,
+    row: usize,
+    others: &[&Intent],
+    card: usize,
+    forms: &[Form],
+) -> Option<Selection> {
     let cells = intent.table.rows.get(row)?;
     let mut first = None;
     for role in SELECT_ROLES {
         let Some(name) = intent.fields.get(role) else {
             continue;
         };
-        let Some(Cell::Text(value)) = intent.table.index(name).and_then(|c| cells.get(c)) else {
+        let Some(c) = intent.table.index(name) else {
+            continue;
+        };
+        let Some(Cell::Text(value)) = cells.get(c) else {
             continue;
         };
         let pick = Selection {
@@ -69,23 +78,34 @@ pub fn choose(intent: &Intent, row: usize, others: &[&Intent], card: usize) -> O
         if others.iter().any(|o| o.table.index(name).is_some()) {
             return Some(pick);
         }
-        first.get_or_insert(pick);
+        if colours(intent, forms, c) {
+            first.get_or_insert(pick);
+        }
     }
     first
+}
+
+/// Whether the form of `intent`, found in `forms`, colours the values in
+/// its column `column` when they are highlighted.
+fn colours(intent: &Intent, forms: &[Form], column: usize) -> bool {
+    forms
+        .iter()
+        .find(|f| f.name == intent.form)
+        .is_some_and(|f| f.highlight_columns(intent).contains(&column))
 }
 
 /// What a click on `row` of card `card` selects, read from `shown`, the
 /// intents the cards were last drawn from: a hit's row counts into the
 /// card's table as drawn, filtered or not.
 #[must_use]
-pub fn pick(shown: &[Intent], card: usize, row: usize) -> Option<Selection> {
+pub fn pick(shown: &[Intent], card: usize, row: usize, forms: &[Form]) -> Option<Selection> {
     let others: Vec<&Intent> = shown
         .iter()
         .enumerate()
         .filter(|(i, _)| *i != card)
         .map(|(_, i)| i)
         .collect();
-    choose(shown.get(card)?, row, &others, card)
+    choose(shown.get(card)?, row, &others, card, forms)
 }
 
 /// `intent` with only the rows whose `column` reads `value`, and only the
@@ -107,25 +127,23 @@ pub fn filtered(intent: &Intent, column: &str, value: &str) -> Option<Intent> {
     Some(out)
 }
 
-/// `intent` with `value` as its only highlight, when `column` fills one of
-/// its [`SELECT_ROLES`] and its rows hold `value` there. A value found only
-/// in another column, such as the month column a drilled card of weeks
-/// still holds, highlights nothing: the engine takes highlights from the
-/// card's categories, and would refuse the card.
+/// `intent` with `value` as its only highlight, when its form, found in
+/// `forms`, highlights by `column` and its rows hold `value` there. A
+/// value its form cannot colour, such as the month column a drilled card
+/// of weeks still holds, or a stacked bar's x, highlights nothing: the
+/// engine would refuse the card.
 #[must_use]
-pub fn highlighted(intent: &Intent, column: &str, value: &str) -> Intent {
+pub fn highlighted(intent: &Intent, forms: &[Form], column: &str, value: &str) -> Intent {
     let mut out = intent.clone();
-    let fills = SELECT_ROLES
-        .iter()
-        .any(|role| intent.fields.get(*role).is_some_and(|c| c == column));
-    let holds = intent.table.index(column).is_some_and(|c| {
-        intent
-            .table
-            .rows
-            .iter()
-            .any(|r| r.get(c).is_some_and(|v| v.label() == value))
+    let takes = intent.table.index(column).is_some_and(|c| {
+        colours(intent, forms, c)
+            && intent
+                .table
+                .rows
+                .iter()
+                .any(|r| r.get(c).is_some_and(|v| v.label() == value))
     });
-    if fills && holds {
+    if takes {
         out.highlight = vec![value.to_string()];
     }
     out
@@ -135,7 +153,7 @@ pub fn highlighted(intent: &Intent, column: &str, value: &str) -> Intent {
 /// card highlights the value, every other card with the column keeps its
 /// rows with that value, and the rest stay as they are.
 #[must_use]
-pub fn apply(base: &[Intent], selection: Option<&Selection>) -> Vec<Intent> {
+pub fn apply(base: &[Intent], selection: Option<&Selection>, forms: &[Form]) -> Vec<Intent> {
     let Some(s) = selection else {
         return base.to_vec();
     };
@@ -143,7 +161,7 @@ pub fn apply(base: &[Intent], selection: Option<&Selection>) -> Vec<Intent> {
         .enumerate()
         .map(|(i, intent)| {
             if i == s.card {
-                highlighted(intent, &s.column, &s.value)
+                highlighted(intent, forms, &s.column, &s.value)
             } else {
                 filtered(intent, &s.column, &s.value).unwrap_or_else(|| intent.clone())
             }
@@ -186,11 +204,33 @@ pub fn legend_index(legend: &[LegendHit], x: i32, y: i32) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::{Selection, Slot, apply, choose, filtered, hit_index, legend_index, pick, slot_at};
+    use tiles_engine::Form;
     use tiles_engine::hit::Hit;
     use tiles_intent::Intent;
 
     fn intent(json: &str) -> Intent {
         tiles_intent::parse(json).unwrap()
+    }
+
+    fn forms() -> Vec<Form> {
+        tiles_engine::forms::load(None).unwrap()
+    }
+
+    fn stacked() -> Intent {
+        intent(
+            r#"{"v":1,"form":"stacked-bar","title":"Germany grows","claim":{"kind":"compare","tone":"good"},
+            "fields":{"x":"month","y":"revenue","series":"region"},
+            "data":{"rows":[{"month":"Jan","region":"Germany","revenue":1},{"month":"Jan","region":"France","revenue":1},
+            {"month":"Feb","region":"Germany","revenue":2},{"month":"Feb","region":"France","revenue":1}]}}"#,
+        )
+    }
+
+    fn months() -> Intent {
+        intent(
+            r#"{"v":1,"form":"line","title":"Revenue climbs","claim":{"kind":"trend","tone":"good"},
+            "fields":{"x":"month","y":"revenue"},
+            "data":{"rows":[{"month":"Jan","revenue":2},{"month":"Feb","revenue":3}]}}"#,
+        )
     }
 
     fn by_region() -> Intent {
@@ -220,16 +260,20 @@ mod tests {
 
     #[test]
     fn a_click_selects_by_the_column_other_cards_share() {
+        let forms = forms();
         let (bars, lines, kpi) = (by_region(), by_month(), quarters());
-        let s = choose(&bars, 1, &[&lines, &kpi], 0).unwrap();
+        let s = choose(&bars, 1, &[&lines, &kpi], 0, &forms).unwrap();
         assert_eq!((s.column.as_str(), s.value.as_str()), ("region", "France"));
         // On the lines the series is shared, not the month.
-        let s = choose(&lines, 0, &[&bars, &kpi], 1).unwrap();
+        let s = choose(&lines, 0, &[&bars, &kpi], 1, &forms).unwrap();
         assert_eq!((s.column.as_str(), s.value.as_str()), ("region", "Germany"));
         // A column nobody shares still selects, to highlight.
-        let s = choose(&kpi, 1, &[&bars], 2).unwrap();
-        assert_eq!((s.column.as_str(), s.value.as_str()), ("quarter", "Q2"));
-        assert_eq!(choose(&kpi, 9, &[&bars], 2), None);
+        let s = choose(&bars, 1, &[&kpi], 0, &forms).unwrap();
+        assert_eq!((s.column.as_str(), s.value.as_str()), ("region", "France"));
+        // A scorecard highlights nothing, so its unshared column selects
+        // nothing either.
+        assert_eq!(choose(&kpi, 1, &[&bars], 2, &forms), None);
+        assert_eq!(choose(&kpi, 9, &[&bars], 2, &forms), None);
     }
 
     #[test]
@@ -248,7 +292,8 @@ mod tests {
             column: "region".into(),
             value: "France".into(),
         };
-        let out = apply(&base, Some(&s));
+        let forms = forms();
+        let out = apply(&base, Some(&s), &forms);
         assert_eq!(out[0].highlight, ["France"]);
         assert_eq!(
             out[0].table.rows.len(),
@@ -257,18 +302,28 @@ mod tests {
         );
         assert_eq!(out[1].table.rows.len(), 2);
         assert_eq!(out[2], base[2]);
-        assert_eq!(apply(&base, None), base);
+        assert_eq!(apply(&base, None, &forms), base);
     }
 
     #[test]
     fn the_clicked_card_highlights_only_through_the_selected_column() {
         use super::highlighted;
+        let forms = forms();
         let bars = by_region();
-        assert_eq!(highlighted(&bars, "region", "France").highlight, ["France"]);
+        assert_eq!(
+            highlighted(&bars, &forms, "region", "France").highlight,
+            ["France"]
+        );
         // The value in a column that fills no category role, or in no row,
         // leaves the highlight as it was.
-        assert_eq!(highlighted(&bars, "revenue", "4").highlight, ["Germany"]);
-        assert_eq!(highlighted(&bars, "region", "Spain").highlight, ["Germany"]);
+        assert_eq!(
+            highlighted(&bars, &forms, "revenue", "4").highlight,
+            ["Germany"]
+        );
+        assert_eq!(
+            highlighted(&bars, &forms, "region", "Spain").highlight,
+            ["Germany"]
+        );
         let weeks = intent(
             r#"{"v":1,"form":"column","title":"August by week","claim":{"kind":"trend","tone":"good"},
             "fields":{"x":"week","y":"orders"},
@@ -277,29 +332,53 @@ mod tests {
         );
         // A drilled card of weeks still holds the month it was drilled from.
         assert_eq!(
-            highlighted(&weeks, "month", "2026-08-01").highlight,
+            highlighted(&weeks, &forms, "month", "2026-08-01").highlight,
             Vec::<String>::new()
         );
         assert_eq!(
-            highlighted(&weeks, "week", "2026-08-10").highlight,
+            highlighted(&weeks, &forms, "week", "2026-08-10").highlight,
             ["2026-08-10"]
+        );
+    }
+
+    #[test]
+    fn a_stacked_card_clicked_by_its_shared_x_draws_unhighlighted() {
+        let forms = forms();
+        let engine = tiles_engine::Engine::new().unwrap();
+        let base = vec![stacked(), months()];
+        // Only the line shares a column, the month, so the click selects it.
+        let s = pick(&base, 0, 2, &forms).unwrap();
+        assert_eq!((s.column.as_str(), s.value.as_str()), ("month", "Feb"));
+        let out = apply(&base, Some(&s), &forms);
+        // A stacked bar colours only its series, so the month is no highlight.
+        assert_eq!(out[0].highlight, Vec::<String>::new());
+        let opts = tiles_engine::Options::default();
+        assert!(engine.scene(&out[0], &opts).is_ok());
+        assert_eq!(out[1].table.rows.len(), 1);
+        // Alone, the stack selects and highlights its series.
+        let s = pick(&base[..1], 0, 2, &forms).unwrap();
+        assert_eq!((s.column.as_str(), s.value.as_str()), ("region", "Germany"));
+        assert_eq!(
+            apply(&base[..1], Some(&s), &forms)[0].highlight,
+            ["Germany"]
         );
     }
 
     #[test]
     fn a_click_on_a_filtered_card_reads_the_row_it_drew() {
         let base = vec![by_region(), by_month(), quarters()];
-        let france = pick(&base, 0, 1).unwrap();
+        let forms = forms();
+        let france = pick(&base, 0, 1, &forms).unwrap();
         assert_eq!(france.value, "France");
-        let shown = apply(&base, Some(&france));
+        let shown = apply(&base, Some(&france), &forms);
         // The lines now hold France's rows only; their first is France, Jan.
-        let s = pick(&shown, 1, 0).unwrap();
+        let s = pick(&shown, 1, 0, &forms).unwrap();
         assert_eq!(
             (s.card, s.column.as_str(), s.value.as_str()),
             (1, "region", "France")
         );
-        assert_eq!(pick(&shown, 1, 2), None, "past the drawn rows");
-        assert_eq!(pick(&shown, 9, 0), None);
+        assert_eq!(pick(&shown, 1, 2, &forms), None, "past the drawn rows");
+        assert_eq!(pick(&shown, 9, 0, &forms), None);
     }
 
     fn slot(at: (u16, u16), cells: (u16, u16)) -> Slot {

@@ -590,7 +590,7 @@ impl App<'_> {
         }
         let picked = self
             .mark_at(x, y)
-            .and_then(|(card, row)| board::pick(shown, card, row));
+            .and_then(|(card, row)| board::pick(shown, card, row, self.engine().forms()));
         if picked == state.filter {
             if picked.is_none() {
                 return Ok(None);
@@ -701,7 +701,7 @@ impl App<'_> {
             return Ok(None);
         };
         let slot = self.slots.iter().find(|s| s.intent == Some(card));
-        let laid = redrill(call, state, next, card, |i| {
+        let laid = redrill(call, state, next, card, self.engine().forms(), |i| {
             slot.is_none_or(|s| self.lay(s, i).is_some())
         });
         match laid {
@@ -743,7 +743,7 @@ impl App<'_> {
         let Content::Dashboard { call, .. } = &self.content else {
             return Err("not a dashboard".into());
         };
-        let wanted = next.apply(&call.intents);
+        let wanted = next.apply(&call.intents, self.engine().forms());
         self.begin(kind);
         let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
         let (intents, cards, refused) = self.relay(wanted, &mut bytes)?;
@@ -997,10 +997,11 @@ fn redrill(
     state: &State,
     mut next: State,
     card: usize,
+    forms: &[tiles_engine::Form],
     draws: impl FnOnce(&Intent) -> bool,
 ) -> Result<State, String> {
     next.redrilled(state);
-    let cards = next.apply(&call.intents);
+    let cards = next.apply(&call.intents, forms);
     let intent = cards.get(card).ok_or("no such card")?;
     if draws(intent) {
         Ok(next)
@@ -1256,6 +1257,7 @@ mod tests {
             Query::Warehouse(_) => Err("no warehouse".to_string()),
         };
         let painter = EnginePainter::new().unwrap();
+        let forms = painter.engine().forms();
         let call = Call::read(BY_MONTH, &painter, &fetch).unwrap();
         assert_eq!(call.requests.len(), 1);
         assert!(call.requests[0].omni().is_some());
@@ -1307,7 +1309,10 @@ mod tests {
             within: within[0].clone(),
             intent: weeks.clone(),
         });
-        assert_eq!(state.apply(&call.intents), std::slice::from_ref(&weeks));
+        assert_eq!(
+            state.apply(&call.intents, forms),
+            std::slice::from_ref(&weeks)
+        );
         let (deeper, within, _) = plan_drill(&call, &[weeks], &state, 0, 1).unwrap();
         assert_eq!(deeper.fields["x"], "orders.created_at[date]");
         assert_eq!(within.len(), 2);
@@ -1333,6 +1338,7 @@ mod tests {
             Query::Warehouse(_) => Err("no warehouse".to_string()),
         };
         let painter = EnginePainter::new().unwrap();
+        let forms = painter.engine().forms();
         let look = Look::default();
         let call = Call::read(BY_MONTH, &painter, &fetch).unwrap();
         let months = &call.intents[0];
@@ -1345,10 +1351,10 @@ mod tests {
             .unwrap();
 
         let clicked = State {
-            filter: board::pick(&call.intents, 0, august),
+            filter: board::pick(&call.intents, 0, august, forms),
             ..State::default()
         };
-        let shown = clicked.apply(&call.intents);
+        let shown = clicked.apply(&call.intents, forms);
         assert_eq!(shown[0].highlight, ["2026-08-01"]);
         let (request, mut within, _) = plan_drill(&call, &shown, &clicked, 0, august).unwrap();
         let weeks = drilled(&fetch, &painter, &request, &within).unwrap();
@@ -1366,31 +1372,34 @@ mod tests {
         };
         // Even before the selection is dropped, the month never reaches the
         // drilled card's highlight: its weeks still hold the month column,
-        // but the month fills no category role there.
-        let kept = next.apply(&call.intents);
+        // but its form does not highlight by the month.
+        let kept = next.apply(&call.intents, forms);
         assert_eq!(kept[0].highlight, Vec::<String>::new());
         assert!(
             draws(&kept[0]),
             "the drilled card draws with the click kept"
         );
-        let deeper = redrill(&call, &clicked, next.clone(), 0, draws).unwrap();
+        let deeper = redrill(&call, &clicked, next.clone(), 0, forms, draws).unwrap();
         assert_eq!(deeper.filter, None, "the drilled period is the whole card");
         assert_eq!(deeper.drills[&0].len(), 1);
-        assert_eq!(deeper.apply(&call.intents), std::slice::from_ref(&weeks));
+        assert_eq!(
+            deeper.apply(&call.intents, forms),
+            std::slice::from_ref(&weeks)
+        );
 
         let mut undrilled = State {
-            filter: board::pick(&deeper.apply(&call.intents), 0, 1),
+            filter: board::pick(&deeper.apply(&call.intents, forms), 0, 1, forms),
             ..deeper.clone()
         };
         assert!(undrilled.filter.is_some());
         let picked = undrilled.clone();
         undrilled.drills.clear();
-        let up = redrill(&call, &picked, undrilled, 0, draws).unwrap();
+        let up = redrill(&call, &picked, undrilled, 0, forms, draws).unwrap();
         assert_eq!(up, State::default(), "going up drops the week picked");
 
         let mut refused = next;
         refused.drills.get_mut(&0).unwrap()[0].intent.highlight = vec!["1999-01-01".into()];
-        let err = redrill(&call, &clicked, refused, 0, draws).unwrap_err();
+        let err = redrill(&call, &clicked, refused, 0, forms, draws).unwrap_err();
         assert!(err.contains("cannot be drawn at that period"), "{err}");
         assert!(server.unrecorded().is_empty(), "{:?}", server.unrecorded());
     }

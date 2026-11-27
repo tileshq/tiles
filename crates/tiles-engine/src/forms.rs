@@ -123,6 +123,25 @@ impl Layout {
             ],
         }
     }
+
+    /// The roles whose values this layout colours when highlighted, so a
+    /// highlight it cannot show is refused (ADR-003).
+    #[must_use]
+    pub fn highlight_roles(self) -> &'static [&'static str] {
+        match self {
+            Layout::Kpi => &[],
+            Layout::Stacked | Layout::Shares | Layout::Slope => &["series"],
+            Layout::Line | Layout::Grouped => &["series", "x"],
+            Layout::Scatter => &["label"],
+            Layout::Columns
+            | Layout::Bars
+            | Layout::Lollipop
+            | Layout::Dots
+            | Layout::Bullet
+            | Layout::Waterfall
+            | Layout::Dumbbell => &["x"],
+        }
+    }
 }
 
 /// What a role's column holds.
@@ -253,6 +272,22 @@ impl Form {
     #[must_use]
     pub fn takes_highlight(&self) -> bool {
         self.layout != Layout::Kpi
+    }
+
+    /// The columns of `intent` a highlight names values in: its category
+    /// roles among those the layout colours.
+    #[must_use]
+    pub fn highlight_columns(&self, intent: &Intent) -> Vec<usize> {
+        self.layout
+            .highlight_roles()
+            .iter()
+            .filter(|r| {
+                self.roles
+                    .iter()
+                    .any(|role| role.name == **r && role.kind == RoleKind::Category)
+            })
+            .filter_map(|r| intent.column(r))
+            .collect()
     }
 
     /// The width a card of this form wants for `intent`'s rows.
