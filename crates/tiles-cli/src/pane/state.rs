@@ -8,6 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use tiles_engine::Form;
 use tiles_intent::source::{DataSource, OmniSource};
 use tiles_intent::{Cell, Intent, Request};
 
@@ -109,8 +110,9 @@ impl State {
 
     /// The intents the cards draw: each card's [`State::base`], its hidden
     /// series left out, the cross-filter applied, then its sort.
+    /// `forms` are the engine's, to tell which columns a card highlights by.
     #[must_use]
-    pub fn apply(&self, call: &[Intent]) -> Vec<Intent> {
+    pub fn apply(&self, call: &[Intent], forms: &[Form]) -> Vec<Intent> {
         let mut out: Vec<Intent> = (0..call.len())
             .filter_map(|i| self.base(call, i).cloned())
             .collect();
@@ -119,7 +121,7 @@ impl State {
                 *intent = without(intent, names);
             }
         }
-        let mut out = board::apply(&out, self.filter.as_ref());
+        let mut out = board::apply(&out, self.filter.as_ref(), forms);
         for (card, order) in &self.sorts {
             if let Some(intent) = out.get_mut(*card) {
                 *intent = sorted(intent, *order);
@@ -466,7 +468,7 @@ mod tests {
         let call = [grouped()];
         let mut state = State::default();
         state.toggle(&call, 0, "Espresso").unwrap();
-        let shown = state.apply(&call);
+        let shown = state.apply(&call, &tiles_engine::forms::load(None).unwrap());
         assert_eq!(column(&shown[0], "product"), ["Filter", "Filter", "Filter"]);
         assert!(
             shown[0].highlight.is_empty(),
@@ -478,7 +480,10 @@ mod tests {
         );
         state.toggle(&call, 0, "Espresso").unwrap();
         assert!(state.is_empty());
-        assert_eq!(state.apply(&call), call);
+        assert_eq!(
+            state.apply(&call, &tiles_engine::forms::load(None).unwrap()),
+            call
+        );
     }
 
     #[test]
@@ -504,7 +509,7 @@ mod tests {
         };
         state.toggle(&call, 1, "Filter").unwrap();
         state.sort(&call[0], 0).unwrap();
-        let shown = state.apply(&call);
+        let shown = state.apply(&call, &tiles_engine::forms::load(None).unwrap());
         assert_eq!(shown[0].highlight, ["Braga"]);
         assert_eq!(column(&shown[0], "city")[0], "Lisbon");
         assert_eq!(column(&shown[1], "city"), ["Braga"]);

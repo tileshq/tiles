@@ -496,21 +496,12 @@ pub(crate) fn validate(form: &Form, intent: &Intent, pal: &Palette) -> Result<()
     // A big number has one value and no category to colour: a highlight
     // there (often the headline the title names) is ignored, not refused.
     if !intent.highlight.is_empty() && form.takes_highlight() {
-        let roles = highlight_roles(form.layout);
-        let cols: Vec<usize> = roles
-            .iter()
-            .filter(|r| {
-                form.roles
-                    .iter()
-                    .any(|role| role.name == **r && role.kind == RoleKind::Category)
-            })
-            .filter_map(|r| intent.column(r))
-            .collect();
+        let cols = form.highlight_columns(intent);
         if cols.is_empty() {
             return Err(IntentError::new(
                 "highlight",
                 format!("form {} has no category to highlight", form.name),
-                if roles.is_empty() {
+                if form.layout.highlight_roles().is_empty() {
                     "drop highlight"
                 } else {
                     "name a label column in fields, or drop highlight"
@@ -595,20 +586,6 @@ fn takes_note(layout: Layout) -> bool {
             | Layout::Line
             | Layout::Dumbbell
     )
-}
-
-/// The columns a form's highlight names values in: its category roles
-/// among those it colours.
-fn highlight_columns(form: &Form, intent: &Intent) -> Vec<usize> {
-    highlight_roles(form.layout)
-        .iter()
-        .filter(|r| {
-            form.roles
-                .iter()
-                .any(|role| role.name == **r && role.kind == RoleKind::Category)
-        })
-        .filter_map(|r| intent.column(r))
-        .collect()
 }
 
 /// Corrects what an intent asks of its form wherever the card it then
@@ -701,7 +678,7 @@ fn mend_highlight(form: &Form, intent: &mut Intent, pal: &Palette) {
         ));
     }
     if !intent.highlight.is_empty() {
-        let cols = highlight_columns(form, intent);
+        let cols = form.highlight_columns(intent);
         if cols.is_empty() {
             intent.highlight.clear();
             intent.notes.push(format!(
@@ -782,24 +759,6 @@ fn mend_highlight(form: &Form, intent: &mut Intent, pal: &Palette) {
                 "Only one series can take the accent, so Tiles highlighted {which} alone."
             ));
         }
-    }
-}
-
-/// The roles whose values a layout colours when highlighted, so a highlight
-/// it cannot show is refused (ADR-003).
-fn highlight_roles(layout: Layout) -> &'static [&'static str] {
-    match layout {
-        Layout::Kpi => &[],
-        Layout::Stacked | Layout::Shares | Layout::Slope => &["series"],
-        Layout::Line | Layout::Grouped => &["series", "x"],
-        Layout::Scatter => &["label"],
-        Layout::Columns
-        | Layout::Bars
-        | Layout::Lollipop
-        | Layout::Dots
-        | Layout::Bullet
-        | Layout::Waterfall
-        | Layout::Dumbbell => &["x"],
     }
 }
 
