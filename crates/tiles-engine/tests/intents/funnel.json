@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "form": "funnel",
+  "title": "Four in ten shoppers give up at the payment-details step",
+  "subtitle": "Shoppers reaching each checkout step, last 7 days; percent of the step before",
+  "claim": {
+    "kind": "rank",
+    "tone": "bad"
+  },
+  "fields": {
+    "x": "step",
+    "y": "shoppers"
+  },
+  "highlight": [
+    "Details entered"
+  ],
+  "data": {
+    "rows": [
+      {
+        "step": "Checkout started",
+        "shoppers": 10000
+      },
+      {
+        "step": "Method chosen",
+        "shoppers": 8200
+      },
+      {
+        "step": "Details entered",
+        "shoppers": 5100
+      },
+      {
+        "step": "Authorised",
+        "shoppers": 4700
+      },
+      {
+        "step": "Paid",
+        "shoppers": 4550
+      }
+    ]
+  }
+}

@@ -25,7 +25,7 @@ Ready means `scripts/doctor.sh` passes. Every drive then runs in its own tmux se
 .agents/skills/verify-tiles/scripts/doctor.sh
 ```
 
-Read-only. It fails when the release binary is missing or older than any crate source, embedded asset, add-on under `adapters/` or manifest, when `tiles --version` does not name intent schema 1, when `tiles forms` lists fewer than 20 forms, or when tmux is missing. Run it first, and again whenever a drive surprises you.
+Read-only. It fails when the release binary is missing or older than any crate source, embedded asset, add-on under `adapters/` or manifest, when `tiles --version` does not name intent schema 1, when `tiles forms` lists fewer than 24 forms, or when tmux is missing. Run it first, and again whenever a drive surprises you.
 
 ## Drive
 

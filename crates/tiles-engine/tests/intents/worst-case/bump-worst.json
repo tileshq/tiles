@@ -1,0 +1,142 @@
+{
+  "v": 1,
+  "form": "bump",
+  "title": "Senior Product Design Engineer, Platform Infrastructure, leads every team on hires in 2026",
+  "claim": {
+    "kind": "rank",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "period",
+    "y": "value",
+    "series": "name"
+  },
+  "unit": "usd",
+  "highlight": [
+    "نور الهدى عبد الرحمن"
+  ],
+  "data": {
+    "rows": [
+      {
+        "period": "2026-01",
+        "name": "Benachrichtigungseinstellungen",
+        "value": 12345678.9
+      },
+      {
+        "period": "2026-01",
+        "name": "王秀英",
+        "value": 1284000.5
+      },
+      {
+        "period": "2026-01",
+        "name": "نور الهدى عبد الرحمن",
+        "value": 1000000.0
+      },
+      {
+        "period": "2026-01",
+        "name": "🦊 Fox",
+        "value": 1284.0
+      },
+      {
+        "period": "2026-01",
+        "name": "👩🏽 Priya",
+        "value": 1.0
+      },
+      {
+        "period": "2026-01",
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -1284.0
+      },
+      {
+        "period": "2026-02",
+        "name": "Benachrichtigungseinstellungen",
+        "value": 12345678.9
+      },
+      {
+        "period": "2026-02",
+        "name": "王秀英",
+        "value": 1669200.6500000001
+      },
+      {
+        "period": "2026-02",
+        "name": "نور الهدى عبد الرحمن",
+        "value": 1600000.0
+      },
+      {
+        "period": "2026-02",
+        "name": "🦊 Fox",
+        "value": 2439.6
+      },
+      {
+        "period": "2026-02",
+        "name": "👩🏽 Priya",
+        "value": 1.0
+      },
+      {
+        "period": "2026-02",
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -1669.2
+      },
+      {
+        "period": "2026-03",
+        "name": "Benachrichtigungseinstellungen",
+        "value": 12345678.9
+      },
+      {
+        "period": "2026-03",
+        "name": "王秀英",
+        "value": 2054400.8
+      },
+      {
+        "period": "2026-03",
+        "name": "نور الهدى عبد الرحمن",
+        "value": 1000000.0
+      },
+      {
+        "period": "2026-03",
+        "name": "🦊 Fox",
+        "value": 2054.4
+      },
+      {
+        "period": "2026-03",
+        "name": "👩🏽 Priya",
+        "value": 1.0
+      },
+      {
+        "period": "2026-03",
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -2054.4
+      },
+      {
+        "period": "Benachrichtigungseinstellungen",
+        "name": "Benachrichtigungseinstellungen",
+        "value": 12345678.9
+      },
+      {
+        "period": "Benachrichtigungseinstellungen",
+        "name": "王秀英",
+        "value": 2439600.9499999997
+      },
+      {
+        "period": "Benachrichtigungseinstellungen",
+        "name": "نور الهدى عبد الرحمن",
+        "value": 1600000.0
+      },
+      {
+        "period": "Benachrichtigungseinstellungen",
+        "name": "🦊 Fox",
+        "value": 1669.2
+      },
+      {
+        "period": "Benachrichtigungseinstellungen",
+        "name": "👩🏽 Priya",
+        "value": 1.0
+      },
+      {
+        "period": "Benachrichtigungseinstellungen",
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": -2439.6
+      }
+    ]
+  }
+}
