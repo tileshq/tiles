@@ -3357,6 +3357,34 @@ fn m14_a_histogram_counts_every_value_in_touching_bins_split_at_its_threshold() 
             "M14: the named bins hold every value past {limit}"
         );
     }
+    // A threshold below the first round edge keeps the round bins.
+    let rows: Vec<serde_json::Value> = [100, 120, 140, 160, 180, 200]
+        .iter()
+        .map(|v| serde_json::json!({"wait": v, "limit": 3}))
+        .collect();
+    let s = scene_of(&intent(
+        "histogram",
+        &serde_json::json!({"x": "wait", "threshold": "limit"}),
+        &rows,
+    ))
+    .unwrap();
+    assert_eq!(texts(&s, Part::Value), ["100% at 3 or more"], "M14");
+    let spans: Vec<String> = s
+        .marks()
+        .filter_map(|m| tip_value(m.tip.as_deref()?, "wait"))
+        .collect();
+    assert_eq!(
+        spans,
+        [
+            "100 to 120",
+            "120 to 140",
+            "140 to 160",
+            "160 to 180",
+            "180 to 200",
+            "200 to 220"
+        ],
+        "M14: bins stay on the round grid"
+    );
     // One value: whole count ticks.
     let s = scene_of(&intent(
         "histogram",
