@@ -650,7 +650,7 @@ fn a_spotlit_line_answers_hover_on_every_point_it_does_not_draw() {
 }
 
 #[test]
-fn a_pane_heading_is_as_tall_with_a_chip_and_its_title_stays_clear_of_it() {
+fn a_pane_heading_keeps_its_title_whole_and_a_focus_adds_no_reflow() {
     let e = engine();
     let title = "Payments by region and method, second quarter 2026 (EUR)";
     let note = "Read from the dev build of the payments model, built two hours ago";
@@ -658,7 +658,24 @@ fn a_pane_heading_is_as_tall_with_a_chip_and_its_title_stays_clear_of_it() {
         column: "payments_by_region_and_settlement_country",
         value: "Bosnia and Herzegovina, Federation entity",
     };
-    for width in [tiles_engine::MIN_WIDTH, 480.0, 800.0, 1600.0] {
+    // Left, top, right, bottom of a text or a rectangle.
+    let extent = |i: &Item| {
+        if let Shape::Text {
+            text, x, y, style, ..
+        } = &i.shape
+        {
+            (*x, y - style.size, x + e.text_width(text, *style), *y)
+        } else {
+            let b = i.bounds();
+            (b.left, b.top, b.right, b.bottom)
+        }
+    };
+    for (width, inline) in [
+        (280.0, false),
+        (320.0, false),
+        (470.0, false),
+        (1600.0, true),
+    ] {
         let opts = Options {
             width,
             theme: light(),
@@ -666,41 +683,58 @@ fn a_pane_heading_is_as_tall_with_a_chip_and_its_title_stays_clear_of_it() {
         };
         let plain = e.pane_heading(title, Some(note), None, &opts);
         let with = e.pane_heading(title, Some(note), Some(chip), &opts);
-        assert_eq!(with.height, plain.height, "at {width}");
-        assert_eq!(texts(&with, Part::Title), texts(&plain, Part::Title));
+        let lines = texts(&plain, Part::Title);
+        assert_eq!(with.height, plain.height, "a focus reflows at {width}");
+        assert_eq!(texts(&with, Part::Title), lines, "at {width}");
+        assert_eq!(
+            lines,
+            texts(&e.heading(title, Some(note), &opts), Part::Title),
+            "the title keeps its own lines at {width}"
+        );
+        for line in &lines {
+            assert!(!line.ends_with('…'), "{line:?} is cut at {width}");
+            assert!(line.contains(' '), "{line:?} stands alone at {width}");
+        }
         assert_eq!(
             texts(&plain, Part::Subtitle),
             texts(&e.heading(title, Some(note), &opts), Part::Subtitle),
             "the note keeps the full width at {width}"
         );
-        let chip_items: Vec<&Item> = with
+        let chip_box = with
             .items
             .iter()
             .filter(|i| !plain.items.contains(i))
-            .collect();
-        let chip_left = chip_items
-            .iter()
-            .map(|i| i.bounds().left)
-            .fold(f32::INFINITY, f32::min);
-        let chip_right = chip_items
-            .iter()
-            .map(|i| match &i.shape {
-                Shape::Text { text, x, style, .. } => x + e.text_width(text, *style),
-                _ => i.bounds().right,
-            })
-            .fold(f32::NEG_INFINITY, f32::max);
-        let title_right = with
-            .part(Part::Title)
-            .map(|i| match &i.shape {
-                Shape::Text { text, x, style, .. } => x + e.text_width(text, *style),
-                _ => i.bounds().right,
-            })
-            .fold(f32::NEG_INFINITY, f32::max);
-        assert!(
-            title_right < chip_left,
-            "the title ends at {title_right}, the chip starts at {chip_left}, at {width}"
-        );
-        assert!(chip_left > 0.0 && chip_right <= width, "at {width}");
+            .map(&extent)
+            .fold(
+                (
+                    f32::INFINITY,
+                    f32::INFINITY,
+                    f32::NEG_INFINITY,
+                    f32::NEG_INFINITY,
+                ),
+                |a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)),
+            );
+        assert!(chip_box.0 > 0.0 && chip_box.2 <= width, "at {width}");
+        assert!(chip_box.3 <= with.height, "at {width}");
+        for item in with.part(Part::Title).chain(with.part(Part::Subtitle)) {
+            let t = extent(item);
+            let apart =
+                t.2 < chip_box.0 || chip_box.2 < t.0 || t.3 <= chip_box.1 || chip_box.3 <= t.1;
+            assert!(apart, "{:?} meets the chip at {width}", item.text());
+        }
+        let first = extent(with.part(Part::Title).next().unwrap());
+        let last = extent(with.part(Part::Title).last().unwrap());
+        if inline {
+            assert!(
+                chip_box.1 < first.3,
+                "the chip sits on the title line at {width}"
+            );
+        } else {
+            assert!(
+                chip_box.1 >= last.3,
+                "the chip sits under the title at {width}"
+            );
+        }
     }
 }
 

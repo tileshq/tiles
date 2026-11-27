@@ -424,13 +424,23 @@ const KEY_CAP: (f32, f32, f32) = (18.0, 5.0, 11.5);
 const CHIP_TAIL: (f32, f32) = (14.0, 6.0);
 /// What the key cap and the words after it say.
 const RESET_KEY: (&str, &str) = ("r", "resets");
+/// The least share of the heading's width the title keeps beside the
+/// chip; below it the chip takes its own line.
+const INLINE_TITLE: f32 = 0.6;
+/// Space between the title and a chip beside it.
+const CHIP_CLEAR: f32 = 24.0;
+/// Space above and below a chip on its own line.
+const CHIP_LINE_PAD: f32 = 6.0;
 
 /// The pane's heading: the dashboard's title and note as a card heading
-/// draws them, and, when a click selected a value, its chip at the right
-/// of the title line, `column value ×`, then the key that clears it. The
-/// title always wraps short of the widest chip the width allows, so the
-/// heading is as tall with a chip as without one; the note takes the full
-/// width.
+/// draws them, and, when a click selected a value, its chip, `column
+/// value ×`, then the key that clears it. Where the title keeps at least
+/// [`INLINE_TITLE`] of the width beside the widest chip, the chip sits at
+/// the right of the title line and the title wraps short of it; on a
+/// narrower pane the chip takes its own line under the title, which keeps
+/// the full width. Either way the heading leaves the chip's room whether
+/// a value is focused or not, so focusing one never reflows it. The note
+/// takes the full width.
 pub(crate) fn heading(
     tokens: &Tokens,
     fonts: &Fonts,
@@ -444,23 +454,43 @@ pub(crate) fn heading(
     let value = Style::new(CHIP_SIZE, 500);
     let cap = Style::new(KEY_CAP.2, 500);
     let words = Style::new(CHIP_SIZE, 400);
-    let (column_max, value_max) = (opts.width / 10.0, opts.width / 6.0);
     let frame = 2.0 * CHIP_PAD + CHIP_DOT + 3.0 * CHIP_GAP + fonts.width("×", value);
     let cap_w = fonts.width(RESET_KEY.0, cap) + 2.0 * KEY_CAP.1;
     let tail_w = CHIP_TAIL.0 + cap_w + CHIP_TAIL.1 + fonts.width(RESET_KEY.1, words);
     let side = tokens.card.margin_x + tokens.card.border;
-    let room = opts.width - 2.0 * side - frame - column_max - value_max - tail_w - 24.0;
-    let mut scene = crate::layout::heading_in(tokens, fonts, title, note, room.max(1.0), opts);
+    let inner = opts.width - 2.0 * side;
+    let caps = (opts.width / 12.0, opts.width / 7.0);
+    let beside = inner - frame - caps.0 - caps.1 - tail_w - CHIP_CLEAR;
+    let inline = beside >= INLINE_TITLE * inner;
+    let ((column_max, value_max), room) = if inline {
+        (caps, (beside, 0.0))
+    } else {
+        let free = inner - frame - tail_w;
+        (
+            (0.4 * free, 0.6 * free),
+            (inner, CHIP_H + 2.0 * CHIP_LINE_PAD),
+        )
+    };
+    let mut scene = crate::layout::heading_in(tokens, fonts, title, note, room, opts);
     let Some(chip) = chip else {
         return scene;
     };
     let column = fit(fonts, chip.column, key, column_max);
     let value_text = fit(fonts, chip.value, value, value_max);
     let chip_w = frame + fonts.width(&column, key) + fonts.width(&value_text, value);
-    let mid = tokens.card.margin_top + tokens.text.title_line * 1.2 / 2.0;
+    let title_line = tokens.text.title_line * 1.2;
+    let (x, mid) = if inline {
+        (opts.width - side, tokens.card.margin_top + title_line / 2.0)
+    } else {
+        let lines = f32::from(u16::try_from(scene.part(Part::Title).count()).unwrap_or(u16::MAX));
+        (
+            side + chip_w + tail_w,
+            tokens.card.margin_top + lines * title_line + CHIP_LINE_PAD + CHIP_H / 2.0,
+        )
+    };
     let mut row = Leftward {
         fonts,
-        x: opts.width - side,
+        x,
         mid,
         items: std::mem::take(&mut scene.items),
     };
