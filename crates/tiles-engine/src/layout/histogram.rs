@@ -3,6 +3,7 @@
 use skia_safe::Rect;
 use tiles_intent::{Intent, IntentError};
 
+use super::shares::share_text;
 use super::{Ctx, PAD, TOP, Under, f};
 use crate::format::NumberFormat;
 use crate::scale::{Linear, nice, tick_step, ticks};
@@ -329,15 +330,14 @@ pub(super) fn histogram(c: &mut Ctx) -> f32 {
                 .push(Item::new(Part::Guide, dash, ink.0, ink.1).grow(Grow::Fade));
             y0 += 2.0 * DASH;
         }
-        #[allow(clippy::cast_possible_truncation)] // A percentage, 0 to 100.
         let pct = if share.1 > 0.0 {
-            (share.0 / share.1 * 100.0).round()
+            share.0 / share.1 * 100.0
         } else {
             0.0
         };
         let text = format!(
             "{}% at {} or more",
-            NumberFormat::for_values(&[pct]).format(pct),
+            share_text(&NumberFormat::for_values(&[0.0]), pct),
             NumberFormat::for_values(&[t])
                 .with_unit(c.intent.unit)
                 .format(t)

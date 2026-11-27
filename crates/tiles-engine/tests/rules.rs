@@ -3330,6 +3330,32 @@ fn m14_a_histogram_counts_every_value_in_touching_bins_split_at_its_threshold() 
         (past - 63.0).abs() < 1e-9,
         "M14: the named bins hold the share"
     );
+    // One value: whole count ticks.
+    let s = scene_of(&intent(
+        "histogram",
+        &serde_json::json!({"x": "wait"}),
+        &[serde_json::json!({"wait": 12})],
+    ))
+    .unwrap();
+    // The count axis is the one set flush right against the plot.
+    let counts: Vec<&str> = s
+        .part(Part::AxisLabel)
+        .filter(|i| {
+            matches!(
+                i.shape,
+                Shape::Text {
+                    anchor: tiles_engine::scene::Anchor::End,
+                    ..
+                }
+            )
+        })
+        .filter_map(Item::text)
+        .collect();
+    assert_eq!(counts, ["0", "1"], "M14: counts tick in whole numbers");
+}
+
+#[test]
+fn m14_a_histogram_share_is_exact_wherever_its_threshold_falls() {
     // A threshold at or below the smallest value still sits on a bin edge,
     // so every value is past it.
     for (values, limit, want) in [
@@ -3356,6 +3382,23 @@ fn m14_a_histogram_counts_every_value_in_touching_bins_split_at_its_threshold() 
             (past - 5.0).abs() < 1e-9,
             "M14: the named bins hold every value past {limit}"
         );
+    }
+    // A share short of 100 or above 0 never rounds to either end.
+    for (past, under, want) in [
+        (249, 1, ">99% at 15 or more"),
+        (1, 299, "<1% at 15 or more"),
+    ] {
+        let rows: Vec<serde_json::Value> = std::iter::repeat_n(20, past)
+            .chain(std::iter::repeat_n(10, under))
+            .map(|v| serde_json::json!({"wait": v, "limit": 15}))
+            .collect();
+        let s = scene_of(&intent(
+            "histogram",
+            &serde_json::json!({"x": "wait", "threshold": "limit"}),
+            &rows,
+        ))
+        .unwrap();
+        assert_eq!(texts(&s, Part::Value), [want], "M14");
     }
     // A threshold below the first round edge keeps the round bins.
     let rows: Vec<serde_json::Value> = [100, 120, 140, 160, 180, 200]
@@ -3385,28 +3428,6 @@ fn m14_a_histogram_counts_every_value_in_touching_bins_split_at_its_threshold() 
         ],
         "M14: bins stay on the round grid"
     );
-    // One value: whole count ticks.
-    let s = scene_of(&intent(
-        "histogram",
-        &serde_json::json!({"x": "wait"}),
-        &[serde_json::json!({"wait": 12})],
-    ))
-    .unwrap();
-    // The count axis is the one set flush right against the plot.
-    let counts: Vec<&str> = s
-        .part(Part::AxisLabel)
-        .filter(|i| {
-            matches!(
-                i.shape,
-                Shape::Text {
-                    anchor: tiles_engine::scene::Anchor::End,
-                    ..
-                }
-            )
-        })
-        .filter_map(Item::text)
-        .collect();
-    assert_eq!(counts, ["0", "1"], "M14: counts tick in whole numbers");
 }
 
 #[test]

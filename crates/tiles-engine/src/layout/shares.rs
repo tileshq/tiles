@@ -27,7 +27,7 @@ const SHARES_LABELLED: f64 = 10.0;
 /// A share in whole percent. One that is neither 0 nor 100 but rounds to
 /// it reads `<1` or `>99`, so a segment too thin to see still says it is
 /// there.
-fn share_text(pf: &NumberFormat, pct: f64) -> String {
+pub(super) fn share_text(pf: &NumberFormat, pct: f64) -> String {
     let r = pct.round();
     if r <= 0.0 && pct > 0.0 {
         "<1".to_string()
