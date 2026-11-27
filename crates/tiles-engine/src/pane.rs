@@ -46,7 +46,7 @@ const RING: f32 = 1.0;
 const RING_HOVER: f32 = 0.6;
 /// The ring's corner radius round a mark that has none of its own.
 const RING_RADIUS: f32 = 3.0;
-/// How far a hovered mark's fill moves towards white.
+/// The opacity of the white wash over a hovered mark.
 const LIGHTEN: f32 = 0.12;
 /// How far a focus moves the other marks towards the card.
 const DIM: f32 = 0.3;
@@ -311,28 +311,6 @@ fn bounds_of(points: &[(f32, f32)]) -> Rect {
     Rect::from_ltrb(l, t, r, b)
 }
 
-/// The box `item` covers: a text item's glyphs, a line with its stroke,
-/// an area down to its baseline.
-fn item_box(fonts: &Fonts, item: &Item) -> Option<Rect> {
-    match &item.shape {
-        Shape::Rect { rect, .. } => Some(*rect),
-        Shape::Circle { cx, cy, r } => Some(Rect::from_ltrb(cx - r, cy - r, cx + r, cy + r)),
-        Shape::Line { points, width } => {
-            Some(bounds_of(points).with_outset((width / 2.0, width / 2.0)))
-        }
-        Shape::Area { points, base } => {
-            let b = bounds_of(points);
-            Some(Rect::from_ltrb(
-                b.left,
-                b.top.min(*base),
-                b.right,
-                b.bottom.max(*base),
-            ))
-        }
-        Shape::Text { .. } => text_box(fonts, item),
-    }
-}
-
 /// The box a text item's glyphs cover: from its cap height down to a
 /// little under its baseline.
 fn text_box(fonts: &Fonts, item: &Item) -> Option<Rect> {
@@ -551,8 +529,8 @@ fn place_tip(
     (pref_left.min(card.width - w).max(0.0), top)
 }
 
-/// The overlay for `hit` on `card`, at device `scale`: the mark a little
-/// lighter inside a one-pixel accent ring ([`ring_items`]), and, as a picture of its own, a
+/// The overlay for `hit` on `card`, at device `scale`: the mark under a
+/// white wash inside a one-pixel accent ring ([`ring_items`]), and, as a picture of its own, a
 /// raised tooltip placed by [`place_tip`], starting just left of the
 /// pointer when it sits below the mark, kept inside the tile (ADR-070).
 pub(crate) fn overlay(
@@ -610,12 +588,11 @@ pub(crate) fn overlay(
     }
 }
 
-/// The hover ring's picture: the mark a little lighter, as it reads on
-/// the card moved towards white, with every item the card draws after it
-/// over its box drawn again above it; a one-pixel ring in the accent round
-/// it (at [`RING_HOVER`] unless the mark is the focused value); and, above
-/// the ring, any value label the ring's box reaches, so no label is ever
-/// cut.
+/// The hover ring's picture: a wash of white at [`LIGHTEN`] in the
+/// mark's shape, which lightens it and leaves whatever the card draws over
+/// it showing through; a one-pixel ring in the accent round it (at
+/// [`RING_HOVER`] unless the mark is the focused value); and, above the
+/// ring, any value label the ring's box reaches, so no label is ever cut.
 fn ring_items(
     fonts: &Fonts,
     pal: &crate::tokens::Palette,
@@ -625,37 +602,15 @@ fn ring_items(
     focused: bool,
 ) -> Vec<Item> {
     let mut items = Vec::new();
-    let at = hit.row.and_then(|row| {
-        card.items
-            .iter()
-            .position(|i| i.part == Part::Mark && i.datum == Some(row))
-    });
-    let path = match at {
-        Some(at) => {
-            let m = &card.items[at];
+    let path = match mark_item(card, hit.row) {
+        Some(m) => {
             if matches!(m.shape, Shape::Rect { .. } | Shape::Circle { .. }) {
-                let solid = Rgba { a: 255, ..m.color };
-                let mut lit = m.clone();
-                lit.color = pal
-                    .card
-                    .mix(solid, f32::from(m.color.a) / 255.0)
-                    .mix(Rgba::white(1.0), LIGHTEN);
-                lit.part = Part::Guide;
-                lit.datum = None;
-                lit.tip = None;
-                items.push(lit);
-                let under = item_box(fonts, m);
-                items.extend(
-                    card.items[at + 1..]
-                        .iter()
-                        .filter(|i| !matches!(i.part, Part::Value | Part::Hit))
-                        .filter(|i| {
-                            item_box(fonts, i)
-                                .zip(under)
-                                .is_some_and(|(b, u)| Rect::intersects(&b, u))
-                        })
-                        .cloned(),
-                );
+                let mut wash = m.clone();
+                wash.color = Rgba::white(LIGHTEN);
+                wash.part = Part::Guide;
+                wash.datum = None;
+                wash.tip = None;
+                items.push(wash);
             }
             ring_path(m).unwrap_or_else(|| rounded(ring, [RING_RADIUS; 4]))
         }
