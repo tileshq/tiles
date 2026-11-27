@@ -739,6 +739,7 @@ fn a_pane_heading_keeps_its_title_whole_and_a_focus_adds_no_reflow() {
 }
 
 #[test]
+#[allow(clippy::cast_precision_loss, clippy::similar_names)] // Pixel sizes and hit maps.
 fn every_pane_tooltip_leaves_the_title_and_value_labels_clear() {
     let e = engine();
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
@@ -777,13 +778,18 @@ fn every_pane_tooltip_leaves_the_title_and_value_labels_clear() {
             let mut clear: Vec<_> = s.part(Part::Title).map(|t| text_box(&e, t)).collect();
             clear.extend(s.part(Part::Value).map(|v| text_box(&e, v)));
             // Every mark, with no hint and with each hint the pane shows.
-            let hints = [None, Some("click again to clear"), Some("click to focus Netherlands")];
+            let hints = [
+                None,
+                Some("click again to clear"),
+                Some("click to focus Netherlands"),
+            ];
             let marks = hits.iter().filter(|h| h.row.is_some());
             for (hit, hint) in marks.flat_map(|h| hints.map(|n| (h, n))) {
                 let pointer = f32::midpoint(hit.left as f32, hit.right as f32) / scale;
                 let cue = tiles_engine::pane::Cue {
                     pointer_x: Some(pointer),
                     hint,
+                    focused: false,
                 };
                 let tip = e.hover(&s, hit, scale, cue).tip;
                 let tip_box = skia_safe::Rect::from_xywh(
@@ -798,13 +804,123 @@ fn every_pane_tooltip_leaves_the_title_and_value_labels_clear() {
                 );
                 for r in &clear {
                     assert!(
-                        !skia_safe::Rect::intersects2(&tip_box, r),
+                        !skia_safe::Rect::intersects2(tip_box, r),
                         "on {:?} at {width}, the tooltip {tip_box:?} for {:?} covers {r:?}",
                         s.part(Part::Title).next().and_then(Item::text),
                         hit.tip
                     );
                 }
             }
+        }
+    }
+}
+
+/// Asserts no point of a ring, moved by `offset`, falls inside `label`.
+fn assert_clear_of(points: &[(f32, f32)], offset: (f32, f32), label: skia_safe::Rect, width: f32) {
+    for &(px, py) in points {
+        let (px, py) = (px + offset.0, py + offset.1);
+        assert!(
+            !(px >= label.left - 0.5
+                && px <= label.right + 0.5
+                && py >= label.top - 0.5
+                && py <= label.bottom + 0.5),
+            "at {width} the ring passes ({px}, {py}) inside the label {label:?}"
+        );
+    }
+}
+
+/// The pane's ring round the Germany column of the pane fixture's column
+/// card, hovered and focused (ADR-069): one CSS pixel in the accent, at
+/// 60% on hover and in full on a focused mark, no stroke in the ink, and
+/// neither the ring nor the tooltip on the 6,900 label.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel offsets.
+fn the_pane_ring_is_one_accent_pixel_and_leaves_the_value_label_whole() {
+    let e = engine();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
+    let board: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let column = tiles_intent::parse(&board["rows"][0][1].to_string()).unwrap();
+    let scale = 2.0;
+    for (theme, width) in [(dark(), 700.0), (dark(), 357.0), (light(), 700.0)] {
+        let opts = Options {
+            width,
+            theme,
+            cell_height: Some(12.5),
+        };
+        let plain = e.scene(&column, &opts).unwrap();
+        let focused = e.pane_focus(&plain);
+        let pal = e.tokens().palette(theme);
+        let label = plain
+            .part(Part::Value)
+            .find(|v| v.text() == Some("6,900"))
+            .map(|v| text_box(&e, v))
+            .expect("the Germany column's value label");
+        // Focus rings the highlighted Germany column and dims the others.
+        let rings: Vec<&Item> = focused
+            .items
+            .iter()
+            .filter(|i| i.part == Part::Guide && matches!(i.shape, Shape::Line { .. }))
+            .collect();
+        assert!(!rings.is_empty(), "a ring round Germany");
+        for ring in &rings {
+            assert_eq!(ring.color, pal.accent);
+            let Shape::Line { points, .. } = &ring.shape else {
+                unreachable!()
+            };
+            assert_clear_of(points, (0.0, 0.0), label, width);
+        }
+        assert!(
+            focused
+                .items
+                .iter()
+                .filter(|i| i.part == Part::Mark && !i.highlighted)
+                .all(|m| plain
+                    .items
+                    .iter()
+                    .any(|p| p.datum == m.datum && p.part == Part::Mark && p.color != m.color))
+        );
+        for (scene, full) in [(&plain, false), (&focused, true)] {
+            let hit = hit_map(scene, scale)
+                .into_iter()
+                .find(|h| h.row == Some(0))
+                .expect("Germany's column");
+            let cue = tiles_engine::pane::Cue {
+                focused: full,
+                ..tiles_engine::pane::Cue::default()
+            };
+            let overlay = e.hover(scene, &hit, scale, cue);
+            let (dx, dy) = (
+                overlay.ring.left as f32 / scale,
+                overlay.ring.top as f32 / scale,
+            );
+            let mut drew_ring = false;
+            for item in &overlay.ring.scene.items {
+                let Shape::Line { points, width } = &item.shape else {
+                    continue;
+                };
+                drew_ring = true;
+                assert!((width - 1.0).abs() < f32::EPSILON, "a one-pixel ring");
+                assert_ne!(item.color, pal.ink, "no stroke in the ink");
+                let want = if full {
+                    pal.accent
+                } else {
+                    pal.accent.with_opacity(0.6)
+                };
+                assert_eq!(item.color, want);
+                assert_clear_of(points, (dx, dy), label, scene.width);
+            }
+            assert!(drew_ring);
+            let tip = skia_safe::Rect::from_xywh(
+                overlay.tip.left as f32 / scale,
+                overlay.tip.top as f32 / scale,
+                overlay.tip.scene.width,
+                overlay.tip.scene.height,
+            );
+            assert!(
+                !skia_safe::Rect::intersects2(tip, label),
+                "at {width} the tooltip {tip:?} covers the label {label:?}"
+            );
         }
     }
 }

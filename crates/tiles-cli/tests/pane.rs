@@ -318,14 +318,15 @@ fn a_hover_sends_only_the_overlay_and_a_click_sends_only_the_cards_it_focuses() 
         "the page"
     );
     // Clicking Germany's bar focuses Germany: the lollipop, which named
-    // Spain, now names Germany, and the heading takes the chip. The bar,
-    // the columns and the lines already name Germany, the stacked bars
-    // colour by method, and the scorecards hold no region: they stay.
+    // Spain, now names Germany; the bar, the columns and the lines, which
+    // already named it, take the focus ring and dim their other marks; and
+    // the heading takes the chip. The stacked bars colour by method and the
+    // scorecards hold no region: they stay.
     let click = trace
         .lines()
         .find(|l| l.contains("kind=click bytes"))
         .unwrap();
-    assert!(click.ends_with("cards=2"), "{click}");
+    assert!(click.ends_with("cards=5"), "{click}");
     assert!(
         has(&out, "region = Germany".as_bytes()),
         "the status line names the selection"
@@ -366,8 +367,8 @@ fn a_click_keeps_the_tooltip_on_the_mark_still_under_the_pointer() {
         .collect();
     assert_eq!(clicks.len(), 2, "{trace}");
     // Focusing and clearing change the same cards back and forth.
-    assert!(clicks[0].ends_with("cards=2"), "{}", clicks[0]);
-    assert!(clicks[1].ends_with("cards=2"), "{}", clicks[1]);
+    assert!(clicks[0].ends_with("cards=5"), "{}", clicks[0]);
+    assert!(clicks[1].ends_with("cards=5"), "{}", clicks[1]);
 
     // The first click places the bar's tooltip again, as the other overlay
     // id, above the cards, and deletes the one the hover placed.
@@ -417,10 +418,10 @@ fn a_click_on_the_focused_value_on_another_card_clears_the_focus() {
     assert!(status.success(), "{status:?}");
     let clicks = updates(&trace, "click");
     assert_eq!(clicks.len(), 2, "{trace}");
-    // The second click clears the focus: the lollipop and the heading go
+    // The second click clears the focus: the four cards and the heading go
     // back, as a second click on the bar itself does.
-    assert!(clicks[0].ends_with("cards=2"), "{}", clicks[0]);
-    assert!(clicks[1].ends_with("cards=2"), "{}", clicks[1]);
+    assert!(clicks[0].ends_with("cards=5"), "{}", clicks[0]);
+    assert!(clicks[1].ends_with("cards=5"), "{}", clicks[1]);
 }
 
 #[test]
