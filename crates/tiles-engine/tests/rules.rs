@@ -3957,7 +3957,7 @@ fn m18_a_bump_chart_leaves_a_dropped_out_highlight_unnamed() {
             rows.push(serde_json::json!({"x": month, "s": name, "v": 90 - 10 * k}));
         }
         let fifth = if month == "Dec" {
-            "E"
+            "Bank transfers"
         } else {
             "Wallets and cards"
         };
@@ -3970,23 +3970,30 @@ fn m18_a_bump_chart_leaves_a_dropped_out_highlight_unnamed() {
             .all(|m| m.emphasis == Emphasis::Accent),
         "K1: the dropped-out highlight keeps its accent"
     );
-    assert_eq!(texts(&s, Part::Legend), ["A", "B", "C", "D", "E"], "M18");
-    let dec = bump_point_x(&s, "E", "Dec");
+    assert_eq!(
+        texts(&s, Part::Legend),
+        ["A", "B", "C", "D", "Bank transfers"],
+        "M18"
+    );
+    let dec = bump_point_x(&s, "Bank transfers", "Dec");
+    let e = engine();
+    let card = &e.tokens().card;
+    let content_right = s.card.right() - card.border - card.padding;
     for item in s.part(Part::Legend) {
-        let b = item.bounds();
+        let b = text_box(&e, item);
         assert!(
             b.left() > dec,
             "M18: a name is drawn mid-plot at {}",
             b.left()
         );
         assert!(
-            b.right() <= s.card.right(),
-            "M18: a name runs past the card's edge to {}",
+            b.right() <= content_right + 0.5,
+            "M18: a name runs into the card's padding to {}",
             b.right()
         );
     }
     let rank_y = |r: &str| text_at(&s, Part::AxisLabel, r).1;
-    let (_, e_y) = text_at(&s, Part::Legend, "E");
+    let (_, e_y) = text_at(&s, Part::Legend, "Bank transfers");
     assert!(
         (e_y - rank_y("#5")).abs() < (rank_y("#5") - rank_y("#4")) / 2.0,
         "M18: December's #5 is named beside its own lane"
