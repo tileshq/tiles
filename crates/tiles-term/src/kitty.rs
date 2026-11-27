@@ -133,9 +133,7 @@ pub fn show_rgba_zlib(id: u32, width: u32, height: u32, zlib: &[u8], at: Placeme
 #[must_use]
 pub fn fill(id: u32, rgba: [u8; 4], cols: u16, rows: u16, z: i32) -> Vec<u8> {
     command(
-        &format!(
-            "a=T,f=32,t=d,q=2,C=1,i={id},p=1,s=3,v=3,x=1,y=1,w=1,h=1,c={cols},r={rows},z={z}"
-        ),
+        &format!("a=T,f=32,t=d,q=2,C=1,i={id},p=1,s=3,v=3,x=1,y=1,w=1,h=1,c={cols},r={rows},z={z}"),
         &rgba.repeat(9),
     )
 }

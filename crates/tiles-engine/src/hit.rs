@@ -39,7 +39,11 @@ impl Hit {
 /// The hit map of a settled scene at a device scale.
 #[must_use]
 pub fn hit_map(scene: &Scene, scale: f32) -> Vec<Hit> {
-    scene.items.iter().filter_map(|i| target(i, scale)).collect()
+    scene
+        .items
+        .iter()
+        .filter_map(|i| target(i, scale))
+        .collect()
 }
 
 /// The hover target `item` makes at a device scale, if it makes one.
