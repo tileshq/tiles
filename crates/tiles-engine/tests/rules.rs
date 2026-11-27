@@ -3452,10 +3452,8 @@ fn m14_a_histogram_refuses_what_would_draw_a_wrong_count() {
         )
     };
     assert_eq!(refuse(binned(7.0, 3.0)).key, "fields.threshold", "M14");
-    assert!(
-        scene_of(&binned(5.0, 3.0)).is_ok(),
-        "M14: a threshold on an edge draws"
-    );
+    let s = scene_of(&binned(5.0, 3.0)).expect("M14: a threshold on an edge draws");
+    assert_eq!(texts(&s, Part::Value), ["73% at 5 or more"], "M14");
     let uneven = |limit: f64| {
         let rows: Vec<serde_json::Value> = [0.0, 5.0, 10.0, 15.0, 30.0, 60.0]
             .iter()
@@ -3467,24 +3465,14 @@ fn m14_a_histogram_refuses_what_would_draw_a_wrong_count() {
             &rows,
         )
     };
-    assert_eq!(
-        refuse(uneven(45.0)).key,
-        "fields.threshold",
-        "M14: a threshold between two sent starts splits a bin"
-    );
-    let s = scene_of(&uneven(30.0)).unwrap();
-    assert_eq!(texts(&s, Part::Value), ["33% at 30 or more"], "M14");
-    let cols: Vec<&Item> = s.marks().collect();
-    for pair in cols.windows(2) {
-        let (a, b) = (rect(pair[0]), rect(pair[1]));
-        assert!(
-            (b.left - a.right - 1.0).abs() < 0.01,
-            "M14: a sent bin runs to the next start"
+    for limit in [30.0, 45.0] {
+        assert_eq!(
+            refuse(uneven(limit)).to_string(),
+            "data.rows: sent bins must be equal width; send bin starts an equal step apart, \
+             or leave y out and send the values",
+            "M14: bins at uneven gaps are refused"
         );
     }
-    let tips: Vec<&str> = cols.iter().filter_map(|m| m.tip.as_deref()).collect();
-    assert!(tips.contains(&"from: 15 to 30\nn: 10"), "{tips:?}");
-    assert!(tips.contains(&"from: 30 to 60\nn: 10"), "{tips:?}");
     let mut end = fixture("histogram");
     for row in end["data"]["rows"].as_array_mut().unwrap() {
         row["sla"] = serde_json::json!(60);

@@ -14,7 +14,7 @@
       "name": "y",
       "kind": "number",
       "required": false,
-      "doc": "the count in each bin, with x as the bin's start; leave it out and Tiles counts the values into bins"
+      "doc": "the count in each bin, with x as the bin's start and the starts an equal step apart; leave it out and Tiles counts the values into bins"
     },
     {
       "name": "threshold",

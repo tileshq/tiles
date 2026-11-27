@@ -10,7 +10,7 @@
 - `histogram-frames` writes the entrance ending on the settled card.
 - `histogram-raw` counts values sent one a row into round bins.
 - `histogram-threshold-inside` refuses a threshold that falls inside a sent bin.
-- `histogram-threshold-gap` refuses a threshold between two unevenly spaced sent starts and draws one on a start.
+- `histogram-uneven` refuses sent bin starts at uneven gaps.
 - `histogram-threshold-end` draws a threshold on the last sent bin's end.
 
 ## How to get to it (user POV)
@@ -33,7 +33,7 @@ Preconditions:
 - **Entrance.** Run the light command with name `histogram-frames` and `--frames '$OUT/frames' --timings`. Frame 00 is fully transparent and the last frame matches `card.png`.
 - **Raw values.** Write an intent with `form` histogram, fields `x` = `wait` and `threshold` = `limit`, and 100 rows with `wait` 0.5 to 99.5 and `limit` 37 to `$OUT/../histogram-raw.json`; render it with name `histogram-raw`. Exit 0; the bins are even, a bin edge sits on 37 and the label reads `63% at 37 or more`.
 - **Threshold inside a bin.** Render the fixture with every `sla` set to 17, name `histogram-threshold-inside`. Exit 1 and `tiles: fields.threshold: the threshold falls inside a bin, so the share past it cannot be counted; send a threshold that is one of the bins' starts, or leave y out and send the values`.
-- **Threshold in a gap.** Write an intent with `form` histogram, fields `x` = `from`, `y` = `n` and `threshold` = `limit`, and six rows with `from` 0, 5, 10, 15, 30 and 60, `n` 10 each and `limit` 45 to `$OUT/../histogram-gap.json`; render it with name `histogram-threshold-gap`. Exit 1 and the same `fields.threshold` line as above. Set `limit` to 30 and render again: exit 0, the 15 column reaches the 30 column and the 30 column reaches the 60 one, the 30 and 60 bins are coloured and the label reads `33% at 30 or more`.
+- **Uneven bins.** Write an intent with `form` histogram, fields `x` = `from`, `y` = `n` and `threshold` = `limit`, and six rows with `from` 0, 5, 10, 15, 30 and 60, `n` 10 each and `limit` 30 to `$OUT/../histogram-uneven.json`; render it with name `histogram-uneven`. Exit 1 and `tiles: data.rows: sent bins must be equal width; send bin starts an equal step apart, or leave y out and send the values`.
 - **Threshold at the last bin's end.** Render the fixture with every `sla` set to 60, name `histogram-threshold-end`. Exit 0; no bin is coloured and the label reads `0% at 60 or more`.
 
 ## Gotchas

@@ -41,7 +41,8 @@ struct Bin {
     rows: Vec<usize>,
 }
 
-/// Refuses counts below zero and more bins than the form draws.
+/// Refuses counts below zero, more bins than the form draws, sent bins of
+/// unequal width and a threshold on no bin edge.
 pub(super) fn check(intent: &Intent) -> Result<(), IntentError> {
     let Some(x) = intent.column("x") else {
         return Ok(());
@@ -82,10 +83,22 @@ pub(super) fn check(intent: &Intent) -> Result<(), IntentError> {
             "send wider bins, or leave y out and let Tiles bin the values",
         ));
     }
+    // Starts sent at uneven gaps leave each bin's width a guess, so neither
+    // its column nor the share past a threshold could be drawn true.
+    let bins = bins(intent, None);
+    let uneven = bins
+        .windows(2)
+        .any(|w| ((w[1].start - w[0].start) - (w[0].end - w[0].start)).abs() > edge(&w[0]));
+    if uneven {
+        return Err(IntentError::new(
+            "data.rows",
+            "sent bins must be equal width",
+            "send bin starts an equal step apart, or leave y out and send the values",
+        ));
+    }
     // A threshold on no sent bin's edge splits a count Tiles cannot split,
     // so the share past it would be wrong.
     if let Some(t) = threshold(intent) {
-        let bins = bins(intent, None);
         let past_first = bins.first().is_some_and(|b| t > b.start + edge(b));
         let on_start = bins.iter().any(|b| (t - b.start).abs() <= edge(b));
         let on_end = bins.last().is_some_and(|b| (t - b.end).abs() <= edge(b));
@@ -111,9 +124,8 @@ fn threshold(intent: &Intent) -> Option<f64> {
     intent.table.rows.iter().find_map(|r| r[t].number())
 }
 
-/// The bins: the sent ones with their counts summed per start, each running
-/// to the next start and the last one narrowest gap past its start, or the
-/// values counted into even, round bins, shifted so one edge is the
+/// The bins: the sent ones with their counts summed per start, each as wide
+/// as the narrowest gap between two starts, or the values counted into even, round bins, shifted so one edge is the
 /// threshold when it would fall inside a round bin, so the bins past it
 /// hold exactly the values past it.
 fn bins(intent: &Intent, threshold: Option<f64>) -> Vec<Bin> {
@@ -145,14 +157,8 @@ fn bins(intent: &Intent, threshold: Option<f64>) -> Vec<Bin> {
             .filter(|g| *g > 0.0)
             .fold(f64::INFINITY, f64::min);
         let width = if width.is_finite() { width } else { 1.0 };
-        let ends: Vec<f64> = sent
-            .iter()
-            .skip(1)
-            .map(|b| b.start)
-            .chain(sent.last().map(|b| b.start + width))
-            .collect();
-        for (b, end) in sent.iter_mut().zip(ends) {
-            b.end = end;
+        for b in &mut sent {
+            b.end = b.start + width;
         }
         return sent;
     }
