@@ -4169,6 +4169,40 @@ fn m21_small_multiples_share_one_scale_with_a_panel_per_series() {
 }
 
 #[test]
+fn small_multiples_panel_names_sharing_a_long_start_print_apart() {
+    let names = [
+        "Payment links paid by card in Germany, Austria and Switzerland",
+        "Payment links paid by card in Germany, Austria and Liechtenstein",
+        "Payment links paid by card in Germany, Austria and Luxembourg",
+        "Payment links paid by card in Germany, Austria and Belgium",
+        "Payment links paid by card in Germany, Austria and the Netherlands",
+    ];
+    let rows: Vec<serde_json::Value> = names
+        .iter()
+        .enumerate()
+        .flat_map(|(i, s)| ["Q1", "Q2"].map(|q| serde_json::json!({"q": q, "s": s, "v": i + 1})))
+        .collect();
+    let s = scene_of(&intent(
+        "small-multiples",
+        &serde_json::json!({"x": "q", "y": "v", "series": "s"}),
+        &rows,
+    ))
+    .unwrap();
+    let printed = texts(&s, Part::Legend);
+    assert_eq!(printed.len(), names.len(), "{printed:?}");
+    assert!(
+        printed.iter().any(|t| t.contains('\u{2026}')),
+        "the names are cut to fit their panels: {printed:?}"
+    );
+    let distinct: std::collections::HashSet<&String> = printed.iter().collect();
+    assert_eq!(
+        distinct.len(),
+        names.len(),
+        "two panel names print alike: {printed:?}"
+    );
+}
+
+#[test]
 fn an_axis_title_sits_under_the_value_axis_of_a_form_that_draws_one() {
     let title_under = |s: &Scene, title: &str| {
         let t = s

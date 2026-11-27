@@ -117,6 +117,7 @@ pub(super) fn multiples(c: &mut Ctx) -> f32 {
         .map(|i| c.intent.table.columns[i].clone())
         .unwrap_or_default();
     let muted = (Emphasis::Muted, c.pal.muted);
+    let names = c.fit_all(&series, name_style, panel_w / c.width);
     let mut plot = Rect::from_ltrb(f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     for (si, name) in series.iter().enumerate() {
         let (col_i, row_i) = (si % cols, si / cols);
@@ -132,7 +133,6 @@ pub(super) fn multiples(c: &mut Ctx) -> f32 {
             r1: top,
         };
         plot.join(Rect::from_ltrb(left, top, right, top + PANEL_HEIGHT));
-        let shown = c.fit_all(std::slice::from_ref(name), name_style, panel_w / c.width);
         let (name_e, name_c) = if hl[si] {
             c.named()
         } else {
@@ -140,7 +140,7 @@ pub(super) fn multiples(c: &mut Ctx) -> f32 {
         };
         c.text(
             Part::Legend,
-            shown[0].clone(),
+            names[si].clone(),
             px,
             py + (TOP * name_style.size).round(),
             name_style,
