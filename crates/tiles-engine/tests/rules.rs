@@ -3825,23 +3825,39 @@ fn m18_a_bump_chart_ranks_each_period_largest_first() {
         e.to_string().contains("bump needs at least two periods"),
         "{e}"
     );
-    let rows = [
+    let bump_of = |rows: &[serde_json::Value]| {
+        scene_of(&intent(
+            "bump",
+            &serde_json::json!({"x": "x", "y": "v", "series": "s"}),
+            rows,
+        ))
+        .unwrap()
+    };
+    // A top two that changes members ranks no deeper than #2.
+    let s = bump_of(&[
+        serde_json::json!({"x": "Jan", "s": "A", "v": 3}),
+        serde_json::json!({"x": "Jan", "s": "B", "v": 2}),
+        serde_json::json!({"x": "Feb", "s": "B", "v": 3}),
+        serde_json::json!({"x": "Feb", "s": "C", "v": 2}),
+    ]);
+    assert_eq!(texts(&s, Part::AxisLabel)[..2], ["#1", "#2"], "M18");
+    assert!(
+        !texts(&s, Part::AxisLabel).contains(&"#3".to_string()),
+        "M18"
+    );
+    assert_eq!(texts(&s, Part::Legend).len(), 3, "M18");
+    // A series with no number in any period takes no rank and no name.
+    let s = bump_of(&[
         serde_json::json!({"x": "Jan", "s": "A", "v": 1}),
         serde_json::json!({"x": "Feb", "s": "A", "v": 2}),
         serde_json::json!({"x": "Jan", "s": "B", "v": null}),
         serde_json::json!({"x": "Feb", "s": "B", "v": null}),
-    ];
-    let e = scene_of(&intent(
-        "bump",
-        &serde_json::json!({"x": "x", "y": "v", "series": "s"}),
-        &rows,
-    ))
-    .unwrap_err();
+    ]);
     assert!(
-        e.to_string()
-            .starts_with("data.rows: series B has no y number in any period"),
-        "M18: a series with no values has no rank to show: {e}"
+        !texts(&s, Part::AxisLabel).contains(&"#2".to_string()),
+        "M18"
     );
+    assert_eq!(texts(&s, Part::Legend), ["A"], "M18");
 }
 
 #[test]

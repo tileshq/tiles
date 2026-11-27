@@ -32,11 +32,11 @@ fn ranks(grid: &Cells, periods: usize, series: usize) -> Vec<Vec<Option<usize>>>
     out
 }
 
-/// One line per series through its rank in each period, first at the top,
-/// ranks named down the left and each series named at its last point. The
-/// named series takes the accent (red for a bad finding) and the rest the
-/// ordered context greys (playbook K1); with none named, the categorical
-/// order (K6).
+/// One line per series with a number through its rank in each period, first
+/// at the top, ranks named down the left as far as the most series any one
+/// period ranks, and each series named at its last point. The named series
+/// takes the accent (red for a bad finding) and the rest the ordered context
+/// greys (playbook K1); with none named, the categorical order (K6).
 #[allow(
     clippy::too_many_lines,
     clippy::many_single_char_names,
@@ -44,13 +44,31 @@ fn ranks(grid: &Cells, periods: usize, series: usize) -> Vec<Vec<Option<usize>>>
 )] // A layout reads top to bottom as geometry: x, y, h are scales and sizes.
 pub(super) fn bump(c: &mut Ctx) -> f32 {
     let xs = c.distinct("x");
-    let series = c.distinct("series");
+    let series: Vec<String> = match (c.col("series"), c.col("y")) {
+        (Some(sc), Some(y)) => {
+            let mut out: Vec<String> = Vec::new();
+            for row in c
+                .intent
+                .table
+                .rows
+                .iter()
+                .filter(|r| r[y].number().is_some())
+            {
+                let l = row[sc].label();
+                if !out.contains(&l) {
+                    out.push(l);
+                }
+            }
+            out
+        }
+        _ => Vec::new(),
+    };
     let grid = cells(c, &xs, &series);
     let rank = ranks(&grid, xs.len(), series.len());
     let values: Vec<f64> = grid.iter().flatten().flatten().map(|(v, _)| *v).collect();
     let nf = NumberFormat::for_values(&values).with_unit(c.intent.unit);
     let ls = c.label_style();
-    let n = series.len().max(1);
+    let n = rank.iter().flatten().flatten().copied().max().unwrap_or(1);
     let (colors, hl) = series_colors(c, &series, false);
     let spotlight = hl.iter().any(|h| *h);
     let rank_labels: Vec<String> = (1..=n).map(|r| format!("#{r}")).collect();
