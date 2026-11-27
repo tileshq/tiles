@@ -397,6 +397,33 @@ fn a_click_keeps_the_tooltip_on_the_mark_still_under_the_pointer() {
 }
 
 #[test]
+fn a_click_on_the_focused_value_on_another_card_clears_the_focus() {
+    let board = Dashboard::new();
+    let (column, card) = board.card("column");
+    let hit = &tiles_engine::hit::hit_map(&card.scene, board.look.scale)[0];
+    let x = column.column("x").unwrap();
+    assert_eq!(column.table.rows[hit.row.unwrap()][x].label(), "Germany");
+    let (cx, cy) = first_mark(&board, "column");
+    let (bx, by) = first_bar();
+    let mut pane = Pane::start("focus-elsewhere", &fixture("dashboard.json"), &[]);
+    pane.first_frame();
+    // Focus Germany on the bar chart, then click Germany on the columns.
+    pane.send(&[report(0, bx, by, 'M'), report(0, bx, by, 'm')].concat());
+    pane.wait_trace("kind=click bytes", 1);
+    pane.send(&[report(0, cx, cy, 'M'), report(0, cx, cy, 'm')].concat());
+    pane.wait_trace("kind=click bytes", 2);
+    pane.send(b"q");
+    let (status, _, trace) = pane.finish();
+    assert!(status.success(), "{status:?}");
+    let clicks = updates(&trace, "click");
+    assert_eq!(clicks.len(), 2, "{trace}");
+    // The second click clears the focus: the lollipop and the heading go
+    // back, as a second click on the bar itself does.
+    assert!(clicks[0].ends_with("cards=2"), "{}", clicks[0]);
+    assert!(clicks[1].ends_with("cards=2"), "{}", clicks[1]);
+}
+
+#[test]
 fn sigint_gives_the_screen_back() {
     let mut pane = Pane::start("sigint", &fixture("dashboard.json"), &[]);
     pane.first_frame();

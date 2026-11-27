@@ -705,7 +705,7 @@ impl App<'_> {
             return None;
         };
         let picked = board::pick(shown, slot.intent?, hit.row?, self.engine().forms())?;
-        Some(if state.focus.as_ref() == Some(&picked) {
+        Some(if state.focuses(&picked) {
             "click again to clear".to_string()
         } else {
             format!("click to focus {}", picked.value)
@@ -761,14 +761,11 @@ impl App<'_> {
         let picked = self
             .mark_at(x, y)
             .and_then(|(card, row)| board::pick(shown, card, row, self.engine().forms()));
-        if picked == state.focus {
-            if picked.is_none() {
-                return Ok(None);
-            }
-            next.focus = None;
-        } else {
-            next.focus = picked;
-        }
+        next.focus = match picked {
+            Some(p) if !state.focuses(&p) => Some(p),
+            _ if state.focus.is_none() => return Ok(None),
+            _ => None,
+        };
         self.restate(next, "click", None).map(Some)
     }
 
@@ -954,9 +951,9 @@ impl App<'_> {
     }
 
     /// Lays out again each card whose intent `intents` changes, in its own
-    /// slot, and sends those whose scene changed. A card that refuses its
-    /// filtered rows keeps its picture and its intent, and names itself on
-    /// the status line. Returns the intents the cards now show, how many
+    /// slot, and sends those whose scene changed. A card that cannot be
+    /// drawn with its focus, hidden series, sort or drill keeps its picture
+    /// and its intent, and names itself on the status line. Returns the intents the cards now show, how many
     /// cards it sent, and the cards that refused.
     fn relay(
         &mut self,

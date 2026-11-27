@@ -333,8 +333,9 @@ impl Call {
     /// Lays out and places every card for the interactive pane (ADR-069):
     /// as [`Call::lay_out`] does, but over the pane's width less
     /// [`PANE_MARGIN`] columns each side, with every line, the scorecards'
-    /// too, fitted to that whole width ([`crate::board::plan_full`]), and
-    /// each card moved right by the margin.
+    /// too, fitted to that whole width ([`crate::board::plan_full`]), the
+    /// heading laid out as the pane draws it, and each card moved right by
+    /// the margin.
     ///
     /// # Errors
     ///
@@ -361,7 +362,7 @@ impl Call {
                     .collect()
             })
             .collect();
-        let mut laid = painter.lay_out(&rows, self.heading.as_ref(), look)?;
+        let mut laid = painter.lay_out_pane(&rows, self.heading.as_ref(), look)?;
         for card in &mut laid.cards {
             card.at.0 = card.at.0.saturating_add(PANE_MARGIN);
             card.x += look.width_css(PANE_MARGIN);

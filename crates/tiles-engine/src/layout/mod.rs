@@ -347,6 +347,20 @@ pub(crate) fn heading(
     note: Option<&str>,
     opts: &Options,
 ) -> Scene {
+    let left = tokens.card.margin_x + tokens.card.border;
+    heading_in(tokens, fonts, title, note, opts.width - 2.0 * left, opts)
+}
+
+/// [`heading`] with the title wrapped at `title_width` CSS pixels, a line
+/// no word break fits cut with an ellipsis, and the note at the full width.
+pub(crate) fn heading_in(
+    tokens: &Tokens,
+    fonts: &Fonts,
+    title: &str,
+    note: Option<&str>,
+    title_width: f32,
+    opts: &Options,
+) -> Scene {
     let t = tokens;
     let pal = t.palette(opts.theme);
     let left = t.card.margin_x + t.card.border;
@@ -359,8 +373,13 @@ pub(crate) fn heading(
     };
     let mut items = Vec::new();
     let mut y = t.card.margin_top;
-    for text in fonts.wrap_balanced(title, title_style, width) {
+    for text in fonts.wrap_balanced(title, title_style, title_width) {
         let baseline = y + fonts.baseline_in_line(size, line);
+        let text = if title_width < width {
+            crate::pane::fit(fonts, &text, title_style, title_width)
+        } else {
+            text
+        };
         items.push(text_item(
             Part::Title,
             text,

@@ -650,6 +650,61 @@ fn a_spotlit_line_answers_hover_on_every_point_it_does_not_draw() {
 }
 
 #[test]
+fn a_pane_heading_is_as_tall_with_a_chip_and_its_title_stays_clear_of_it() {
+    let e = engine();
+    let title = "Payments by region and method, second quarter 2026 (EUR)";
+    let note = "Read from the dev build of the payments model, built two hours ago";
+    let chip = tiles_engine::pane::Chip {
+        column: "payments_by_region_and_settlement_country",
+        value: "Bosnia and Herzegovina, Federation entity",
+    };
+    for width in [tiles_engine::MIN_WIDTH, 480.0, 800.0, 1600.0] {
+        let opts = Options {
+            width,
+            theme: light(),
+            cell_height: Some(19.0),
+        };
+        let plain = e.pane_heading(title, Some(note), None, &opts);
+        let with = e.pane_heading(title, Some(note), Some(chip), &opts);
+        assert_eq!(with.height, plain.height, "at {width}");
+        assert_eq!(texts(&with, Part::Title), texts(&plain, Part::Title));
+        assert_eq!(
+            texts(&plain, Part::Subtitle),
+            texts(&e.heading(title, Some(note), &opts), Part::Subtitle),
+            "the note keeps the full width at {width}"
+        );
+        let chip_items: Vec<&Item> = with
+            .items
+            .iter()
+            .filter(|i| !plain.items.contains(i))
+            .collect();
+        let chip_left = chip_items
+            .iter()
+            .map(|i| i.bounds().left)
+            .fold(f32::INFINITY, f32::min);
+        let chip_right = chip_items
+            .iter()
+            .map(|i| match &i.shape {
+                Shape::Text { text, x, style, .. } => x + e.text_width(text, *style),
+                _ => i.bounds().right,
+            })
+            .fold(f32::NEG_INFINITY, f32::max);
+        let title_right = with
+            .part(Part::Title)
+            .map(|i| match &i.shape {
+                Shape::Text { text, x, style, .. } => x + e.text_width(text, *style),
+                _ => i.bounds().right,
+            })
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(
+            title_right < chip_left,
+            "the title ends at {title_right}, the chip starts at {chip_left}, at {width}"
+        );
+        assert!(chip_left > 0.0 && chip_right <= width, "at {width}");
+    }
+}
+
+#[test]
 fn intent_rules_refuse_with_one_line_naming_the_fix() {
     let e = engine();
     let mut v = fixture("column");
