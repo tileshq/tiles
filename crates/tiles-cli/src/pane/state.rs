@@ -150,6 +150,15 @@ impl State {
         Ok(())
     }
 
+    /// Whether `picked` is the focused value: the same column and value,
+    /// on whichever card it was clicked.
+    #[must_use]
+    pub fn focuses(&self, picked: &Selection) -> bool {
+        self.focus
+            .as_ref()
+            .is_some_and(|f| f.column == picked.column && f.value == picked.value)
+    }
+
     /// Drops the focus when its card's drill level differs from
     /// `prev`'s: the card now draws another period, which the selection
     /// was not made on.
@@ -494,6 +503,27 @@ mod tests {
         assert_eq!(legend_series(&g, "Espr…").as_deref(), Some("Espresso"));
         assert_eq!(legend_series(&g, "…"), None, "both begin with nothing");
         assert_eq!(legend_series(&g, "Latte"), None);
+    }
+
+    #[test]
+    fn the_focused_value_is_focused_on_whichever_card_it_is_clicked() {
+        let pick = |card: usize, value: &str| Selection {
+            card,
+            column: "region".into(),
+            value: value.into(),
+        };
+        let state = State {
+            focus: Some(pick(0, "Germany")),
+            ..State::default()
+        };
+        assert!(state.focuses(&pick(0, "Germany")));
+        assert!(state.focuses(&pick(1, "Germany")), "another card");
+        assert!(!state.focuses(&pick(1, "France")));
+        assert!(!state.focuses(&Selection {
+            column: "city".into(),
+            ..pick(0, "Germany")
+        }));
+        assert!(!State::default().focuses(&pick(0, "Germany")));
     }
 
     #[test]

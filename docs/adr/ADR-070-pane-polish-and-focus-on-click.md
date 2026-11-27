@@ -20,7 +20,7 @@ The pane lays its cards out with `Call::lay_out_pane`. It plans the rows as the 
 
 ### Page and heading
 
-One pixel of the theme's page colour, placed with `kitty::fill` stretched over the whole window at stacking order -1,073,741,825, sits under the text, under cells with a background colour such as the status line's key caps, and under the cards. At -1 the key caps' backgrounds vanished under it in Ghostty, as the kitty protocol has it. The pane sends it only with the first frame and after a resize. The colour is the theme's new `page` token (plain dark `#171614`, plain light `#f1eee7`). A design pack without one takes the card colour a third of the way to black on a dark theme and a twentieth on a light one, so design pack 1 still loads. The heading is `Engine::pane_heading`, the card heading on the cards' left edge. With a value focused, a chip at the right of its title line reads `column value ×`, then the `r` key that clears it. The title wraps short of the chip.
+One pixel of the theme's page colour, placed with `kitty::fill` stretched over the whole window at stacking order -1,073,741,825, sits under the text, under cells with a background colour such as the status line's key caps, and under the cards. At -1 the key caps' backgrounds vanished under it in Ghostty, as the kitty protocol has it. The pane sends it only with the first frame and after a resize. The colour is the theme's new `page` token (plain dark `#171614`, plain light `#f1eee7`). A design pack without one takes the card colour a third of the way to black on a dark theme and a twentieth on a light one, so design pack 1 still loads. The heading is `Engine::pane_heading`, the card heading on the cards' left edge. With a value focused, a chip at the right of its title line reads `column value ×`, then the `r` key that clears it. The title always wraps short of room for the widest chip, the column cut to a tenth of the width and the value to a sixth, so the heading's slot is laid out that tall from the first frame and a chip never makes it taller. The note keeps the full width.
 
 ### Status line
 
@@ -32,7 +32,7 @@ The overlay outlines the mark with a two-pixel ink ring with rounded corners ins
 
 ### Click
 
-A click on a mark focuses its value (`State::focus`): every card keeps all its rows, and each card whose form highlights by the selected column and holds the value highlights it in the accent, whatever the card's claim tone. The form-aware check from PR #15 decides which cards can, so a stacked bar, which highlights only by its series, keeps its own colours when a region is clicked. A second click on the focused value, a click on empty space, or `r` clears the focus. The pane still lays out and sends only the cards whose scene changed, and the heading when its chip changes.
+A click on a mark focuses its value (`State::focus`): every card keeps all its rows, and each card whose form highlights by the selected column and holds the value highlights it in the accent, whatever the card's claim tone. The form-aware check from PR #15 decides which cards can, so a stacked bar, which highlights only by its series, keeps its own colours when a region is clicked. A second click on the focused value, on whichever card holds it, a click on empty space, or `r` clears the focus. The pane still lays out and sends only the cards whose scene changed, and the heading when its chip changes.
 
 ## Consequences
 

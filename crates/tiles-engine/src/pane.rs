@@ -428,7 +428,9 @@ const RESET_KEY: (&str, &str) = ("r", "resets");
 /// The pane's heading: the dashboard's title and note as a card heading
 /// draws them, and, when a click selected a value, its chip at the right
 /// of the title line, `column value ×`, then the key that clears it. The
-/// title wraps short of the chip.
+/// title always wraps short of the widest chip the width allows, so the
+/// heading is as tall with a chip as without one; the note takes the full
+/// width.
 pub(crate) fn heading(
     tokens: &Tokens,
     fonts: &Fonts,
@@ -437,41 +439,24 @@ pub(crate) fn heading(
     chip: Option<Chip<'_>>,
     opts: &Options,
 ) -> Scene {
-    let Some(chip) = chip else {
-        return crate::layout::heading(tokens, fonts, title, note, opts);
-    };
     let pal = tokens.palette(opts.theme);
     let key = Style::new(CHIP_SIZE, 400);
     let value = Style::new(CHIP_SIZE, 500);
     let cap = Style::new(KEY_CAP.2, 500);
     let words = Style::new(CHIP_SIZE, 400);
-    let column = chip.column;
-    let value_text = fit(fonts, chip.value, value, opts.width / 4.0);
-    let chip_w = 2.0 * CHIP_PAD
-        + CHIP_DOT
-        + CHIP_GAP
-        + fonts.width(column, key)
-        + CHIP_GAP
-        + fonts.width(&value_text, value)
-        + CHIP_GAP
-        + fonts.width("×", value);
+    let (column_max, value_max) = (opts.width / 10.0, opts.width / 6.0);
+    let frame = 2.0 * CHIP_PAD + CHIP_DOT + 3.0 * CHIP_GAP + fonts.width("×", value);
     let cap_w = fonts.width(RESET_KEY.0, cap) + 2.0 * KEY_CAP.1;
     let tail_w = CHIP_TAIL.0 + cap_w + CHIP_TAIL.1 + fonts.width(RESET_KEY.1, words);
     let side = tokens.card.margin_x + tokens.card.border;
-    let room = (opts.width - chip_w - tail_w - 24.0).max(crate::MIN_WIDTH.min(opts.width));
-    let mut scene = crate::layout::heading(
-        tokens,
-        fonts,
-        title,
-        note,
-        &Options {
-            width: room,
-            ..*opts
-        },
-    );
-    scene.width = opts.width;
-    scene.card = Rect::from_ltrb(side, scene.card.top, opts.width - side, scene.card.bottom);
-    scene.plot = Rect::from_ltrb(side, scene.plot.top, opts.width - side, scene.plot.bottom);
+    let room = opts.width - 2.0 * side - frame - column_max - value_max - tail_w - 24.0;
+    let mut scene = crate::layout::heading_in(tokens, fonts, title, note, room.max(1.0), opts);
+    let Some(chip) = chip else {
+        return scene;
+    };
+    let column = fit(fonts, chip.column, key, column_max);
+    let value_text = fit(fonts, chip.value, value, value_max);
+    let chip_w = frame + fonts.width(&column, key) + fonts.width(&value_text, value);
     let mid = tokens.card.margin_top + tokens.text.title_line * 1.2 / 2.0;
     let mut row = Leftward {
         fonts,
@@ -505,7 +490,7 @@ pub(crate) fn heading(
         (Emphasis::Accent, pal.accent.mix(pal.ink, 0.8)),
     );
     row.x -= CHIP_GAP;
-    row.put(column, key, soft);
+    row.put(&column, key, soft);
     row.x -= CHIP_GAP + CHIP_DOT;
     let dot = Rect::from_xywh(row.x, mid - CHIP_DOT / 2.0, CHIP_DOT, CHIP_DOT);
     row.items.push(rect(dot, 2.0, pal.accent));
@@ -737,7 +722,7 @@ pub(crate) fn text_grid(
 }
 
 /// `text` cut with an ellipsis to `max` CSS pixels.
-fn fit(fonts: &Fonts, text: &str, style: Style, max: f32) -> String {
+pub(crate) fn fit(fonts: &Fonts, text: &str, style: Style, max: f32) -> String {
     if fonts.width(text, style) <= max {
         return text.to_string();
     }

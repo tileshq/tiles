@@ -598,8 +598,10 @@ impl Engine {
         pane::overlay(&self.tokens, &self.fonts, scene, hit, scale, cue)
     }
 
-    /// The interactive pane's heading (ADR-070): [`Engine::heading`], with
-    /// the chip of a value a click selected at the right of its title.
+    /// The interactive pane's heading (ADR-070): [`Engine::heading`], its
+    /// title wrapped short of room for a chip, with the chip of a value a
+    /// click selected at the right of its title. A chip never makes it
+    /// taller.
     #[must_use]
     pub fn pane_heading(
         &self,

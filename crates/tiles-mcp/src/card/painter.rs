@@ -233,7 +233,7 @@ impl EnginePainter {
 
     /// [`EnginePainter::lay_out`] for the interactive pane, its heading
     /// laid out as the pane draws it, with room for a focused value's chip
-    /// (ADR-069).
+    /// (ADR-070).
     ///
     /// # Errors
     ///
