@@ -1,12 +1,13 @@
-//! The pane's cards and what a click does to them (ADR-063, ADR-065):
-//! which column a clicked mark selects, the other cards' rows filtered to
-//! it in memory, and which card, mark and legend entry sit under a pixel.
+//! The pane's cards and what a click does to them (ADR-063, ADR-065,
+//! ADR-069): which column a clicked mark selects, the value focused on
+//! every card that highlights by it, and which card, mark and legend entry
+//! sit under a pixel.
 //! Pure logic, no terminal.
 
 use tiles_engine::hit::Hit;
 use tiles_engine::pane::LegendHit;
 use tiles_engine::{Form, Scene};
-use tiles_intent::{Cell, Intent};
+use tiles_intent::{Cell, Intent, Tone};
 
 /// The roles whose column a click selects by, in the order tried: a
 /// series first, since a series is what other cards break down by, then
@@ -108,27 +109,9 @@ pub fn pick(shown: &[Intent], card: usize, row: usize, forms: &[Form]) -> Option
     choose(shown.get(card)?, row, &others, card, forms)
 }
 
-/// `intent` with only the rows whose `column` reads `value`, and only the
-/// highlights those rows still hold; `None` when it has no such column,
-/// so the card stays as it is.
-#[must_use]
-pub fn filtered(intent: &Intent, column: &str, value: &str) -> Option<Intent> {
-    let c = intent.table.index(column)?;
-    let mut out = intent.clone();
-    out.table
-        .rows
-        .retain(|r| r.get(c).is_some_and(|cell| cell.label() == value));
-    out.highlight.retain(|h| {
-        out.table
-            .rows
-            .iter()
-            .any(|r| r.iter().any(|v| v.label() == *h))
-    });
-    Some(out)
-}
-
-/// `intent` with `value` as its only highlight, when its form, found in
-/// `forms`, highlights by `column` and its rows hold `value` there. A
+/// `intent` with `value` as its only highlight, drawn in the accent
+/// whatever the card's claim, when its form, found in `forms`,
+/// highlights by `column` and its rows hold `value` there. A
 /// value its form cannot colour, such as the month column a drilled card
 /// of weeks still holds, or a stacked bar's x, highlights nothing: the
 /// engine would refuse the card.
@@ -145,28 +128,32 @@ pub fn highlighted(intent: &Intent, forms: &[Form], column: &str, value: &str) -
     });
     if takes {
         out.highlight = vec![value.to_string()];
+        out.claim.tone = Tone::Good;
     }
     out
 }
 
-/// The intents a selection draws, from the call's own `base`: the clicked
-/// card highlights the value, every other card with the column keeps its
-/// rows with that value, and the rest stay as they are.
+/// The intents a selection draws, from the call's own `base` (ADR-069):
+/// every card keeps all its rows, and each that highlights by the
+/// selected column and holds the value focuses it in the accent; the rest
+/// stay as they are.
 #[must_use]
 pub fn apply(base: &[Intent], selection: Option<&Selection>, forms: &[Form]) -> Vec<Intent> {
     let Some(s) = selection else {
         return base.to_vec();
     };
     base.iter()
-        .enumerate()
-        .map(|(i, intent)| {
-            if i == s.card {
-                highlighted(intent, forms, &s.column, &s.value)
-            } else {
-                filtered(intent, &s.column, &s.value).unwrap_or_else(|| intent.clone())
-            }
-        })
+        .map(|intent| highlighted(intent, forms, &s.column, &s.value))
         .collect()
+}
+
+/// How many of `shown`, the cards as drawn, focus `value`.
+#[must_use]
+pub fn focused(shown: &[Intent], value: &str) -> usize {
+    shown
+        .iter()
+        .filter(|i| i.highlight.len() == 1 && i.highlight[0] == value)
+        .count()
 }
 
 /// The slot under device pixel `x`, `y` with cells `cell` pixels in size,
@@ -203,7 +190,7 @@ pub fn legend_index(legend: &[LegendHit], x: i32, y: i32) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Selection, Slot, apply, choose, filtered, hit_index, legend_index, pick, slot_at};
+    use super::{Selection, Slot, apply, choose, focused, hit_index, legend_index, pick, slot_at};
     use tiles_engine::Form;
     use tiles_engine::hit::Hit;
     use tiles_intent::Intent;
@@ -277,15 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn filtering_keeps_matching_rows_and_the_highlights_they_hold() {
-        let lines = filtered(&by_month(), "region", "France").unwrap();
-        assert_eq!(lines.table.rows.len(), 2);
-        assert!(lines.highlight.is_empty(), "Germany is gone from the rows");
-        assert_eq!(filtered(&quarters(), "region", "France"), None);
-    }
-
-    #[test]
-    fn a_selection_highlights_its_card_and_filters_the_others() {
+    fn a_selection_focuses_its_value_on_every_card_that_holds_it() {
         let base = vec![by_region(), by_month(), quarters()];
         let s = Selection {
             card: 0,
@@ -300,8 +279,13 @@ mod tests {
             2,
             "the clicked card keeps its rows"
         );
-        assert_eq!(out[1].table.rows.len(), 2);
+        // The lines keep every row and name France in the accent, though
+        // the card's own claim is about Germany.
+        assert_eq!(out[1].table.rows, base[1].table.rows);
+        assert_eq!(out[1].highlight, ["France"]);
+        assert_eq!(out[1].claim.tone, tiles_intent::Tone::Good);
         assert_eq!(out[2], base[2]);
+        assert_eq!(focused(&out, "France"), 2);
         assert_eq!(apply(&base, None, &forms), base);
     }
 
@@ -354,7 +338,7 @@ mod tests {
         assert_eq!(out[0].highlight, Vec::<String>::new());
         let opts = tiles_engine::Options::default();
         assert!(engine.scene(&out[0], &opts).is_ok());
-        assert_eq!(out[1].table.rows.len(), 1);
+        assert_eq!(out[1].table.rows, base[1].table.rows);
         // Alone, the stack selects and highlights its series.
         let s = pick(&base[..1], 0, 2, &forms).unwrap();
         assert_eq!((s.column.as_str(), s.value.as_str()), ("region", "Germany"));
@@ -365,19 +349,20 @@ mod tests {
     }
 
     #[test]
-    fn a_click_on_a_filtered_card_reads_the_row_it_drew() {
+    fn a_click_on_a_focused_card_reads_the_row_it_drew() {
         let base = vec![by_region(), by_month(), quarters()];
         let forms = forms();
         let france = pick(&base, 0, 1, &forms).unwrap();
         assert_eq!(france.value, "France");
         let shown = apply(&base, Some(&france), &forms);
-        // The lines now hold France's rows only; their first is France, Jan.
+        // The lines keep every row; their first is still Germany, Jan.
         let s = pick(&shown, 1, 0, &forms).unwrap();
         assert_eq!(
             (s.card, s.column.as_str(), s.value.as_str()),
-            (1, "region", "France")
+            (1, "region", "Germany")
         );
-        assert_eq!(pick(&shown, 1, 2, &forms), None, "past the drawn rows");
+        let past = shown[1].table.rows.len();
+        assert_eq!(pick(&shown, 1, past, &forms), None, "past the drawn rows");
         assert_eq!(pick(&shown, 9, 0, &forms), None);
     }
 

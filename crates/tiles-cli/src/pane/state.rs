@@ -1,6 +1,6 @@
 //! The pane's interaction state (ADR-065): what the user picked, as one
-//! value every card's scene is laid out from. A click on a mark filters the
-//! other cards, a click on a legend entry hides that series on its card,
+//! value every card's scene is laid out from. A click on a mark focuses
+//! its value on every card (ADR-069), a click on a legend entry hides that series on its card,
 //! `s` sorts the card under the pointer, and `d` drills into a period of a
 //! card drawn from an Omni date field. Pure logic over intents, no terminal
 //! and no network: a drill's rows arrive through [`Drilled`], fetched by
@@ -77,8 +77,8 @@ pub struct Drilled {
 /// What the user picked on the pane.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
-    /// The cross-filter a click on a mark set.
-    pub filter: Option<Selection>,
+    /// The value a click on a mark focused (ADR-069).
+    pub focus: Option<Selection>,
     /// Series hidden per card, by its index, through its legend.
     pub hidden: BTreeMap<usize, BTreeSet<String>>,
     /// Each sorted card's order.
@@ -91,13 +91,13 @@ impl State {
     /// Whether nothing is picked.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.filter.is_none()
+        self.focus.is_none()
             && self.hidden.is_empty()
             && self.sorts.is_empty()
             && self.drills.is_empty()
     }
 
-    /// The intent card `card` draws before any filter, hide or sort: its
+    /// The intent card `card` draws before any focus, hide or sort: its
     /// deepest drill, else the call's own.
     #[must_use]
     pub fn base<'a>(&'a self, call: &'a [Intent], card: usize) -> Option<&'a Intent> {
@@ -109,7 +109,7 @@ impl State {
     }
 
     /// The intents the cards draw: each card's [`State::base`], its hidden
-    /// series left out, the cross-filter applied, then its sort.
+    /// series left out, the focus applied, then its sort.
     /// `forms` are the engine's, to tell which columns a card highlights by.
     #[must_use]
     pub fn apply(&self, call: &[Intent], forms: &[Form]) -> Vec<Intent> {
@@ -121,7 +121,7 @@ impl State {
                 *intent = without(intent, names);
             }
         }
-        let mut out = board::apply(&out, self.filter.as_ref(), forms);
+        let mut out = board::apply(&out, self.focus.as_ref(), forms);
         for (card, order) in &self.sorts {
             if let Some(intent) = out.get_mut(*card) {
                 *intent = sorted(intent, *order);
@@ -150,16 +150,16 @@ impl State {
         Ok(())
     }
 
-    /// Drops the cross-filter when its card's drill level differs from
+    /// Drops the focus when its card's drill level differs from
     /// `prev`'s: the card now draws another period, which the selection
     /// was not made on.
     pub fn redrilled(&mut self, prev: &Self) {
         if self
-            .filter
+            .focus
             .as_ref()
             .is_some_and(|f| self.depth(f.card) != prev.depth(f.card))
         {
-            self.filter = None;
+            self.focus = None;
         }
     }
 
@@ -497,10 +497,10 @@ mod tests {
     }
 
     #[test]
-    fn hiding_filtering_and_sorting_compose() {
+    fn hiding_focusing_and_sorting_compose() {
         let call = [grouped(), grouped()];
         let mut state = State {
-            filter: Some(Selection {
+            focus: Some(Selection {
                 card: 0,
                 column: "city".into(),
                 value: "Braga".into(),
@@ -512,8 +512,13 @@ mod tests {
         let shown = state.apply(&call, &tiles_engine::forms::load(None).unwrap());
         assert_eq!(shown[0].highlight, ["Braga"]);
         assert_eq!(column(&shown[0], "city")[0], "Lisbon");
-        assert_eq!(column(&shown[1], "city"), ["Braga"]);
-        assert_eq!(column(&shown[1], "product"), ["Espresso"]);
+        // The other card keeps every city; only its hidden series goes.
+        assert_eq!(
+            column(&shown[1], "city").len(),
+            column(&call[1], "city").len() / 2
+        );
+        assert!(column(&shown[1], "city").iter().any(|c| c == "Lisbon"));
+        assert!(column(&shown[1], "product").iter().all(|p| p == "Espresso"));
         let _ = without(&grouped(), &BTreeSet::new());
     }
 
@@ -538,7 +543,7 @@ mod tests {
     fn a_selection_outlives_a_drill_only_on_another_card() {
         let call = [line(), line()];
         let selected = |card| State {
-            filter: Some(Selection {
+            focus: Some(Selection {
                 card,
                 column: "month".into(),
                 value: "Jan".into(),
@@ -554,16 +559,16 @@ mod tests {
             let prev = selected(card);
             let mut next = prev.clone();
             next.redrilled(&prev);
-            assert_eq!(next.filter, prev.filter, "no drill keeps the selection");
+            assert_eq!(next.focus, prev.focus, "no drill keeps the selection");
             next.drills.insert(0, vec![level.clone()]);
             next.redrilled(&prev);
-            assert_eq!(next.filter.is_some(), kept, "drill, selection on {card}");
+            assert_eq!(next.focus.is_some(), kept, "drill, selection on {card}");
             let mut back = selected(card);
             back.redrilled(&State {
                 drills: next.drills.clone(),
                 ..State::default()
             });
-            assert_eq!(back.filter.is_some(), kept, "undrill, selection on {card}");
+            assert_eq!(back.focus.is_some(), kept, "undrill, selection on {card}");
         }
     }
 

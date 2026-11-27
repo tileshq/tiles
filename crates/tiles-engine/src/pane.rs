@@ -1,7 +1,7 @@
 //! What `tiles pane` reads and draws beyond a card (ADR-063, ADR-065): the
-//! hover overlay, one small picture holding a mark's outline and its
-//! tooltip, placed above the card so the card itself is never sent again on
-//! hover; the legend entries a click toggles; and a grid of text, the
+//! hover overlay, two small pictures, a mark's outline and its tooltip,
+//! placed above the card so the card itself is never sent again on hover;
+//! the legend entries a click toggles; and a grid of text, the
 //! stress scene that prices a table before a table form exists. None of
 //! them touches how a card is laid out or drawn.
 
@@ -16,74 +16,78 @@ use crate::tokens::Tokens;
 
 /// Most tooltip lines drawn.
 pub const MAX_TIP_LINES: usize = 6;
-/// Tooltip text size, in CSS pixels.
-const TIP_SIZE: f32 = 12.0;
-/// Tooltip line height.
-const TIP_LINE: f32 = 17.0;
+/// The tooltip's first line, the mark's name: size and line height.
+const TIP_HEAD: (f32, f32) = (12.5, 17.0);
+/// Each `name value` line under it.
+const TIP_ROW: (f32, f32) = (12.0, 18.0);
+/// The hint line at the foot.
+const TIP_HINT: (f32, f32) = (11.0, 15.0);
 /// Space inside the tooltip's box.
-const TIP_PAD: (f32, f32) = (9.0, 6.0);
+const TIP_PAD: (f32, f32) = (11.0, 9.0);
+/// Space above and below the rule under the name.
+const TIP_RULE: (f32, f32) = (8.0, 7.0);
+/// The swatch before the name, and the space after it.
+const TIP_SWATCH: (f32, f32) = (9.0, 7.0);
+/// Least space between a name and its value.
+const TIP_KV_GAP: f32 = 18.0;
+/// Narrowest tooltip.
+const TIP_MIN_W: f32 = 168.0;
+/// The tooltip's corner radius.
+const TIP_RADIUS: f32 = 8.0;
 /// Space between the mark's outline and the tooltip.
 const TIP_GAP: f32 = 6.0;
+/// How far the tooltip's left edge sits left of the pointer.
+const TIP_LEAD: f32 = 12.0;
 /// How far the outline stands off the mark.
 const RING_OUT: f32 = 3.0;
 /// The outline's width.
 const RING: f32 = 2.0;
+/// The card-coloured halo round the outline, each side.
+const HALO: f32 = 2.0;
+/// The outline's corner radius.
+const RING_RADIUS: f32 = 4.0;
+/// The tooltip's shadow: drop, spread, opacity.
+const SHADOW: (f32, f32, f32) = (4.0, 4.0, 0.3);
 
-/// A hover overlay in device pixels: where it goes on its card, from the
-/// card tile's top left, and its scene, ready to draw at the same scale.
+/// What the pane knows about a hover beyond the mark: where the pointer
+/// is across the card, in CSS pixels from the tile's left, which the
+/// tooltip starts just left of; and a hint for its foot, such as what a
+/// click would do.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Cue<'a> {
+    /// The pointer's x in CSS pixels from the tile's left.
+    pub pointer_x: Option<f32>,
+    /// The hint line.
+    pub hint: Option<&'a str>,
+}
+
+/// One picture of a hover overlay in device pixels: where it goes on its
+/// card, from the card tile's top left, and its scene, ready to draw at
+/// the same scale.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Overlay {
+pub struct Piece {
     /// Left edge, in device pixels from the tile's left.
     pub left: i32,
     /// Top edge, in device pixels from the tile's top.
     pub top: i32,
-    /// The overlay, its own origin at (`left`, `top`) over the tile.
+    /// The picture, its own origin at (`left`, `top`) over the tile.
     pub scene: Scene,
 }
 
-#[allow(clippy::cast_precision_loss)] // Pixel coordinates far below 2^24.
-fn css(px: i32, scale: f32) -> f32 {
-    px as f32 / scale
+/// A hover overlay: the mark's ring and the tooltip as two tight
+/// pictures, so the space between them is neither drawn nor sent.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Overlay {
+    /// The ring round the mark.
+    pub ring: Piece,
+    /// The tooltip.
+    pub tip: Piece,
 }
 
-/// The overlay for `hit` on `card`, at device `scale`: the mark outlined
-/// in ink and its tooltip above it, or below when there is no room above,
-/// kept inside the tile.
+/// `items`, drawn in CSS pixels over `card`, as one picture covering
+/// `bounds` cut to the tile, at device `scale`.
 #[allow(clippy::cast_possible_truncation)] // Card coordinates are far below i32::MAX.
-pub(crate) fn overlay(
-    tokens: &Tokens,
-    fonts: &Fonts,
-    card: &Scene,
-    hit: &Hit,
-    scale: f32,
-) -> Overlay {
-    let pal = tokens.palette(card.theme);
-    let ring = Rect::from_ltrb(
-        css(hit.left, scale),
-        css(hit.top, scale),
-        css(hit.right, scale),
-        css(hit.bottom, scale),
-    )
-    .with_outset((RING_OUT, RING_OUT));
-    let lines: Vec<(&str, Style)> = hit
-        .tip
-        .lines()
-        .take(MAX_TIP_LINES)
-        .enumerate()
-        .map(|(i, l)| {
-            (
-                l,
-                Style::new(TIP_SIZE, if i == 0 { 600 } else { 400 }).tabular(),
-            )
-        })
-        .collect();
-    let tip = tip_box(fonts, ring, &lines, card);
-    let bounds = Rect::from_ltrb(
-        ring.left.min(tip.left) - RING,
-        ring.top.min(tip.top) - RING,
-        ring.right.max(tip.right) + RING,
-        ring.bottom.max(tip.bottom) + RING,
-    );
+fn piece(card: &Scene, bounds: Rect, scale: f32, items: Vec<Item>) -> Piece {
     let tile = Rect::from_wh(card.width, card.height);
     let mut px = Rect::from_ltrb(
         (bounds.left.max(tile.left) * scale).floor(),
@@ -94,87 +98,442 @@ pub(crate) fn overlay(
     if px.width() < 1.0 || px.height() < 1.0 {
         px = Rect::from_xywh(px.left, px.top, 1.0, 1.0);
     }
-    let mut items = Vec::new();
-    for side in [
-        Rect::from_ltrb(
-            ring.left - RING,
-            ring.top - RING,
-            ring.right + RING,
-            ring.top,
-        ),
-        Rect::from_ltrb(
-            ring.left - RING,
-            ring.bottom,
-            ring.right + RING,
-            ring.bottom + RING,
-        ),
-        Rect::from_ltrb(ring.left - RING, ring.top, ring.left, ring.bottom),
-        Rect::from_ltrb(ring.right, ring.top, ring.right + RING, ring.bottom),
-    ] {
-        items.push(rect(side, 0.0, pal.ink));
-    }
-    let radius = tokens.card.radius / 2.0;
-    items.push(rect(tip.with_outset((1.0, 1.0)), radius + 1.0, pal.line));
-    items.push(rect(tip, radius, pal.card));
-    for (i, (line, style)) in lines.iter().enumerate() {
-        #[allow(clippy::cast_precision_loss)] // At most MAX_TIP_LINES.
-        let top = tip.top + TIP_PAD.1 + i as f32 * TIP_LINE;
-        let (emphasis, color) = if i == 0 {
-            (Emphasis::Ink, pal.ink)
-        } else {
-            (Emphasis::Muted, pal.muted)
-        };
-        items.push(Item::new(
-            Part::Value,
-            Shape::Text {
-                text: (*line).to_string(),
-                x: tip.left + TIP_PAD.0,
-                y: top + fonts.baseline_in_line(TIP_SIZE, TIP_LINE),
-                style: *style,
-                anchor: Anchor::Start,
-            },
-            emphasis,
-            color,
-        ));
-    }
     let (dx, dy) = (px.left / scale, px.top / scale);
-    let (w, h) = (px.width() / scale, px.height() / scale);
-    Overlay {
+    let (width, height) = (px.width() / scale, px.height() / scale);
+    Piece {
         left: px.left as i32,
         top: px.top as i32,
         scene: Scene {
             form: "overlay".into(),
             theme: card.theme,
-            width: w,
-            height: h,
-            card: Rect::from_wh(w, h),
+            width,
+            height,
+            card: Rect::from_wh(width, height),
             boxed: false,
-            plot: Rect::from_wh(w, h),
+            plot: Rect::from_wh(width, height),
             y_axis: false,
             items: items.into_iter().map(|i| shifted(i, -dx, -dy)).collect(),
         },
     }
 }
 
-/// Where the tooltip of `lines` goes beside the mark's outline `ring`:
-/// centred over it, above it when there is room on the card and below it
-/// otherwise, and inside the tile.
-fn tip_box(fonts: &Fonts, ring: Rect, lines: &[(&str, Style)], card: &Scene) -> Rect {
-    let text_w = lines
+#[allow(clippy::cast_precision_loss)] // Pixel coordinates far below 2^24.
+fn css(px: i32, scale: f32) -> f32 {
+    px as f32 / scale
+}
+
+/// One tooltip as laid out: the mark's name, its `name value` lines and
+/// the hint, with the box they need.
+struct Tip<'a> {
+    head: &'a str,
+    rows: Vec<(&'a str, &'a str)>,
+    hint: Option<&'a str>,
+    w: f32,
+    h: f32,
+}
+
+fn head_style() -> Style {
+    Style::new(TIP_HEAD.0, 600)
+}
+
+fn key_style() -> Style {
+    Style::new(TIP_ROW.0, 400)
+}
+
+fn value_style() -> Style {
+    Style::new(TIP_ROW.0, 600).tabular()
+}
+
+fn hint_style() -> Style {
+    Style::new(TIP_HINT.0, 400)
+}
+
+/// The tooltip for a hit's `name: value` lines: the first line's value
+/// names the mark, the rest stand as name and value.
+fn tip<'a>(fonts: &Fonts, text: &'a str, hint: Option<&'a str>, card_w: f32) -> Tip<'a> {
+    let split = |l: &'a str| l.split_once(": ").unwrap_or((l, ""));
+    let mut lines = text.lines().take(MAX_TIP_LINES);
+    let head = lines.next().map_or("", |l| {
+        let (k, v) = split(l);
+        if v.is_empty() { k } else { v }
+    });
+    let rows: Vec<(&str, &str)> = lines.map(split).collect();
+    let head_w = TIP_SWATCH.0 + TIP_SWATCH.1 + fonts.width(head, head_style());
+    let row_w = rows
         .iter()
-        .map(|(l, s)| fonts.width(l, *s))
+        .map(|(k, v)| fonts.width(k, key_style()) + TIP_KV_GAP + fonts.width(v, value_style()))
         .fold(0.0, f32::max);
-    #[allow(clippy::cast_precision_loss)] // At most MAX_TIP_LINES.
-    let h = lines.len() as f32 * TIP_LINE + 2.0 * TIP_PAD.1;
-    let w = (text_w + 2.0 * TIP_PAD.0).min(card.width);
-    let above = ring.top - TIP_GAP - h;
-    let top = if above >= 0.0 {
-        above
+    let hint_w = hint.map_or(0.0, |h| fonts.width(h, hint_style()));
+    let w = (head_w.max(row_w).max(hint_w) + 2.0 * TIP_PAD.0)
+        .max(TIP_MIN_W)
+        .min(card_w);
+    let mut h = 2.0 * TIP_PAD.1 + TIP_HEAD.1;
+    if !rows.is_empty() {
+        #[allow(clippy::cast_precision_loss)] // At most MAX_TIP_LINES.
+        let n = rows.len() as f32;
+        h += TIP_RULE.0 + 1.0 + TIP_RULE.1 + n * TIP_ROW.1;
+    }
+    if hint.is_some() {
+        h += 6.0 + TIP_HINT.1;
+    }
+    Tip {
+        head,
+        rows,
+        hint,
+        w,
+        h,
+    }
+}
+
+/// The colour the card draws row `row` in, for the tooltip's swatch.
+fn mark_colour(card: &Scene, row: Option<usize>) -> Option<Rgba> {
+    let row = row?;
+    card.items
+        .iter()
+        .find(|i| i.part == Part::Mark && i.datum == Some(row))
+        .map(|i| i.color)
+}
+
+/// The overlay for `hit` on `card`, at device `scale`: the mark outlined
+/// in ink inside a card-coloured halo, and, as a picture of its own, a
+/// raised tooltip below it,
+/// starting just left of the pointer, or above when there is no room
+/// below, kept inside the tile (ADR-069).
+pub(crate) fn overlay(
+    tokens: &Tokens,
+    fonts: &Fonts,
+    card: &Scene,
+    hit: &Hit,
+    scale: f32,
+    cue: Cue<'_>,
+) -> Overlay {
+    let pal = tokens.palette(card.theme);
+    let ring = Rect::from_ltrb(
+        css(hit.left, scale),
+        css(hit.top, scale),
+        css(hit.right, scale),
+        css(hit.bottom, scale),
+    )
+    .with_outset((RING_OUT, RING_OUT));
+    let laid = tip(fonts, &hit.tip, cue.hint, card.width);
+    let reach = RING / 2.0 + HALO;
+    let below = ring.bottom + reach + TIP_GAP;
+    let top = if below + laid.h <= card.height {
+        below
     } else {
-        (ring.bottom + TIP_GAP).min(card.height - h).max(0.0)
+        (ring.top - reach - TIP_GAP - laid.h).max(0.0)
     };
-    let left = (ring.center_x() - w / 2.0).min(card.width - w).max(0.0);
-    Rect::from_xywh(left, top, w, h)
+    let left = cue
+        .pointer_x
+        .map_or(ring.center_x() - laid.w / 2.0, |px| px - TIP_LEAD)
+        .min(card.width - laid.w)
+        .max(0.0);
+    let tip_box = Rect::from_xywh(left, top, laid.w, laid.h);
+    let shadow = tip_box
+        .with_offset((0.0, SHADOW.0))
+        .with_outset((SHADOW.1, SHADOW.1));
+    let path = rounded(ring, RING_RADIUS);
+    let ring_piece = piece(
+        card,
+        ring.with_outset((reach, reach)),
+        scale,
+        vec![
+            line(path.clone(), RING + 2.0 * HALO, pal.card),
+            line(path, RING, pal.ink),
+        ],
+    );
+    let mut items = vec![
+        rect(shadow, TIP_RADIUS + SHADOW.1, Rgba::black(SHADOW.2)),
+        rect(
+            tip_box.with_outset((1.0, 1.0)),
+            TIP_RADIUS + 1.0,
+            pal.raised_line(),
+        ),
+        rect(tip_box, TIP_RADIUS, pal.raised()),
+    ];
+    items.extend(tip_text(
+        fonts,
+        pal,
+        &laid,
+        tip_box,
+        mark_colour(card, hit.row),
+    ));
+    let bounds = Rect::from_ltrb(shadow.left, tip_box.top - 1.0, shadow.right, shadow.bottom);
+    Overlay {
+        ring: ring_piece,
+        tip: piece(card, bounds, scale, items),
+    }
+}
+
+/// The tooltip's swatch and text inside `tip_box`: the mark's name after
+/// a swatch of its colour, a rule, each name and value, and the hint.
+fn tip_text(
+    fonts: &Fonts,
+    pal: &crate::tokens::Palette,
+    laid: &Tip<'_>,
+    tip_box: Rect,
+    swatch: Option<Rgba>,
+) -> Vec<Item> {
+    let mut items = Vec::new();
+    let left = tip_box.left + TIP_PAD.0;
+    let mut at = tip_box.top + TIP_PAD.1;
+    let swatch = swatch.unwrap_or(pal.grey);
+    let sw_top = at + (TIP_HEAD.1 - TIP_SWATCH.0) / 2.0;
+    items.push(rect(
+        Rect::from_xywh(left, sw_top, TIP_SWATCH.0, TIP_SWATCH.0),
+        2.0,
+        swatch,
+    ));
+    let text_w = tip_box.width() - 2.0 * TIP_PAD.0;
+    items.push(text(
+        fit(
+            fonts,
+            laid.head,
+            head_style(),
+            text_w - TIP_SWATCH.0 - TIP_SWATCH.1,
+        ),
+        left + TIP_SWATCH.0 + TIP_SWATCH.1,
+        at + fonts.baseline_in_line(TIP_HEAD.0, TIP_HEAD.1),
+        head_style(),
+        Anchor::Start,
+        (Emphasis::Ink, pal.ink),
+    ));
+    at += TIP_HEAD.1;
+    if !laid.rows.is_empty() {
+        at += TIP_RULE.0;
+        items.push(rect(
+            Rect::from_xywh(tip_box.left, at, tip_box.width(), 1.0),
+            0.0,
+            pal.raised_line(),
+        ));
+        at += 1.0 + TIP_RULE.1;
+        for (k, v) in &laid.rows {
+            let baseline = at + fonts.baseline_in_line(TIP_ROW.0, TIP_ROW.1);
+            let vw = fonts.width(v, value_style()).min(text_w);
+            items.push(text(
+                fit(fonts, k, key_style(), (text_w - vw - TIP_KV_GAP).max(0.0)),
+                left,
+                baseline,
+                key_style(),
+                Anchor::Start,
+                (Emphasis::Muted, pal.muted),
+            ));
+            items.push(text(
+                fit(fonts, v, value_style(), text_w),
+                tip_box.right - TIP_PAD.0,
+                baseline,
+                value_style(),
+                Anchor::End,
+                (Emphasis::Ink, pal.ink),
+            ));
+            at += TIP_ROW.1;
+        }
+    }
+    if let Some(h) = laid.hint {
+        at += 6.0;
+        items.push(text(
+            fit(fonts, h, hint_style(), text_w),
+            left,
+            at + fonts.baseline_in_line(TIP_HINT.0, TIP_HINT.1),
+            hint_style(),
+            Anchor::Start,
+            (Emphasis::Muted, pal.muted.with_opacity(0.75)),
+        ));
+    }
+    items
+}
+
+/// A closed outline of `r` with corners rounded by `radius`, as points.
+fn rounded(r: Rect, radius: f32) -> Vec<(f32, f32)> {
+    const STEPS: usize = 6;
+    let radius = radius.min(r.width() / 2.0).min(r.height() / 2.0).max(0.0);
+    let corners = [
+        (r.right - radius, r.top + radius, -90.0f32),
+        (r.right - radius, r.bottom - radius, 0.0),
+        (r.left + radius, r.bottom - radius, 90.0),
+        (r.left + radius, r.top + radius, 180.0),
+    ];
+    let mut points = Vec::with_capacity(4 * (STEPS + 1) + 1);
+    for (cx, cy, start) in corners {
+        for s in 0..=STEPS {
+            #[allow(clippy::cast_precision_loss)] // A handful of steps.
+            let a = (start + 90.0 * s as f32 / STEPS as f32).to_radians();
+            points.push((cx + radius * a.cos(), cy + radius * a.sin()));
+        }
+    }
+    if let Some(&first) = points.first() {
+        points.push(first);
+    }
+    points
+}
+
+fn line(points: Vec<(f32, f32)>, width: f32, color: Rgba) -> Item {
+    Item::new(
+        Part::Guide,
+        Shape::Line { points, width },
+        Emphasis::Ink,
+        color,
+    )
+}
+
+fn text(
+    text: String,
+    x: f32,
+    y: f32,
+    style: Style,
+    anchor: Anchor,
+    (emphasis, color): (Emphasis, Rgba),
+) -> Item {
+    Item::new(
+        Part::Value,
+        Shape::Text {
+            text,
+            x,
+            y,
+            style,
+            anchor,
+        },
+        emphasis,
+        color,
+    )
+}
+
+/// The selection a click on a mark made, for the pane's heading: the
+/// column and the value (ADR-069).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Chip<'a> {
+    /// The column, such as `region`.
+    pub column: &'a str,
+    /// The value, such as `France`.
+    pub value: &'a str,
+}
+
+/// The chip's height and corner radius.
+const CHIP_H: f32 = 24.0;
+const CHIP_RADIUS: f32 = 7.0;
+/// Space inside the chip at each end, and between its parts.
+const CHIP_PAD: f32 = 10.0;
+const CHIP_GAP: f32 = 7.0;
+/// The chip's square dot.
+const CHIP_DOT: f32 = 8.0;
+/// The chip's text size.
+const CHIP_SIZE: f32 = 12.5;
+/// The key cap after the chip: height, padding, text size.
+const KEY_CAP: (f32, f32, f32) = (18.0, 5.0, 11.5);
+/// Space between the chip and the key cap, and after the key cap.
+const CHIP_TAIL: (f32, f32) = (14.0, 6.0);
+/// What the key cap and the words after it say.
+const RESET_KEY: (&str, &str) = ("r", "resets");
+
+/// The pane's heading: the dashboard's title and note as a card heading
+/// draws them, and, when a click selected a value, its chip at the right
+/// of the title line, `column value ×`, then the key that clears it. The
+/// title wraps short of the chip.
+pub(crate) fn heading(
+    tokens: &Tokens,
+    fonts: &Fonts,
+    title: &str,
+    note: Option<&str>,
+    chip: Option<Chip<'_>>,
+    opts: &Options,
+) -> Scene {
+    let Some(chip) = chip else {
+        return crate::layout::heading(tokens, fonts, title, note, opts);
+    };
+    let pal = tokens.palette(opts.theme);
+    let key = Style::new(CHIP_SIZE, 400);
+    let value = Style::new(CHIP_SIZE, 500);
+    let cap = Style::new(KEY_CAP.2, 500);
+    let words = Style::new(CHIP_SIZE, 400);
+    let column = chip.column;
+    let value_text = fit(fonts, chip.value, value, opts.width / 4.0);
+    let chip_w = 2.0 * CHIP_PAD
+        + CHIP_DOT
+        + CHIP_GAP
+        + fonts.width(column, key)
+        + CHIP_GAP
+        + fonts.width(&value_text, value)
+        + CHIP_GAP
+        + fonts.width("×", value);
+    let cap_w = fonts.width(RESET_KEY.0, cap) + 2.0 * KEY_CAP.1;
+    let tail_w = CHIP_TAIL.0 + cap_w + CHIP_TAIL.1 + fonts.width(RESET_KEY.1, words);
+    let side = tokens.card.margin_x + tokens.card.border;
+    let room = (opts.width - chip_w - tail_w - 24.0).max(crate::MIN_WIDTH.min(opts.width));
+    let mut scene = crate::layout::heading(
+        tokens,
+        fonts,
+        title,
+        note,
+        &Options {
+            width: room,
+            ..*opts
+        },
+    );
+    scene.width = opts.width;
+    scene.card = Rect::from_ltrb(side, scene.card.top, opts.width - side, scene.card.bottom);
+    scene.plot = Rect::from_ltrb(side, scene.plot.top, opts.width - side, scene.plot.bottom);
+    let mid = tokens.card.margin_top + tokens.text.title_line * 1.2 / 2.0;
+    let mut row = Leftward {
+        fonts,
+        x: opts.width - side,
+        mid,
+        items: std::mem::take(&mut scene.items),
+    };
+    row.put(RESET_KEY.1, words, (Emphasis::Muted, pal.muted));
+    row.x -= CHIP_TAIL.1;
+    let cap_box = Rect::from_xywh(row.x - cap_w, mid - KEY_CAP.0 / 2.0, cap_w, KEY_CAP.0);
+    row.items.push(rect(cap_box, 4.0, pal.grid));
+    row.x -= KEY_CAP.1;
+    row.put(RESET_KEY.0, cap, (Emphasis::Ink, pal.ink));
+    row.x -= KEY_CAP.1 + CHIP_TAIL.0;
+    let chip_box = Rect::from_xywh(row.x - chip_w, mid - CHIP_H / 2.0, chip_w, CHIP_H);
+    let soft = (Emphasis::Accent, pal.accent.mix(pal.ink, 0.45));
+    let page = pal.page();
+    row.items
+        .push(rect(chip_box, CHIP_RADIUS, page.mix(pal.accent, 0.45)));
+    row.items.push(rect(
+        chip_box.with_inset((1.0, 1.0)),
+        CHIP_RADIUS - 1.0,
+        page.mix(pal.accent, 0.16),
+    ));
+    row.x -= CHIP_PAD;
+    row.put("×", value, soft);
+    row.x -= CHIP_GAP;
+    row.put(
+        &value_text,
+        value,
+        (Emphasis::Accent, pal.accent.mix(pal.ink, 0.8)),
+    );
+    row.x -= CHIP_GAP;
+    row.put(column, key, soft);
+    row.x -= CHIP_GAP + CHIP_DOT;
+    let dot = Rect::from_xywh(row.x, mid - CHIP_DOT / 2.0, CHIP_DOT, CHIP_DOT);
+    row.items.push(rect(dot, 2.0, pal.accent));
+    scene.items = row.items;
+    scene
+}
+
+/// Text set right to left along a line centred on `mid`, from `x`.
+struct Leftward<'a> {
+    fonts: &'a Fonts,
+    x: f32,
+    mid: f32,
+    items: Vec<Item>,
+}
+
+impl Leftward<'_> {
+    /// Sets `s` ending at `x` and moves `x` past it.
+    fn put(&mut self, s: &str, style: Style, ink: (Emphasis, Rgba)) {
+        self.x -= self.fonts.width(s, style);
+        self.items.push(text(
+            s.to_string(),
+            self.x,
+            self.mid + style.size * 0.36,
+            style,
+            Anchor::Start,
+            ink,
+        ));
+    }
 }
 
 fn rect(r: Rect, radius: f32, color: Rgba) -> Item {

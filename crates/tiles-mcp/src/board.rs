@@ -68,11 +68,12 @@ pub fn span(widths: &[u16]) -> u16 {
 /// its content asks for, and the widest it stretches to so a line reaches
 /// the dashboard's width. A form whose range tops out under [`CARD_COLS`]
 /// (a scorecard, a slope chart) never passes its own maximum; the others,
-/// charts that read better wide, stretch as far as the line needs.
-fn widths(fit: Fit, look: &Look) -> Widths {
+/// charts that read better wide, stretch as far as the line needs. On a
+/// `full` plan every card stretches, scorecards and slope charts too.
+fn widths(fit: Fit, look: &Look, full: bool) -> Widths {
     let ideal = look.card_cols(fit);
     let min = fit.min.max(look.min_cols()).min(ideal);
-    let cap = if fit.max >= CARD_COLS.1 {
+    let cap = if full || fit.max >= CARD_COLS.1 {
         u16::MAX
     } else {
         fit.max.max(ideal)
@@ -209,7 +210,19 @@ fn arrange(rows: &[Vec<Ask>]) -> Vec<Vec<usize>> {
 /// line up where the forms allow.
 #[must_use]
 pub fn plan(rows: &[Vec<Ask>], look: &Look) -> Plan {
-    let room = look.room();
+    plan_in(rows, look, look.room(), false)
+}
+
+/// The lines for `rows` of cards on the interactive pane (ADR-069): as
+/// [`plan`] arranges and splits them, but over `room` columns, and every
+/// line, a scorecard line too, fitted to the whole `room`, so every line
+/// shares the same outer edges at any width.
+#[must_use]
+pub fn plan_full(rows: &[Vec<Ask>], look: &Look, room: u16) -> Plan {
+    plan_in(rows, look, room, true)
+}
+
+fn plan_in(rows: &[Vec<Ask>], look: &Look, room: u16, full: bool) -> Plan {
     let asks: Vec<Ask> = rows.iter().flatten().copied().collect();
     let arranged = arrange(rows);
     let mut asked = Vec::new();
@@ -224,7 +237,7 @@ pub fn plan(rows: &[Vec<Ask>], look: &Look) -> Plan {
     for (r, row) in arranged.iter().enumerate() {
         let cards: Vec<(usize, Widths)> = row
             .iter()
-            .map(|i| (*i, widths(asks[*i].fit, look)))
+            .map(|i| (*i, widths(asks[*i].fit, look, full)))
             .collect();
         let parts = split_row(&cards.iter().map(|(_, w)| *w).collect::<Vec<_>>(), room);
         if parts.len() > 1 {
@@ -232,7 +245,7 @@ pub fn plan(rows: &[Vec<Ask>], look: &Look) -> Plan {
             split.push(Split {
                 row: r,
                 cards: cards.len(),
-                need: span(&mins).saturating_add(look.term_cols - room),
+                need: span(&mins).saturating_add(look.term_cols.saturating_sub(room)),
                 lines: parts.len(),
             });
         }
@@ -241,7 +254,11 @@ pub fn plan(rows: &[Vec<Ask>], look: &Look) -> Plan {
         }
     }
     let ideal = |line: &[(usize, Widths)]| span(&line.iter().map(|(_, w)| w.1).collect::<Vec<_>>());
-    let width = lines.iter().map(|l| ideal(l)).max().unwrap_or(0).min(room);
+    let width = if full {
+        room
+    } else {
+        lines.iter().map(|l| ideal(l)).max().unwrap_or(0).min(room)
+    };
     Plan {
         rows: lines
             .iter()
@@ -331,6 +348,22 @@ mod tests {
             })
             .collect();
         super::plan(&asks, look)
+    }
+
+    /// Plans rows of fits for the pane, over `room` columns.
+    fn plan_full(rows: &[Vec<Fit>], look: &Look, room: u16) -> Plan {
+        let asks: Vec<Vec<Ask>> = rows
+            .iter()
+            .map(|r| {
+                r.iter()
+                    .map(|f| Ask {
+                        fit: *f,
+                        scorecard: *f == KPI,
+                    })
+                    .collect()
+            })
+            .collect();
+        super::plan_full(&asks, look, room)
     }
 
     fn widths(p: &Plan) -> Vec<Vec<u16>> {
@@ -430,6 +463,33 @@ mod tests {
         let p = plan(&[vec![KPI, KPI]], &look(78));
         assert_eq!(widths(&p), [vec![35], vec![35]]);
         assert_eq!(p.split[0].need, 79);
+    }
+
+    #[test]
+    fn on_the_pane_every_line_spans_the_room() {
+        // 200 columns less the pane's margin: the scorecards stretch to the
+        // charts' edges instead of stopping at their own widest.
+        let p = plan_full(&kpis_over_a_line(), &look(200), 196);
+        assert_eq!(widths(&p), [vec![65, 65, 64], vec![196]]);
+        for line in widths(&p) {
+            assert_eq!(super::span(&line), 196);
+        }
+        // Half a screen: two and one, each line still the whole room.
+        let p = plan_full(&kpis_over_a_line(), &look(94), 90);
+        assert_eq!(p.rows.len(), 3);
+        for line in widths(&p) {
+            assert_eq!(super::span(&line), 90);
+        }
+        // A slope chart stretches too.
+        assert_eq!(
+            widths(&plan_full(&[vec![SLOPE]], &look(200), 196)),
+            [vec![196]]
+        );
+        // The inline plan is unchanged: scorecards keep their own widest.
+        assert_eq!(
+            widths(&plan(&kpis_over_a_line(), &look(200)))[0],
+            [35, 35, 35]
+        );
     }
 
     #[test]

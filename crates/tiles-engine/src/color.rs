@@ -52,6 +52,21 @@ impl Rgba {
         }
     }
 
+    /// This colour moved `t` of the way to `other`, channel by channel, at
+    /// this colour's alpha: 0 keeps it, 1 is `other`.
+    #[must_use]
+    pub fn mix(self, other: Self, t: f32) -> Self {
+        let t = t.clamp(0.0, 1.0);
+        let ch =
+            |a: u8, b: u8| unit_to_byte((f32::from(a) + (f32::from(b) - f32::from(a)) * t) / 255.0);
+        Self {
+            r: ch(self.r, other.r),
+            g: ch(self.g, other.g),
+            b: ch(self.b, other.b),
+            a: self.a,
+        }
+    }
+
     /// Whether black stands out more on it than white does: a light colour.
     #[must_use]
     pub fn is_light(self) -> bool {

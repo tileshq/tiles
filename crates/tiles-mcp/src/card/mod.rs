@@ -329,7 +329,51 @@ impl Call {
         let order = plan.rows.iter().flatten().map(|(i, _)| *i).collect();
         Ok((laid, order))
     }
+
+    /// Lays out and places every card for the interactive pane (ADR-069):
+    /// as [`Call::lay_out`] does, but over the pane's width less
+    /// [`PANE_MARGIN`] columns each side, with every line, the scorecards'
+    /// too, fitted to that whole width ([`crate::board::plan_full`]), and
+    /// each card moved right by the margin.
+    ///
+    /// # Errors
+    ///
+    /// An intent breaks a form rule.
+    pub fn lay_out_pane(
+        &self,
+        intents: &[Intent],
+        painter: &EnginePainter,
+        look: &Look,
+    ) -> Result<(Laid, Vec<usize>), Refusal> {
+        let asks = request::asks(intents, &self.keys, &self.shape, painter)?;
+        let room = look.term_cols.saturating_sub(2 * PANE_MARGIN).max(1);
+        let plan = crate::board::plan_full(&asks, look, room);
+        let rows: Vec<Vec<Tile<'_>>> = plan
+            .rows
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|(i, cols)| Tile {
+                        intent: &intents[*i],
+                        cols: *cols,
+                        key: &self.keys[*i],
+                    })
+                    .collect()
+            })
+            .collect();
+        let mut laid = painter.lay_out(&rows, self.heading.as_ref(), look)?;
+        for card in &mut laid.cards {
+            card.at.0 = card.at.0.saturating_add(PANE_MARGIN);
+            card.x += look.width_css(PANE_MARGIN);
+        }
+        laid.cells.0 = laid.cells.0.saturating_add(2 * PANE_MARGIN);
+        let order = plan.rows.iter().flatten().map(|(i, _)| *i).collect();
+        Ok((laid, order))
+    }
 }
+
+/// Columns the interactive pane leaves empty on each side of its cards.
+pub const PANE_MARGIN: u16 = 2;
 
 /// The query an intent's rows come from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

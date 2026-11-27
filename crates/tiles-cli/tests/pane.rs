@@ -135,7 +135,7 @@ impl Pane {
     /// Waits for the first frame, ended by the status line and the end of
     /// its update, and returns where it ends.
     fn first_frame(&mut self) -> usize {
-        let status = self.wait_from(0, b"q quits");
+        let status = self.wait_from(0, b" quit");
         self.wait_from(status, b"\x1b[?2026l")
     }
 
@@ -193,7 +193,7 @@ impl Dashboard {
             cell_px: (f32::from(CELL.0), f32::from(CELL.1)),
             ..tiles_mcp::card::Look::default()
         };
-        let (laid, order) = call.lay_out(&call.intents, &painter, &look).unwrap();
+        let (laid, order) = call.lay_out_pane(&call.intents, &painter, &look).unwrap();
         Self {
             painter,
             call,
@@ -221,26 +221,6 @@ impl Dashboard {
             .unwrap()
             .0;
         (&self.call.intents[k], card)
-    }
-
-    /// The hit map of `card` drawn as `intent`, laid out again in its own
-    /// slot as a click lays it out.
-    fn hits_as(
-        &self,
-        card: &tiles_mcp::card::LaidCard,
-        intent: &tiles_intent::Intent,
-    ) -> Vec<tiles_engine::hit::Hit> {
-        let tile = tiles_mcp::card::Tile {
-            intent,
-            cols: card.cells.0,
-            key: "",
-        };
-        let align = tiles_engine::Align {
-            min_height: f32::from(card.cells.1) * self.look.cell_height_css(),
-            ..card.align.unwrap()
-        };
-        let scene = self.painter.lay_card(&tile, &self.look, align).unwrap();
-        tiles_engine::hit::hit_map(&scene, self.look.scale)
     }
 }
 
@@ -289,7 +269,7 @@ fn report(button: u8, x: u32, y: u32, end: char) -> Vec<u8> {
 }
 
 #[test]
-fn a_hover_sends_only_the_overlay_and_a_click_sends_only_the_cards_it_filters() {
+fn a_hover_sends_only_the_overlay_and_a_click_sends_only_the_cards_it_focuses() {
     let (x, y) = first_bar();
     let mut pane = Pane::start("dashboard", &fixture("dashboard.json"), &[]);
     let first_frame = pane.first_frame();
@@ -332,14 +312,20 @@ fn a_hover_sends_only_the_overlay_and_a_click_sends_only_the_cards_it_filters() 
         .parse()
         .unwrap();
     assert!(bytes < 64 * 1024, "{line}");
-    // Clicking Germany's bar filters the four other cards that hold a
-    // region column; the bar already highlights Germany, so it stays, as do
-    // the three scorecards and the heading.
+    // The first frame lays the page colour under everything, below the text.
+    assert!(
+        has(&out, b"i=6999980,p=1,s=1,v=1,c=200,r=60,z=-1073741825"),
+        "the page"
+    );
+    // Clicking Germany's bar focuses Germany: the lollipop, which named
+    // Spain, now names Germany, and the heading takes the chip. The bar,
+    // the columns and the lines already name Germany, the stacked bars
+    // colour by method, and the scorecards hold no region: they stay.
     let click = trace
         .lines()
         .find(|l| l.contains("kind=click bytes"))
         .unwrap();
-    assert!(click.ends_with("cards=4"), "{click}");
+    assert!(click.ends_with("cards=2"), "{click}");
     assert!(
         has(&out, "region = Germany".as_bytes()),
         "the status line names the selection"
@@ -356,45 +342,20 @@ fn a_hover_sends_only_the_overlay_and_a_click_sends_only_the_cards_it_filters() 
 
 #[test]
 fn a_click_keeps_the_tooltip_on_the_mark_still_under_the_pointer() {
-    let board = Dashboard::new();
     let (x, y) = first_bar();
-    // After Germany's bar is clicked, the column chart holds Germany's
-    // column alone. Clicking it selects from the column chart instead, which
-    // draws all five regions again: find a point on the lone column that no
-    // column covers once all five are back.
-    let (columns, card) = board.card("column");
-    let mut germany = columns.clone();
-    let region = germany.table.index("region").unwrap();
-    germany
-        .table
-        .rows
-        .retain(|r| r[region].label() == "Germany");
-    let alone = board.hits_as(card, &germany);
-    let all = board.hits_as(card, columns);
-    let lone = alone.iter().find(|h| h.row == Some(0)).unwrap();
-    let mid = i32::midpoint(lone.left, lone.right);
-    let (cx, cy) = (lone.top..lone.bottom)
-        .map(|y| (mid, y))
-        .find(|&(x, y)| tiles_engine::hit::hit_at(&all, x, y).is_none())
-        .map(|(x, y)| on_pane(card, x, y))
-        .expect("a point on the lone column that no column covers among five");
-
     let mut pane = Pane::start("click-tooltip", &fixture("dashboard.json"), &[]);
     let first_frame = pane.first_frame();
     pane.send(&report(35, x, y, 'M'));
     let hovered = pane.wait_from(first_frame, b"\x1b[?2026l");
-    // Click without moving: the bar under the pointer keeps its tooltip.
+    // Click without moving: Germany is focused and the bar under the
+    // pointer keeps its tooltip, whose hint now says a click clears it.
     pane.send(&[report(0, x, y, 'M'), report(0, x, y, 'm')].concat());
     let clicked = pane.wait_from(hovered, b"\x1b[?2026l");
     let click = pane.seen[hovered..clicked].to_vec();
-    pane.send(&report(35, cx, cy, 'M'));
-    let hovered_again = pane.wait_from(clicked, b"\x1b[?2026l");
-    let hover_again = pane.seen[clicked..hovered_again].to_vec();
-    // Click the lone column: the columns spread out and leave the pointer on
-    // empty space.
-    pane.send(&[report(0, cx, cy, 'M'), report(0, cx, cy, 'm')].concat());
-    let clicked_again = pane.wait_from(hovered_again, b"\x1b[?2026l");
-    let click_again = pane.seen[hovered_again..clicked_again].to_vec();
+    // Click again: the focus clears and the tooltip stays.
+    pane.send(&[report(0, x, y, 'M'), report(0, x, y, 'm')].concat());
+    let cleared = pane.wait_from(clicked, b"\x1b[?2026l");
+    let clear = pane.seen[clicked..cleared].to_vec();
     pane.send(b"q");
     let (status, _, trace) = pane.finish();
     assert!(status.success(), "{status:?}");
@@ -404,10 +365,8 @@ fn a_click_keeps_the_tooltip_on_the_mark_still_under_the_pointer() {
         .filter(|l| l.contains("kind=click bytes"))
         .collect();
     assert_eq!(clicks.len(), 2, "{trace}");
-    assert!(clicks[0].ends_with("cards=4"), "{}", clicks[0]);
-    // The bar chart narrows to Germany and the columns widen to all five:
-    // the second click hit the column, not empty space, which would clear
-    // the selection and send four cards.
+    // Focusing and clearing change the same cards back and forth.
+    assert!(clicks[0].ends_with("cards=2"), "{}", clicks[0]);
     assert!(clicks[1].ends_with("cards=2"), "{}", clicks[1]);
 
     // The first click places the bar's tooltip again, as the other overlay
@@ -427,18 +386,14 @@ fn a_click_keeps_the_tooltip_on_the_mark_still_under_the_pointer() {
         .rposition(|w| w == b"i=700")
         .unwrap();
     assert!(last_card < placed, "the tooltip goes above the new cards");
+    // The second places it back under the first id.
+    assert!(has(&clear, b"i=6999990,p=1,"));
+    assert!(has(&clear, b"\x1b_Ga=d,d=I,q=2,i=6999991\x1b\\"));
     assert_eq!(
         trace.matches("kind=click card=overlay").count(),
-        1,
-        "only the first click draws a tooltip: {trace}"
+        2,
+        "each click draws the tooltip again: {trace}"
     );
-
-    // The hover finds the lone column in the filtered scene.
-    assert!(has(&hover_again, b"i=6999990,p=1,"), "the column's tooltip");
-    // The second click leaves no tooltip: nothing is under the pointer.
-    assert!(!has(&click_again, b"i=6999990,p=1,"));
-    assert!(!has(&click_again, b"i=6999991,p=1,"));
-    assert!(has(&click_again, b"\x1b_Ga=d,d=I,q=2,i=6999990\x1b\\"));
 }
 
 #[test]
