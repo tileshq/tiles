@@ -3474,6 +3474,23 @@ fn m14_a_histogram_refuses_what_would_draw_a_wrong_count() {
     );
     let s = scene_of(&uneven(30.0)).unwrap();
     assert_eq!(texts(&s, Part::Value), ["33% at 30 or more"], "M14");
+    let cols: Vec<&Item> = s.marks().collect();
+    for pair in cols.windows(2) {
+        let (a, b) = (rect(pair[0]), rect(pair[1]));
+        assert!(
+            (b.left - a.right - 1.0).abs() < 0.01,
+            "M14: a sent bin runs to the next start"
+        );
+    }
+    let tips: Vec<&str> = cols.iter().filter_map(|m| m.tip.as_deref()).collect();
+    assert!(tips.contains(&"from: 15 to 30\nn: 10"), "{tips:?}");
+    assert!(tips.contains(&"from: 30 to 60\nn: 10"), "{tips:?}");
+    let mut end = fixture("histogram");
+    for row in end["data"]["rows"].as_array_mut().unwrap() {
+        row["sla"] = serde_json::json!(60);
+    }
+    let s = scene_of(&end).expect("M14: a threshold on the last bin's end draws");
+    assert_eq!(texts(&s, Part::Value), ["0% at 60 or more"], "M14");
     let neg = refuse(binned(5.0, -3.0));
     assert_eq!(
         neg.to_string(),

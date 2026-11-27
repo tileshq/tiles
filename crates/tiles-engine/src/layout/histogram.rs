@@ -82,14 +82,14 @@ pub(super) fn check(intent: &Intent) -> Result<(), IntentError> {
             "send wider bins, or leave y out and let Tiles bin the values",
         ));
     }
-    // A sent bin runs to the next start, so a threshold past the first start
-    // that is no start splits a count Tiles cannot split, and the share past
-    // it would be wrong.
+    // A threshold on no sent bin's edge splits a count Tiles cannot split,
+    // so the share past it would be wrong.
     if let Some(t) = threshold(intent) {
         let bins = bins(intent, None);
         let past_first = bins.first().is_some_and(|b| t > b.start + edge(b));
         let on_start = bins.iter().any(|b| (t - b.start).abs() <= edge(b));
-        if past_first && !on_start {
+        let on_end = bins.last().is_some_and(|b| (t - b.end).abs() <= edge(b));
+        if past_first && !on_start && !on_end {
             return Err(IntentError::new(
                 "fields.threshold",
                 "the threshold falls inside a bin, so the share past it cannot be counted",
@@ -111,11 +111,11 @@ fn threshold(intent: &Intent) -> Option<f64> {
     intent.table.rows.iter().find_map(|r| r[t].number())
 }
 
-/// The bins: the sent ones with their counts summed per start, each as wide
-/// as the narrowest gap between two starts, or the values counted into
-/// even, round bins, shifted so one edge is the threshold when it would
-/// fall inside a round bin, so the bins past it hold exactly the values
-/// past it.
+/// The bins: the sent ones with their counts summed per start, each running
+/// to the next start and the last one narrowest gap past its start, or the
+/// values counted into even, round bins, shifted so one edge is the
+/// threshold when it would fall inside a round bin, so the bins past it
+/// hold exactly the values past it.
 fn bins(intent: &Intent, threshold: Option<f64>) -> Vec<Bin> {
     let x = intent.column("x").unwrap_or(0);
     let rows = &intent.table.rows;
@@ -145,8 +145,14 @@ fn bins(intent: &Intent, threshold: Option<f64>) -> Vec<Bin> {
             .filter(|g| *g > 0.0)
             .fold(f64::INFINITY, f64::min);
         let width = if width.is_finite() { width } else { 1.0 };
-        for b in &mut sent {
-            b.end = b.start + width;
+        let ends: Vec<f64> = sent
+            .iter()
+            .skip(1)
+            .map(|b| b.start)
+            .chain(sent.last().map(|b| b.start + width))
+            .collect();
+        for (b, end) in sent.iter_mut().zip(ends) {
+            b.end = end;
         }
         return sent;
     }
