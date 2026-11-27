@@ -197,44 +197,60 @@ fn ringed(item: &Item) -> bool {
     matches!(item.shape, Shape::Rect { .. } | Shape::Circle { .. })
 }
 
-/// The one mark row `row` is ringed and washed by, for focus and hover
-/// alike, from the row's bars, boxes and dots: when every one is a dot,
-/// the largest (`prefer` among equals, else the first), so a named
-/// point's larger dot stands for its smaller one; otherwise one rectangle
-/// round all of them, in the largest one's colour, rounded by the largest
-/// radius among them and square only at a corner every one of them leaves
-/// square, so a range band's inner band and middle dot share its outer
-/// band's ring wherever they reach. `None` when the row draws none.
-fn row_mark(card: &Scene, row: usize, prefer: Option<&Item>) -> Option<Item> {
-    let marks: Vec<&Item> = card
+/// `seed` and the bars, boxes and dots of its row whose boxes meet it,
+/// directly or through one another, `seed` first: the marks one ring goes
+/// round. A row's marks that sit apart, a big number's target bar and its
+/// sparkline's last point, a box and its outlier, a dumbbell's two dots,
+/// fall in groups of their own.
+fn cluster<'a>(card: &'a Scene, seed: &'a Item) -> Vec<&'a Item> {
+    let meets = |a: Rect, b: Rect| {
+        a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom
+    };
+    let mut rest: Vec<&Item> = card
         .items
         .iter()
-        .filter(|i| i.part == Part::Mark && i.datum == Some(row) && ringed(i))
+        .filter(|i| i.part == Part::Mark && i.datum.is_some() && i.datum == seed.datum)
+        .filter(|i| ringed(i) && !std::ptr::eq(*i, seed))
         .collect();
+    let mut group = vec![seed];
+    let mut k = 0;
+    while k < group.len() {
+        let b = group[k].bounds();
+        let (near, far): (Vec<&Item>, Vec<&Item>) =
+            rest.into_iter().partition(|i| meets(b, i.bounds()));
+        group.extend(near);
+        rest = far;
+        k += 1;
+    }
+    group
+}
+
+/// The one mark a [`cluster`] is ringed and washed by, for focus and hover
+/// alike: when every one is a dot, the largest (the first of equals), so a
+/// named point's larger dot stands for its smaller one; otherwise one
+/// rectangle round all of them, in the largest one's colour, rounded by the
+/// largest radius among them and square only at a corner every one of them
+/// leaves square, so a range band's inner band and middle dot share its
+/// outer band's ring wherever they reach.
+fn ring_mark(group: &[&Item]) -> Item {
     let area = |i: &Item| i.bounds().width() * i.bounds().height();
-    let largest = marks
-        .iter()
-        .copied()
-        .fold(None, |best: Option<&Item>, i| match best {
-            Some(b)
-                if area(b) > area(i)
-                    || (area(b) >= area(i) && !prefer.is_some_and(|p| std::ptr::eq(p, i))) =>
-            {
-                best
-            }
-            _ => Some(i),
-        })?;
-    if marks.len() == 1
-        || marks
+    let largest = group[1..].iter().fold(
+        group[0],
+        |best, &i| {
+            if area(i) > area(best) { i } else { best }
+        },
+    );
+    if group.len() == 1
+        || group
             .iter()
             .all(|i| matches!(i.shape, Shape::Circle { .. }))
     {
-        return Some(largest.clone());
+        return largest.clone();
     }
     let mut bounds = largest.bounds();
     let mut radius: f32 = 0.0;
     let mut round = [false; 4];
-    for m in &marks {
+    for m in group {
         let b = m.bounds();
         bounds = Rect::from_ltrb(
             bounds.left.min(b.left),
@@ -274,23 +290,29 @@ fn row_mark(card: &Scene, row: usize, prefer: Option<&Item>) -> Option<Item> {
         radius,
         corners,
     };
-    Some(mark)
+    mark
 }
 
-/// The mark `hit` lights at device `scale`: its row's [`row_mark`],
-/// preferring the item under the pointer among equal dots, or, for a row
-/// the card draws no bar, box or dot for, the item under the pointer when
-/// it is a dot (a line chart's undrawn point). Never a series line or a
-/// stem: a lollipop's stem or a value label lights the head.
+/// The mark `hit` lights at device `scale`: the [`ring_mark`] of the
+/// [`cluster`] round the item under the pointer when it is a bar, a box or
+/// a dot (a line chart's undrawn point included), else round the row's
+/// first bar, box or dot, so a lollipop's stem or a value label lights the
+/// head. Never a series line or a stem.
 fn mark_item(card: &Scene, hit: &Hit, scale: f32) -> Option<Item> {
     let row = hit.row?;
-    let under = card
+    let seed = card
         .items
         .iter()
         .filter(|i| i.datum == Some(row))
         .find(|i| crate::hit::target(i, scale).as_ref() == Some(hit))
-        .filter(|i| ringed(i));
-    row_mark(card, row, under).or_else(|| under.cloned())
+        .filter(|i| ringed(i))
+        .or_else(|| {
+            card.items
+                .iter()
+                .filter(|i| i.part == Part::Mark && i.datum == Some(row))
+                .find(|i| ringed(i))
+        })?;
+    Some(ring_mark(&cluster(card, seed)))
 }
 
 /// The colour the card draws `hit`'s mark in, for the tooltip's swatch.
@@ -433,7 +455,8 @@ fn text_box(fonts: &Fonts, item: &Item) -> Option<Rect> {
 
 /// `card` with a value focused (ADR-070): each mark the highlight names
 /// gets a one-pixel ring in the accent, broken round any value label it
-/// passes, one per row ([`row_mark`]), and every other mark moves a
+/// passes, one per group of a row's marks that meet ([`cluster`]), and
+/// every other mark moves a
 /// little towards the card. A card whose highlight
 /// names no mark is returned as it is.
 pub(crate) fn focus(tokens: &Tokens, fonts: &Fonts, card: &Scene) -> Scene {
@@ -454,7 +477,7 @@ pub(crate) fn focus(tokens: &Tokens, fonts: &Fonts, card: &Scene) -> Scene {
         .collect();
     let mut out = card.clone();
     let mut rings = Vec::new();
-    let mut rung = Vec::new();
+    let mut rung: Vec<&Item> = Vec::new();
     for (item, drawn) in card.items.iter().zip(&mut out.items) {
         if item.part != Part::Mark {
             continue;
@@ -463,22 +486,16 @@ pub(crate) fn focus(tokens: &Tokens, fonts: &Fonts, card: &Scene) -> Scene {
             drawn.color = item.color.mix(pal.card, DIM);
             continue;
         }
-        if !ringed(item) {
+        if !ringed(item) || rung.iter().any(|r| std::ptr::eq(*r, item)) {
             continue;
         }
-        let mark = match item.datum {
-            Some(row) if rung.contains(&row) => continue,
-            Some(row) => {
-                rung.push(row);
-                row_mark(card, row, None)
-            }
-            None => Some(item.clone()),
-        };
-        if let Some(path) = mark.as_ref().and_then(ring_path) {
+        let group = cluster(card, item);
+        if let Some(path) = ring_path(&ring_mark(&group)) {
             for run in gapped(&path, &labels) {
                 rings.push(line(run, RING, pal.accent));
             }
         }
+        rung.extend(group);
     }
     out.items.extend(rings);
     out

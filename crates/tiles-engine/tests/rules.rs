@@ -1126,11 +1126,27 @@ fn edge_distance(b: skia_safe::Rect, r: f32, (x, y): (f32, f32)) -> f32 {
     qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - r
 }
 
-/// The shape one ring goes round for a row drawn with `marks`, as a box
-/// and its radius: the largest dot when every mark is a dot, else the box
+/// The shape one ring goes round for the first of a row's `marks` and
+/// those whose boxes meet it, directly or through one another, as a box
+/// and its radius: the largest dot when every one is a dot, else the box
 /// round them all, rounded by the largest radius among them.
 fn row_shape(marks: &[&Item]) -> (skia_safe::Rect, f32) {
-    let area = |i: &&&Item| i.bounds().width() * i.bounds().height();
+    let meets = |a: skia_safe::Rect, b: skia_safe::Rect| {
+        a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom
+    };
+    let mut group = vec![marks[0]];
+    let mut k = 0;
+    while k < group.len() {
+        let b = group[k].bounds();
+        for m in marks {
+            if !group.iter().any(|g| std::ptr::eq(*g, *m)) && meets(b, m.bounds()) {
+                group.push(m);
+            }
+        }
+        k += 1;
+    }
+    let marks = group;
+    let area = |i: &&Item| i.bounds().width() * i.bounds().height();
     let radius = |i: &Item| match i.shape {
         Shape::Circle { r, .. } => r,
         Shape::Rect {
@@ -1292,6 +1308,167 @@ fn a_row_drawn_as_several_marks_gets_one_ring_round_them_all() {
                     hit.tip
                 );
             }
+        }
+    }
+}
+
+/// A row's marks that sit apart keep a ring each (ADR-070): hovering a
+/// big number's target bar or its sparkline's last point, a box or its low
+/// outlier washes and rings that mark alone, the outlier's tooltip swatch
+/// takes the outlier's own colour, and focusing a dumbbell row rings each
+/// of its end dots.
+#[test]
+#[allow(clippy::cast_precision_loss, clippy::too_many_lines)] // Pixel offsets; hover and focus on three forms.
+fn marks_of_a_row_that_sit_apart_keep_a_ring_each() {
+    let e = engine();
+    let scale = 2.0;
+    let off = 2.5;
+    let mut low = fixture("box-plot");
+    let days = |segment: &str, values: &[f64]| -> Vec<serde_json::Value> {
+        values
+            .iter()
+            .map(|d| serde_json::json!({"segment": segment, "days": d}))
+            .collect()
+    };
+    let mut rows = days("Slow", &[1.0, 50.0, 51.0, 52.0, 53.0, 54.0, 55.0, 56.0]);
+    rows.extend(days("Fast", &[10.0, 12.0, 14.0, 16.0, 18.0]));
+    low["data"]["rows"] = serde_json::Value::Array(rows);
+    low["highlight"] = serde_json::json!(["Slow"]);
+    let meets = |a: skia_safe::Rect, b: skia_safe::Rect| {
+        a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom
+    };
+    for (form, s) in [
+        ("big-number", scene("big-number")),
+        ("box-plot with a low outlier", scene_of(&low).unwrap()),
+        ("dumbbell", scene("dumbbell")),
+    ] {
+        let accent = e.tokens().palette(s.theme).accent;
+        let marks: Vec<&Item> = s
+            .items
+            .iter()
+            .filter(|i| i.part == Part::Mark && i.datum.is_some())
+            .filter(|i| matches!(i.shape, Shape::Rect { .. } | Shape::Circle { .. }))
+            .collect();
+        let apart: Vec<&Item> = marks
+            .iter()
+            .copied()
+            .filter(|m| {
+                marks.iter().any(|o| {
+                    !std::ptr::eq(*o, *m) && o.datum == m.datum && !meets(o.bounds(), m.bounds())
+                })
+            })
+            .collect();
+        assert!(!apart.is_empty(), "{form} draws a row's marks apart");
+        let hits = hit_map(&s, scale);
+        for mark in &apart {
+            let b = mark.bounds();
+            let hit = hits
+                .iter()
+                .filter(|h| h.row == mark.datum)
+                .min_by(|x, y| {
+                    let d = |h: &&tiles_engine::hit::Hit| {
+                        let cx = (h.left + h.right) as f32 / 2.0 / scale;
+                        let cy = (h.top + h.bottom) as f32 / 2.0 / scale;
+                        (cx - b.center_x()).hypot(cy - b.center_y())
+                    };
+                    d(x).total_cmp(&d(y))
+                })
+                .expect("the mark's target");
+            let over = e.hover(&s, hit, scale, tiles_engine::pane::Cue::default());
+            let shift = (over.ring.left as f32 / scale, over.ring.top as f32 / scale);
+            let washes: Vec<skia_safe::Rect> = over
+                .ring
+                .scene
+                .items
+                .iter()
+                .filter(|i| i.color == Rgba::white(0.12))
+                .map(|i| i.bounds().with_offset(shift))
+                .collect();
+            assert!(
+                matches!(washes.as_slice(), [w] if (w.left - b.left).abs() < 0.01
+                    && (w.top - b.top).abs() < 0.01
+                    && (w.right - b.right).abs() < 0.01
+                    && (w.bottom - b.bottom).abs() < 0.01),
+                "{form}: hovering {:?} washes its own mark alone, got {washes:?} for {b:?}",
+                hit.tip
+            );
+            let slim = b.with_outset((off + 0.1, off + 0.1));
+            let ring: Vec<(f32, f32)> = over
+                .ring
+                .scene
+                .items
+                .iter()
+                .filter_map(|i| match &i.shape {
+                    Shape::Line { points, .. } if i.color == accent.with_opacity(0.6) => {
+                        Some(points.clone())
+                    }
+                    _ => None,
+                })
+                .flatten()
+                .map(|(x, y)| (x + shift.0, y + shift.1))
+                .collect();
+            assert!(!ring.is_empty(), "{form}: a hover ring for {:?}", hit.tip);
+            assert!(
+                ring.iter().all(|&(x, y)| x >= slim.left
+                    && x <= slim.right
+                    && y >= slim.top
+                    && y <= slim.bottom),
+                "{form}: hovering {:?} rings its own mark alone",
+                hit.tip
+            );
+            let swatch = over
+                .tip
+                .scene
+                .items
+                .iter()
+                .find_map(|i| match i.shape {
+                    Shape::Rect { rect, .. }
+                        if (rect.width() - 9.0).abs() < 0.01
+                            && (rect.height() - 9.0).abs() < 0.01 =>
+                    {
+                        Some(i.color)
+                    }
+                    _ => None,
+                })
+                .expect("the tooltip's swatch");
+            assert_eq!(
+                swatch, mark.color,
+                "{form}: hovering {:?} gives the swatch its own mark's colour",
+                hit.tip
+            );
+        }
+        let focused = e.pane_focus(&s);
+        let focus_ring: Vec<(f32, f32)> = focused
+            .items
+            .iter()
+            .filter_map(|i| match &i.shape {
+                Shape::Line { points, .. } if i.part == Part::Guide && i.color == accent => {
+                    Some(points.clone())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let lit: Vec<&&Item> = apart.iter().filter(|m| m.highlighted).collect();
+        if form == "dumbbell" {
+            assert!(lit.len() > 1, "the dumbbell highlights a row's two dots");
+        }
+        let slim = |m: &Item| m.bounds().with_outset((off + 0.1, off + 0.1));
+        let inside = |r: skia_safe::Rect, (x, y): (f32, f32)| {
+            x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+        };
+        for mark in &lit {
+            assert!(
+                focus_ring.iter().any(|&p| inside(slim(mark), p)),
+                "{form}: focusing rings the mark at {:?}",
+                mark.bounds()
+            );
+        }
+        for &p in &focus_ring {
+            assert!(
+                marks.iter().any(|m| m.highlighted && inside(slim(m), p)),
+                "{form}: every focus ring point sits by its own mark, {p:?} does not"
+            );
         }
     }
 }
