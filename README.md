@@ -14,19 +14,21 @@ macOS on Apple Silicon or Intel:
 curl -fsSL https://github.com/tileshq/tiles/releases/latest/download/install.sh | sh
 ```
 
-The script downloads the release for your Mac, checks its signed checksums, puts `tiles` in `~/.local/bin` and runs `tiles setup`, which finds the coding tools on your `PATH` and asks once before it changes anything. Each [release](https://github.com/tileshq/tiles/releases) also ships an installer package, `tiles-<version>-macos.pkg`; it is not signed by Apple yet, so macOS asks you to allow it once under System Settings, Privacy & Security. With Homebrew, run `brew install tileshq/tap/tiles` and then `tiles setup`. [docs/install.md](docs/install.md) has every route in detail and shows how to check a download by hand.
+The script downloads the release for your Mac, checks its signed checksums, puts `tiles` in `~/.local/bin` and runs `tiles setup`, which finds the coding tools on your `PATH` and your shell, and asks once before it changes anything. Each [release](https://github.com/tileshq/tiles/releases) also ships an installer package, `tiles-<version>-macos.pkg`; it is not signed by Apple yet, so macOS asks you to allow it once under System Settings, Privacy & Security. With Homebrew, run `brew install tileshq/tap/tiles` and then `tiles setup`. [docs/install.md](docs/install.md) has every route in detail and shows how to check a download by hand.
 
 ## Use
 
+Install once. Then open a new terminal tab and start your coding tool as usual:
+
 ```sh
-tiles run claude        # or codex, opencode, pi
+claude        # or codex, opencode, pi
 ```
 
 Then ask for a chart: "chart our weekly signups: W1 120, W2 180, W3 150; W3 dipped because of the outage". The card fades in and floats into place, and it stays sharp when you zoom the terminal. Ask for several charts in one go and Tiles lays them out as a dashboard.
 
 <p align="center"><img src="docs/readme/card.png" alt="One column card drawn inline in a terminal session, Obsidian theme" width="440"></p>
 
-`tiles run` loads Tiles for that session only. After `tiles setup`, plain `claude`, `codex`, `opencode` and `pi` sessions get it too.
+`tiles setup` adds one small function to zsh, bash or fish for each coding tool it finds on your `PATH` (it asks `pi --version`, so another program named `pi` is left alone), so a session you start at the prompt runs through `tiles run`, which loads Tiles for that session and draws the card. `claude -p`, pipes and scripts run the tool untouched, and if Tiles fails the tool starts without it. The function runs the `tiles` that set it up by its full path, so it works before `~/.local/bin` is on your `PATH`. `tiles shell off` takes the function out again. In any other shell, start a session with `tiles run claude`.
 
 ## What you get
 

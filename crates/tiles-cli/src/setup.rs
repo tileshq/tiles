@@ -13,7 +13,10 @@
 //! commands that replace it, and left as it is. Each other `tiles` on `PATH`
 //! is named with its version, and an older one ahead of this one that the user
 //! owns is offered to be moved aside after a question of its own, in a
-//! terminal only ([`crate::copies`]). `--yes` answers for a script; `--dry-run`
+//! terminal only ([`crate::copies`]). The same question covers the shell
+//! wiring ([`crate::shell`], ADR-069): the files it writes and the startup
+//! files it adds two lines to are listed under a `Shell` step, and a shell
+//! already wired is left as it is. `--yes` answers for a script; `--dry-run`
 //! prints the plan and changes nothing; `--verbose` adds the paths and each
 //! change under its step. `tiles doctor` gets a hint from the same plan,
 //! reading Claude Code's registration from `~/.claude.json` so it starts no
@@ -531,6 +534,31 @@ pub struct Report {
     /// The running `tiles` and the others on `PATH`, some of which setup
     /// offers to move aside.
     pub copies: Copies,
+    /// The shell wiring, `None` when no zsh, bash or fish was found.
+    pub shell: Option<crate::shell::Plan>,
+}
+
+impl Report {
+    /// The shell edits still to make.
+    fn shell_edits(&self) -> &[crate::shell::Edit] {
+        self.shell.as_ref().map_or(&[], |p| p.edits.as_slice())
+    }
+
+    /// What the question names: each harness to set up, then each shell to
+    /// wire.
+    fn asked_for(&self) -> Vec<&'static str> {
+        let shells = self.shell.iter().filter(|p| !p.edits.is_empty());
+        self.installs
+            .iter()
+            .map(|(h, _)| title(*h))
+            .chain(shells.flat_map(|p| p.to_wire().into_iter().map(crate::shell::Kind::name)))
+            .collect()
+    }
+
+    /// Whether the question has anything to change: a harness or the shell.
+    fn changes(&self) -> bool {
+        !self.installs.is_empty() || !self.shell_edits().is_empty()
+    }
 }
 
 /// The step for what a data source found: finished, left for the user with
@@ -587,6 +615,7 @@ pub fn report(
         on_path,
         left,
         copies: copies.clone(),
+        shell: None,
     }
 }
 
@@ -594,7 +623,7 @@ pub fn report(
 pub type Apply<'a> = dyn Fn(Harness, &[Step]) -> Result<(), String> + 'a;
 
 /// `a`, `a and b`, `a, b and c`.
-fn listed(names: &[&str]) -> String {
+pub(crate) fn listed(names: &[&str]) -> String {
     match names {
         [] => String::new(),
         [one] => (*one).to_string(),
@@ -675,6 +704,78 @@ fn changing(label: &str, replacing: Option<&String>, change: Change<'_>) -> Row 
             Row::new(Mark::Failed, label, format!("failed: {e}{again}"))
         }
     }
+}
+
+/// The label of the shell's step.
+const SHELL: &str = "Shell";
+
+/// The step for the shell wiring, where `change` says how far its edits
+/// have got.
+fn shell_row(plan: &crate::shell::Plan, change: Change<'_>) -> Row {
+    use crate::shell::Kind;
+    let shells = if plan.edits.is_empty() {
+        plan.shells.clone()
+    } else {
+        plan.to_wire()
+    };
+    let names: Vec<&str> = shells.iter().map(|k| Kind::name(*k)).collect();
+    let names = listed(&names);
+    let typed = crate::shell::typed(&plan.harnesses, " tab", "through tiles run");
+    let mut row = if plan.edits.is_empty() {
+        Row::new(Mark::Done, SHELL, format!("already wired for {names}")).with(
+            plan.files
+                .iter()
+                .map(|p| format!("read from {}", p.display())),
+        )
+    } else {
+        let row = match change {
+            Change::Will => Row::new(Mark::Pending, SHELL, format!("will wire {names}: {typed}")),
+            Change::Would => Row::new(Mark::Pending, SHELL, format!("would wire {names}: {typed}")),
+            Change::Declined => Row::new(Mark::Skipped, SHELL, "skipped: not confirmed"),
+            Change::Done => Row::new(
+                Mark::Done,
+                SHELL,
+                format!("wired {names}; open a new terminal tab to use it"),
+            ),
+            Change::Failed(e) => Row::new(
+                Mark::Failed,
+                SHELL,
+                format!("failed: {e}; then tiles setup again"),
+            ),
+        };
+        row.with(plan.edits.iter().map(crate::shell::Edit::describe))
+    };
+    for left in &plan.left {
+        row.mark = Mark::Attention;
+        row.state = format!(
+            "{}; {} holds changed Tiles lines, left as they are",
+            row.state,
+            left.display()
+        );
+    }
+    row
+}
+
+/// Prints the shell's step, making its edits first when `go` and not
+/// `dry_run`. Returns whether they succeeded.
+fn shell_step(
+    shell: &crate::shell::Plan,
+    dry_run: bool,
+    go: bool,
+    printer: Printer,
+    out: &mut dyn Write,
+) -> std::io::Result<bool> {
+    let failed = (go && !dry_run && !shell.edits.is_empty())
+        .then(|| crate::shell::apply(&shell.edits).err())
+        .flatten();
+    let change = match &failed {
+        Some(e) => Change::Failed(e),
+        None if shell.edits.is_empty() || (go && !dry_run) => Change::Done,
+        None if dry_run => Change::Would,
+        None => Change::Declined,
+    };
+    printer.print(&shell_row(shell, change), out)?;
+    Ok(failed.is_none())
 }
 
 /// The step for the running `tiles`: `already` when this machine has nothing
@@ -807,6 +908,7 @@ fn label_width(report: &Report) -> usize {
         .chain(report.pictures.iter().map(|r| r.label.as_str()))
         .chain(report.plans.iter().map(|(h, _)| title(*h)))
         .chain(report.data.iter().map(|r| r.label.as_str()))
+        .chain(report.shell.iter().map(|_| SHELL))
         .map(|l| l.chars().count())
         .max()
         .unwrap_or(0)
@@ -872,13 +974,16 @@ pub fn run(
     } else {
         &[]
     };
-    let question = !args.yes && !args.dry_run && !report.installs.is_empty();
+    let question = !args.yes && !args.dry_run && report.changes();
     let asking = question || !asked.is_empty();
     if asking {
         for (h, plan) in &report.plans {
             if matches!(plan, Plan::Install(..) | Plan::Replace(..)) {
                 printer.print(&harness_row(*h, plan, Change::Will), out)?;
             }
+        }
+        if let Some(shell) = report.shell.as_ref().filter(|p| !p.edits.is_empty()) {
+            printer.print(&shell_row(shell, Change::Will), out)?;
         }
         for m in asked {
             printer.print(&Row::new(Mark::Pending, OTHER, moving(m)), out)?;
@@ -888,7 +993,7 @@ pub fn run(
         }
     }
     let go = if question {
-        let names: Vec<&str> = report.installs.iter().map(|(h, _)| title(*h)).collect();
+        let names = report.asked_for();
         let question = format!("Set up Tiles for {}?", listed(&names));
         ask(&question, tty, out, answer)?
     } else {
@@ -911,7 +1016,7 @@ pub fn run(
     }
 
     let mut ok = true;
-    let already = report.installs.is_empty()
+    let already = !report.changes()
         && moves.is_empty()
         && report
             .plans
@@ -939,6 +1044,9 @@ pub fn run(
             _ => harness_row(*h, plan, Change::Declined),
         };
         printer.print(&row, out)?;
+    }
+    if let Some(shell) = &report.shell {
+        ok &= shell_step(shell, args.dry_run, go, printer, out)?;
     }
     for row in &report.data {
         printer.print(row, out)?;
@@ -972,7 +1080,7 @@ fn closing(
         "Some steps failed; each failed line says what to run.".into()
     } else if args.dry_run {
         "Dry run: nothing changed.".into()
-    } else if !report.installs.is_empty() && !go {
+    } else if report.changes() && !go {
         let what = if move_asked { "No harness" } else { "Nothing" };
         format!(
             "{what} changed. To set it up, {first}run tiles setup again, or tiles install <harness> for one harness."
@@ -981,7 +1089,7 @@ fn closing(
         format!(
             "No harness Tiles supports is on PATH; {first}install Claude Code, Codex, OpenCode or Pi, then run tiles setup again."
         )
-    } else if report.left && report.installs.is_empty() {
+    } else if report.left && !report.changes() {
         let what = if move_asked {
             "Tiles changes no harness"
         } else {
@@ -989,24 +1097,35 @@ fn closing(
         };
         format!("{what}; see the lines above.")
     } else {
-        let set_up = report
+        let set_up: Vec<Harness> = report
             .plans
             .iter()
-            .find(|(_, p)| matches!(p, Plan::Current(_) | Plan::Install(..) | Plan::Replace(..)));
+            .filter(|(_, p)| matches!(p, Plan::Current(_) | Plan::Install(..) | Plan::Replace(..)))
+            .map(|(h, _)| *h)
+            .collect();
         let next = if blocked.is_some() {
             format!("Not yet: {first}")
         } else {
             "Next: ".to_string()
         };
-        set_up.map_or_else(
-            || format!("{next}run tiles check."),
-            |(h, _)| {
-                format!(
-                    "{next}run tiles check, then start a session with tiles run {}.",
-                    h.name()
-                )
-            },
-        )
+        // A harness the shell starts through tiles run once its edits have
+        // run (ADR-069): one with a function in the script.
+        let typed = report
+            .shell
+            .as_ref()
+            .filter(|p| !p.files.is_empty() && (p.edits.is_empty() || go))
+            .and_then(|p| set_up.iter().find(|h| p.harnesses.contains(h)));
+        match (typed, set_up.first()) {
+            (Some(h), _) => format!(
+                "{next}run tiles check, then open a new terminal tab and type {}.",
+                h.name()
+            ),
+            (None, Some(h)) => format!(
+                "{next}run tiles check, then start a session with tiles run {}.",
+                h.name()
+            ),
+            (None, None) => format!("{next}run tiles check."),
+        }
     }
 }
 
@@ -1187,6 +1306,12 @@ pub fn main(args: &[String], sources: &[&dyn Source]) -> std::process::ExitCode 
     data.extend(sources.iter().filter_map(|s| s.found()));
     let mut report = report(plans, terminal(&crate::serve::env), &copies, &data);
     add_cards(&mut report, &crate::serve::env);
+    report.shell = crate::shell::plan(
+        &crate::shell::Places::new(&dirs, &crate::serve::env),
+        &crate::serve::env,
+        &crate::shell::this_tiles(),
+        &crate::shell::found(),
+    );
     let mut answer = || {
         let mut line = String::new();
         match std::io::stdin().lock().read_line(&mut line) {

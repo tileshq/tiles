@@ -2,6 +2,13 @@
 //! asks the terminal what it is, picks the route, writes this session's
 //! add-ons, and launches the harness with Tiles loaded through the harness's
 //! own options, under the wrapper only where no hook draws the card.
+//!
+//! `tiles run --from-shell <harness> [harness arguments]` is what the shell
+//! wiring runs for a harness typed at a prompt ([`crate::shell`], ADR-069).
+//! It starts the harness untouched, in place of `tiles`, for the uses
+//! [`crate::shell::steps_aside`] names, and when anything fails or panics
+//! before the harness starts, after one line saying why, so a broken Tiles
+//! never keeps the harness from starting.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -254,12 +261,21 @@ impl Asked {
 
     /// The lines for the user before the harness starts and again after it
     /// exits: a version Tiles was not proved on, and the update notice.
-    fn lines(self, harness: Harness, cli: Option<crate::opencode::Cli>) -> Vec<String> {
-        let version = self.version.join().ok().flatten();
+    /// With `wait` false, as from the shell, only the answers already in:
+    /// a harness typed at a prompt starts without waiting on either.
+    fn lines(self, harness: Harness, cli: Option<crate::opencode::Cli>, wait: bool) -> Vec<String> {
+        let version = if wait || self.version.is_finished() {
+            self.version.join().ok().flatten()
+        } else {
+            None
+        };
         let mut out: Vec<String> = crate::proved::run_line(harness, cli, version.as_deref())
             .into_iter()
             .collect();
-        out.extend(self.update.and_then(crate::update::Pending::notice));
+        out.extend(
+            self.update
+                .and_then(|u| if wait { u.notice() } else { u.ready() }),
+        );
         out
     }
 }
@@ -375,31 +391,104 @@ pub fn usage(sources: &[&str]) -> String {
     USAGE.replacen("[--allow-omni]", &allow, 1)
 }
 
+/// The flag the shell wiring passes first ([`crate::shell`]).
+pub const FROM_SHELL: &str = "--from-shell";
+
+/// Set once the harness is about to start, so a panic after it is the
+/// session's and not a reason to start the harness plain.
+static LAUNCHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Replaces this process with `harness` and its arguments, untouched;
+/// returns only when it could not start.
+fn plain(harness: Harness, rest: &[String]) -> ExitCode {
+    use std::os::unix::process::CommandExt as _;
+    let e = std::process::Command::new(harness.name()).args(rest).exec();
+    fail(&format!("cannot start {}: {e}", harness.name()));
+    ExitCode::from(127)
+}
+
 /// Runs `tiles run` with the registered `sources`.
 pub fn main(args: &[String], sources: &[&dyn Source]) -> ExitCode {
-    let names: Vec<&str> = sources.iter().map(|s| s.name()).collect();
-    let (args, settings) = match arguments(args, &names) {
-        Ok(a) => a,
-        Err(code) => return code,
+    if args.first().map(String::as_str) != Some(FROM_SHELL) {
+        return match launch(args, sources, false) {
+            Ok(code) | Err(Early::Refused(code)) => code,
+            Err(Early::Failed(e)) => fail(&e),
+        };
+    }
+    let Some(harness) = args.get(1).and_then(|n| Harness::from_name(n)) else {
+        eprintln!("tiles: {FROM_SHELL} needs a harness: pi, opencode, claude or codex");
+        return ExitCode::from(2);
     };
+    let rest = args[2..].to_vec();
+    if crate::which(harness.name()).is_none() {
+        // As the shell says it, with its status.
+        eprintln!("{}: command not found", harness.name());
+        return ExitCode::from(127);
+    }
+    if crate::shell::steps_aside(harness, &rest) {
+        return plain(harness, &rest);
+    }
+    let shown = rest.clone();
+    let saved = rustix::termios::tcgetattr(rustix::stdio::stdin()).ok();
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // A background thread's panic (the version probe, the update check)
+        // leaves the launch going, as it does under `tiles run`.
+        let main_thread = std::thread::current().name() == Some("main");
+        let early = main_thread && !LAUNCHED.load(std::sync::atomic::Ordering::SeqCst);
+        if let Some(saved) = saved.as_ref().filter(|_| early) {
+            let _ = rustix::termios::tcsetattr(
+                rustix::stdio::stdin(),
+                rustix::termios::OptionalActions::Now,
+                saved,
+            );
+        }
+        default(info);
+        if early {
+            plain(harness, &shown);
+        }
+    }));
+    match launch(&args[1..], sources, true) {
+        Ok(code) => code,
+        Err(Early::Refused(_)) => plain(harness, &rest),
+        Err(Early::Failed(e)) => {
+            fail(&format!("{e}; starting {} without Tiles", harness.name()));
+            plain(harness, &rest)
+        }
+    }
+}
+
+/// Why `tiles run` stopped before the harness started.
+enum Early {
+    /// Its arguments were refused, with the line already printed.
+    Refused(ExitCode),
+    /// It failed with this error.
+    Failed(String),
+}
+
+/// Launches the harness [`main`] names, returning its exit code once it
+/// exits, or why it never started. Every local, the terminal session
+/// included, is dropped by the time this returns. `from_shell` takes only
+/// the version and update answers already in ([`Asked::lines`]).
+fn launch(args: &[String], sources: &[&dyn Source], from_shell: bool) -> Result<ExitCode, Early> {
+    let names: Vec<&str> = sources.iter().map(|s| s.name()).collect();
+    let (args, settings) = arguments(args, &names).map_err(Early::Refused)?;
     let mut asked = Asked::start(args.harness, args.dry_run);
     let mut session = Session::start();
     let replies = session.as_mut().map(Session::query);
     let env = overridden(&args);
     let detected = match detect::detect(&env, replies.as_ref()) {
         Ok(d) => d,
-        Err(e) => return fail(&e.to_string()),
+        Err(e) => return Err(Early::Failed(e.to_string())),
     };
-    let cache = match serve::open_cache().and_then(|_| serve::cache_dir()) {
-        Ok(c) => c,
-        Err(e) => return fail(&e),
-    };
+    let cache = serve::open_cache()
+        .and_then(|_| serve::cache_dir())
+        .map_err(Early::Failed)?;
     let tiles = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("tiles"));
     let addons = cache.join("run").join(std::process::id().to_string());
-    let forms = match tiles_mcp::card::EnginePainter::new() {
-        Ok(p) => p.forms(),
-        Err(e) => return fail(&e),
-    };
+    let forms = tiles_mcp::card::EnginePainter::new()
+        .map_err(Early::Failed)?
+        .forms();
     let reach = serve::reach(sources);
     let look_env = look_env(
         replies.as_ref(),
@@ -425,10 +514,7 @@ pub fn main(args: &[String], sources: &[&dyn Source]) -> ExitCode {
         motion: crate::motion::setting(&env, crate::motion::system_reduce_motion).0,
         companion: crate::companion::wanted(detected.route, &env),
     };
-    let plan = match harness::plan(args.harness, &setup, &args.rest) {
-        Ok(p) => p,
-        Err(e) => return fail(&e),
-    };
+    let plan = harness::plan(args.harness, &setup, &args.rest).map_err(Early::Failed)?;
     let spec = Spec {
         tiles,
         draw: plan.draw,
@@ -437,17 +523,16 @@ pub fn main(args: &[String], sources: &[&dyn Source]) -> ExitCode {
         env: harness::server_env(plan.draw, &setup.look_env),
         forms,
     };
-    let said = asked.lines(args.harness, setup.opencode);
+    let said = asked.lines(args.harness, setup.opencode, !from_shell);
     if args.dry_run {
         drop(session);
         print_plan(&detected, &plan);
         say(&said, false);
-        return ExitCode::SUCCESS;
+        return Ok(ExitCode::SUCCESS);
     }
-    if let Err(e) = write_addons(&addons, &spec, &plan) {
-        return fail(&e);
-    }
+    write_addons(&addons, &spec, &plan).map_err(Early::Failed)?;
     say(&said, session.is_some());
+    LAUNCHED.store(true, std::sync::atomic::Ordering::SeqCst);
     let code = match (plan.wrap, session) {
         (true, Some(session)) => {
             let motion = wrap::Motion {
@@ -468,10 +553,10 @@ pub fn main(args: &[String], sources: &[&dyn Source]) -> ExitCode {
     };
     say(&said, false);
     let _ = std::fs::remove_dir_all(&addons);
-    match code {
+    Ok(match code {
         Ok(c) => ExitCode::from(u8::try_from(c).unwrap_or(1)),
         Err(e) => fail(&e),
-    }
+    })
 }
 
 #[cfg(test)]

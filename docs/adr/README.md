@@ -74,6 +74,7 @@ Older records cite `docs/playbook.md`, `tests/reference.rs` and `tools/`, which 
 | [ADR-066](ADR-066-distribution-forms-and-an-axis-title.md) | Histogram, box plot and range bands draw from their gallery cards; intent v1 takes an optional `axis` title under a bottom value axis, which gives the bullet `€ thousand` with full ticks and the dumbbell `Minutes` |
 | [ADR-067](ADR-067-funnel-diverging-bump-and-heatmap-forms.md) | Funnel, diverging bar, bump chart and calendar heatmap draw from their gallery cards; the heatmap shades on a linear scale with ink over the top fifth so its peaks read on dark cards |
 | [ADR-068](ADR-068-small-multiples-form.md) | Small multiples draw from their gallery card: a panel per series on one shared scale, each over the others in faint grey, every named panel in the accent, up to 12 panels |
+| [ADR-069](ADR-069-shell-starts-a-typed-harness-through-tiles-run.md) | After `tiles setup`, a `claude`, `codex`, `opencode` or `pi` typed at an interactive zsh, bash or fish prompt starts through `tiles run --from-shell`, which starts the harness untouched for one-shot and management uses and whenever Tiles fails before it; `tiles shell off` gives the startup files back byte for byte |
 
 When a decision changes, add `ADR-NNN-short-title.md` with the next number, set the old record's status to "Superseded by ADR-NNN", and link both ways.
 

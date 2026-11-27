@@ -8,7 +8,10 @@
 //! since `codex mcp add` has a flag for neither; [`reapply_approvals`]
 //! gives an install made before either was configured the same settings. Outside
 //! `tiles run` no wrapper draws, so an installed server answers with the text
-//! route unless the harness draws images itself (Pi).
+//! route unless the harness draws images itself (Pi). A harness typed at a
+//! prompt `tiles setup` wired starts through `tiles run` instead
+//! ([`crate::shell`], ADR-069); the installed servers serve the rest, such as
+//! a harness an editor or a script starts.
 
 use std::fs;
 use std::path::{Path, PathBuf};

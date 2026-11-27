@@ -1,6 +1,6 @@
 # ADR-060: `tiles setup` and `install.sh` print one line per step, with marks only in a terminal
 
-- Status: Accepted; supersedes the words [ADR-035](ADR-035-macos-package-and-tiles-setup.md) and [ADR-039](ADR-039-setup-replaces-a-stale-claude-code-server.md) give `tiles setup` to print, and the order of ADR-035's two questions and the installs; what setup changes, its one question, `--yes`, `--dry-run` and its exit codes stand; [ADR-062](ADR-062-rex-is-named-and-stays-pre-cut.md) names Rex, so its example below no longer holds for Rex
+- Status: Accepted; supersedes the words [ADR-035](ADR-035-macos-package-and-tiles-setup.md) and [ADR-039](ADR-039-setup-replaces-a-stale-claude-code-server.md) give `tiles setup` to print, and the order of ADR-035's two questions and the installs; what setup changes, its one question, `--yes`, `--dry-run` and its exit codes stand; [ADR-062](ADR-062-rex-is-named-and-stays-pre-cut.md) names Rex, so its example below no longer holds for Rex; [ADR-069](ADR-069-shell-starts-a-typed-harness-through-tiles-run.md) adds a `Shell` step after the harnesses and, once the shell is wired, the closing line `Next: run tiles check, then open a new terminal tab and type <harness>.`
 - Date: 2026-11-01
 
 ## Context

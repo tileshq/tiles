@@ -1,15 +1,23 @@
 # Where the charts appear
 
-`tiles run <harness>` starts Pi, OpenCode, Claude Code or Codex with Tiles loaded for that session only, and draws each chart card inline in the terminal. Nothing in the harness's own config changes. The reasons are in [ADR-011](adr/ADR-011-surfaces-v0-1.md); the install is in [install.md](install.md).
+After `tiles setup`, typing `pi`, `opencode`, `claude` or `codex` at a zsh, bash or fish prompt starts it through `tiles run`, which loads Tiles for that session only and draws each chart card inline in the terminal ([From your shell](#from-your-shell)). `tiles run <harness>` does the same in any shell and takes the options further down. The reasons are in [ADR-011](adr/ADR-011-surfaces-v0-1.md) and [ADR-069](adr/ADR-069-shell-starts-a-typed-harness-through-tiles-run.md); the install is in [install.md](install.md).
 
 ```sh
-tiles run pi
-tiles run opencode
-tiles run claude
-tiles run codex -m gpt-5           # everything after the harness name goes to the harness
+claude                             # after tiles setup, in a new terminal tab
+codex -m gpt-5                     # every argument goes to the harness
+tiles run opencode                 # the same session from any shell
+tiles run --terminal warp pi       # with Tiles' own options before the harness name
 ```
 
 Then ask for a chart in words ("chart our weekly signups: W1 120, W2 180, W3 150; W3 dipped because of the outage"). The model calls `tiles_chart` with a short chart intent, Tiles draws the card, and the card appears where the model's reply puts it.
+
+## From your shell
+
+`tiles setup` writes `shell.sh` to the Tiles config directory (`~/.config/tiles` unless `TILES_CONFIG_DIR` or `XDG_CONFIG_HOME` moves it) and adds two lines that read it to the end of `~/.zshrc`. For bash it adds them to the `~/.bashrc` you have and to the file a login bash reads, as Terminal.app and iTerm2 start it: the first of `~/.bash_profile` and `~/.bash_login` you have, else `~/.profile` (where only bash reads the script), else a new `~/.bash_profile`. For fish it writes `~/.config/fish/conf.d/tiles.fish`, which fish reads by itself. `tiles setup --dry-run --verbose` lists each file first, and nothing changes until you answer `y`.
+
+The file defines a shell function for each of `claude`, `codex`, `opencode` and `pi` that was on your `PATH` when `tiles setup` ran; after installing another one, run `tiles setup` again to add it. Setup asks only `pi` for its `--version`: another program named `pi`, such as a digits-of-pi utility, answers differently, gets no function and runs as before, while a `pi` that gives no answer within 5 s gets its function anyway. Each runs `tiles run --from-shell <harness>` with your arguments when the prompt's input and output are a terminal, through the `tiles` that ran `tiles setup`, by its full path, so `tiles` need not be on your `PATH` and an older copy on it is never used. In a pipe, in a script, inside a `tiles run` session, or once that `tiles` is gone, it runs the harness itself. Running `tiles setup` from a `tiles` at another path points the file at that one, and `tiles update` points it at the binary it wrote. `tiles run --from-shell` starts the harness untouched, in place of `tiles`, for `--help` and `--version`, a one-shot mode such as `claude -p` or `pi --mode json`, and a subcommand that opens no conversation, such as `claude mcp`, `codex exec` or `opencode run`. If anything in Tiles fails before the harness starts, it prints one line ending `starting <harness> without Tiles` and starts the harness anyway. It does not wait for the harness version check or the daily update check: their lines print only when the answer is already in. `command claude` skips Tiles for one launch.
+
+`tiles doctor`'s `shell:` line names each shell that is wired, through which files and for which commands, names the recorded `tiles` when it is missing, and then names any shell or tool not wired yet, a function for a tool no longer on your `PATH`, and a `pi` that answered `--version` as another program (not wired) or gave no answer in time (wired anyway). `tiles shell off` removes the two lines from each startup file, leaving every other byte as it was, and deletes `shell.sh` and `tiles.fish`; `tiles shell off --dry-run` lists that first. `tiles setup` wires the shell again. An alias that adds flags, such as `alias claude='claude --model opus'`, still goes through Tiles; one that points `claude` at a file, such as `alias claude=~/.claude/local/claude`, runs that file and skips Tiles.
 
 ## With Omni data
 
@@ -43,7 +51,7 @@ Some OpenCode installs are a launcher whose TUI attaches to a background service
 
 ## Permanent install
 
-`tiles install <harness>` adds Tiles for sessions started without `tiles run`; `tiles setup` runs it for every harness on `PATH` after one question ([install.md](install.md), [ADR-035](adr/ADR-035-macos-package-and-tiles-setup.md)). Pi gets the extension in `~/.pi/agent/extensions/tiles/`; OpenCode gets `~/.config/opencode/config.json` (refused if you already have one of your own; a `permission` entry for anything but a Tiles tool, a value on a Tiles tool or its server that no install writes, or an `instructions` file other than Tiles' makes it yours, and the `$schema` key OpenCode adds does not); Claude Code and Codex get the MCP server through their own `claude mcp add` and `codex mcp add`. `--dry-run` shows the steps first. Outside `tiles run` no wrapper draws, so those sessions get the summary and the PNG's path, except Pi, which draws the image itself.
+`tiles install <harness>` adds Tiles for sessions started without `tiles run`; `tiles setup` runs it for every harness on `PATH` after one question ([install.md](install.md), [ADR-035](adr/ADR-035-macos-package-and-tiles-setup.md)). Pi gets the extension in `~/.pi/agent/extensions/tiles/`; OpenCode gets `~/.config/opencode/config.json` (refused if you already have one of your own; a `permission` entry for anything but a Tiles tool, a value on a Tiles tool or its server that no install writes, or an `instructions` file other than Tiles' makes it yours, and the `$schema` key OpenCode adds does not); Claude Code and Codex get the MCP server through their own `claude mcp add` and `codex mcp add`. `--dry-run` shows the steps first. A session started outside `tiles run`, by an editor, a script or a shell Tiles has not wired, has no wrapper, so it gets the summary and the PNG's path, except Pi, which draws the image itself.
 
 ## Checks in Warp
 

@@ -4,7 +4,9 @@
 //! one card for an add-on, `tiles pane` shows a call's cards as an
 //! interactive dashboard (ADR-065), `tiles run` launches a harness with Tiles loaded,
 //! `tiles install` adds Tiles to a harness for good, `tiles setup` runs
-//! that install for every harness on `PATH` after one question, `tiles doctor`
+//! that install for every harness on `PATH` and wires the shell so a harness
+//! typed at a prompt starts through `tiles run`, after one question (`tiles
+//! shell off` removes that wiring), `tiles doctor`
 //! reports the terminal, route, harnesses and Omni setup (ADR-004), and
 //! `tiles check` prints a pass or fail line per check of how cards will be
 //! drawn here (ADR-025), and `tiles update` installs a newer release
@@ -48,6 +50,7 @@ mod proved;
 mod run;
 mod serve;
 mod setup;
+mod shell;
 mod update;
 mod window;
 mod wrap;
@@ -60,6 +63,7 @@ const USAGE: &str = "usage: tiles render <intent.json|-> -o <out.png> [--theme <
        tiles omni <topics | fields <topic> | rows <intent.json | ->>
        tiles run [--wrapper] [--allow-omni] [--terminal <name>] [--route <name>] [--dry-run] <pi|opencode|claude|codex> [harness arguments]
        tiles setup [--yes] [--dry-run] [--verbose]
+       tiles shell off [--dry-run]
        tiles install [--dry-run] <pi|opencode|claude|codex>
        tiles doctor
        tiles check [--tag <release tag>]
@@ -128,6 +132,7 @@ enum Command {
     Run(Vec<String>),
     Install(Vec<String>),
     Setup(Vec<String>),
+    Shell(Vec<String>),
     Doctor,
     Check(Option<String>),
     Update(Vec<String>),
@@ -169,6 +174,7 @@ fn parse(args: &[String], sources: &[&str]) -> Result<Command, String> {
         "run" => Ok(Command::Run(args[1..].to_vec())),
         "install" => Ok(Command::Install(args[1..].to_vec())),
         "setup" => Ok(Command::Setup(args[1..].to_vec())),
+        "shell" => Ok(Command::Shell(args[1..].to_vec())),
         "update" => Ok(Command::Update(args[1..].to_vec())),
         "doctor" if args.len() == 1 => Ok(Command::Doctor),
         "check" if args.len() == 1 => Ok(Command::Check(None)),
@@ -190,8 +196,8 @@ fn parse(args: &[String], sources: &[&str]) -> Result<Command, String> {
                 return Ok(Command::Source(i, args[1..].to_vec()));
             }
             let mut names = vec![
-                "render", "forms", "theme", "open", "cache", "omni", "run", "setup", "install",
-                "doctor", "check", "update", "mcp", "card",
+                "render", "forms", "theme", "open", "cache", "omni", "run", "setup", "shell",
+                "install", "doctor", "check", "update", "mcp", "card",
             ];
             names.extend(sources);
             let last = names.pop().unwrap_or_default();
@@ -514,10 +520,24 @@ fn doctor_main(sources: &[&dyn Source]) -> String {
     let (replies, screen, not_asked) = ask_terminal();
     let asking = ask_versions(&which);
     let dirs = install::Dirs::from_env(&serve::env);
-    let setup = dirs
+    let mut setup = dirs
         .as_ref()
         .map(|d| setup::doctor_hints(d, sources))
         .unwrap_or_default();
+    if let Some(d) = dirs.as_ref() {
+        // Whether a harness typed at a prompt starts through tiles run
+        // (ADR-069).
+        let wiring = shell::plan(
+            &shell::Places::new(d, &serve::env),
+            &serve::env,
+            &shell::this_tiles(),
+            &shell::found(),
+        );
+        setup.push(format!(
+            "  {}",
+            tiles_term::sanitize::line(&shell::status_line(wiring.as_ref()), 600)
+        ));
+    }
     let opencode = which("opencode").map(|p| opencode::Found::read(&p));
     let versions = versions(asking, opencode.as_ref());
     let update = update::refresh(
@@ -686,6 +706,7 @@ pub fn main(sources: &[&dyn Source]) -> ExitCode {
         Ok(Command::Run(rest)) => return run::main(&rest, sources),
         Ok(Command::Install(rest)) => return install_main(&rest, sources),
         Ok(Command::Setup(rest)) => return setup::main(&rest, sources),
+        Ok(Command::Shell(rest)) => return shell::main(&rest),
         Ok(Command::Doctor) => Ok(doctor_main(sources)),
         Ok(Command::Check(tag)) => return check_main(tag.as_deref()),
         Ok(Command::Update(rest)) => return update::main(&rest),
