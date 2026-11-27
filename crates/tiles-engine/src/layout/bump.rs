@@ -34,7 +34,9 @@ fn ranks(grid: &Cells, periods: usize, series: usize) -> Vec<Vec<Option<usize>>>
 
 /// One line per series with a number through its rank in each period, first
 /// at the top, ranks named down the left as far as the most series any one
-/// period ranks, and each series named at its last point. The named series
+/// period ranks, and each series still ranked in the last period named
+/// beside it at the right edge; a line that drops out earlier is named only
+/// when it is the highlight, at its own last point. The named series
 /// takes the accent (red for a bad finding) and the rest the ordered context
 /// greys (playbook K1); with none named, the categorical order (K6).
 #[allow(
@@ -77,9 +79,16 @@ pub(super) fn bump(c: &mut Ctx) -> f32 {
         .map(|l| c.width_of(l, ls))
         .fold(0.0, f32::max);
     let names = c.fit_all(&series, ls.with_weight(600), LABEL_SHARE / 2.0);
-    let name_room = names
+    let end = (0..xs.len())
+        .rev()
+        .find(|&xi| rank.iter().any(|r| r[xi].is_some()))
+        .unwrap_or(0);
+    let column: Vec<(usize, usize)> = (0..series.len())
+        .filter_map(|si| rank[si][end].map(|r| (si, r)))
+        .collect();
+    let name_room = column
         .iter()
-        .map(|l| c.width_of(l, ls.with_weight(600)))
+        .map(|&(si, _)| c.width_of(&names[si], ls.with_weight(600)))
         .fold(0.0, f32::max)
         + END_LABEL_GAP;
     let left = c.left + PAD + rank_w + c.t.marks.label_padding;
@@ -87,7 +96,7 @@ pub(super) fn bump(c: &mut Ctx) -> f32 {
     let top = c.top + PAD + (ls.size * 0.5).ceil();
     let h = HEIGHT
         .max(RANK_STEP * f(n))
-        .max((ls.size + 2.0) * f(series.len()));
+        .max((ls.size + 2.0) * f(column.len()));
     let ys = points(n, top, top + h, 0.5);
     let xpos = points(xs.len(), left, right, 0.3);
     let muted = (Emphasis::Muted, c.pal.muted);
@@ -116,7 +125,6 @@ pub(super) fn bump(c: &mut Ctx) -> f32 {
         .col("y")
         .map(|i| c.intent.table.columns[i].clone())
         .unwrap_or_default();
-    let mut ends: Vec<(usize, f32)> = Vec::new();
     for &si in &order {
         let (e, col) = colors[si];
         // A spotlight draws the named line firm and the rest thin with
@@ -171,11 +179,19 @@ pub(super) fn bump(c: &mut Ctx) -> f32 {
                     .grow(Grow::Wipe),
             );
         }
-        if let Some(r) = (0..xs.len()).rev().find_map(|xi| rank[si][xi]) {
-            ends.push((si, ys[r - 1]));
-        }
     }
+    let mut ends: Vec<(usize, f32)> = column.iter().map(|&(si, r)| (si, ys[r - 1])).collect();
     spread(&mut ends, ls.size + 2.0, (top, top + h));
+    ends.extend(
+        (0..series.len())
+            .filter(|&si| hl[si] && rank[si][end].is_none())
+            .filter_map(|si| {
+                (0..xs.len())
+                    .rev()
+                    .find_map(|xi| rank[si][xi])
+                    .map(|r| (si, ys[r - 1]))
+            }),
+    );
     for &(si, yy) in &ends {
         let last = (0..xs.len())
             .rev()

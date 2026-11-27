@@ -61,7 +61,7 @@ A rule test reads its values from the tokens and fails with the rule's id. `crat
 | M15 | A box plot draws each group's quartiles and median on one scale, whiskers to the furthest values within Tukey's fences, and a dot for each value past them | test `crates/tiles-engine/tests/rules.rs` |
 | M16 | Range bands nest the inner band and the middle dot inside the outer band, one row per category with its bounds in order | test `crates/tiles-engine/tests/rules.rs` |
 | M17 | A funnel keeps its steps in the order sent, each over a ghost of the step before and written with its share of it | test `crates/tiles-engine/tests/rules.rs` |
-| M18 | A bump chart ranks each period largest first, the named line firm and the rest in ordered greys, each named at its end | test `crates/tiles-engine/tests/rules.rs` |
+| M18 | A bump chart ranks each period largest first, the named line firm and the rest in ordered greys, and names the lines still ranked in the last period beside their lanes at the right edge | test `crates/tiles-engine/tests/rules.rs` |
 | M19 | Diverging bars meet at a zero rule, largest first, each value signed and written past its bar's end | test `crates/tiles-engine/tests/rules.rs` |
 | M20 | A heatmap never shades a larger value lighter, writes the named cells' values, and keys its shades from zero, or the lowest value when one is below zero, to the highest | test `crates/tiles-engine/tests/rules.rs` |
 
