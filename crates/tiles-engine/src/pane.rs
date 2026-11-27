@@ -38,14 +38,18 @@ const TIP_RADIUS: f32 = 8.0;
 const TIP_GAP: f32 = 6.0;
 /// How far the tooltip's left edge sits left of the pointer.
 const TIP_LEAD: f32 = 12.0;
-/// How far the outline stands off the mark.
-const RING_OUT: f32 = 3.0;
-/// The outline's width.
-const RING: f32 = 2.0;
-/// The card-coloured halo round the outline, each side.
-const HALO: f32 = 2.0;
-/// The outline's corner radius.
-const RING_RADIUS: f32 = 4.0;
+/// How far the ring stands off the mark (ADR-070).
+const RING_OUT: f32 = 2.0;
+/// The ring's width: one CSS pixel.
+const RING: f32 = 1.0;
+/// The ring's opacity on a hovered mark that is not focused.
+const RING_HOVER: f32 = 0.6;
+/// The ring's corner radius round a mark that has none of its own.
+const RING_RADIUS: f32 = 3.0;
+/// How far a hovered mark's fill moves towards the ink.
+const LIGHTEN: f32 = 0.12;
+/// How far a focus moves the other marks towards the card.
+const DIM: f32 = 0.3;
 /// The tooltip's shadow: drop, spread, opacity.
 const SHADOW: (f32, f32, f32) = (4.0, 4.0, 0.3);
 
@@ -59,6 +63,9 @@ pub struct Cue<'a> {
     pub pointer_x: Option<f32>,
     /// The hint line.
     pub hint: Option<&'a str>,
+    /// Whether the mark is the value a click focused, which rings it in
+    /// the full accent rather than at [`RING_HOVER`].
+    pub focused: bool,
 }
 
 /// One picture of a hover overlay in device pixels: where it goes on its
@@ -185,13 +192,165 @@ fn tip<'a>(fonts: &Fonts, text: &'a str, hint: Option<&'a str>, card_w: f32) -> 
     }
 }
 
-/// The colour the card draws row `row` in, for the tooltip's swatch.
-fn mark_colour(card: &Scene, row: Option<usize>) -> Option<Rgba> {
+/// The mark the card draws row `row` with.
+fn mark_item(card: &Scene, row: Option<usize>) -> Option<&Item> {
     let row = row?;
     card.items
         .iter()
         .find(|i| i.part == Part::Mark && i.datum == Some(row))
-        .map(|i| i.color)
+}
+
+/// The colour the card draws row `row` in, for the tooltip's swatch.
+fn mark_colour(card: &Scene, row: Option<usize>) -> Option<Rgba> {
+    mark_item(card, row).map(|i| i.color)
+}
+
+/// The ring round `item`, [`RING_OUT`] off its edge and following its
+/// shape: a circle round a dot, a rectangle with the bar's corners grown
+/// by the gap round a bar; `None` for a mark of another shape.
+fn ring_path(item: &Item) -> Option<Vec<(f32, f32)>> {
+    let off = RING_OUT + RING / 2.0;
+    match &item.shape {
+        Shape::Rect { rect, radius, .. } => {
+            Some(rounded(rect.with_outset((off, off)), radius + off))
+        }
+        Shape::Circle { cx, cy, r } => Some(circle(*cx, *cy, r + off)),
+        _ => None,
+    }
+}
+
+/// A closed circle of radius `r` round `cx`, `cy`, as points.
+fn circle(cx: f32, cy: f32, r: f32) -> Vec<(f32, f32)> {
+    const STEPS: usize = 32;
+    (0..=STEPS)
+        .map(|s| {
+            #[allow(clippy::cast_precision_loss)] // A handful of steps.
+            let a = (360.0 * s as f32 / STEPS as f32).to_radians();
+            (cx + r * a.cos(), cy + r * a.sin())
+        })
+        .collect()
+}
+
+/// Room the ring leaves round a value label it passes.
+const LABEL_GAP: f32 = 1.5;
+
+/// `path` cut into the runs that stay outside every box in `holes`, each
+/// segment walked a CSS pixel at a time: the ring broken where it would
+/// pass under a value label, so it never draws over one (ADR-070).
+fn gapped(path: &[(f32, f32)], holes: &[Rect]) -> Vec<Vec<(f32, f32)>> {
+    if holes.is_empty() {
+        return vec![path.to_vec()];
+    }
+    let inside = |(x, y): (f32, f32)| {
+        holes
+            .iter()
+            .any(|h| x >= h.left && x <= h.right && y >= h.top && y <= h.bottom)
+    };
+    let mut runs = Vec::new();
+    let mut run: Vec<(f32, f32)> = Vec::new();
+    for pair in path.windows(2) {
+        let ((x0, y0), (x1, y1)) = (pair[0], pair[1]);
+        // A segment's length in whole pixels: positive, and far below 2^24.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let steps = (x1 - x0).hypot(y1 - y0).ceil().clamp(1.0, 10_000.0) as usize;
+        for s in 0..=steps {
+            #[allow(clippy::cast_precision_loss)] // A few hundred steps.
+            let t = s as f32 / steps as f32;
+            let p = (x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+            if inside(p) {
+                if run.len() > 1 {
+                    runs.push(std::mem::take(&mut run));
+                }
+                run.clear();
+            } else {
+                run.push(p);
+            }
+        }
+    }
+    if run.len() > 1 {
+        runs.push(run);
+    }
+    runs
+}
+
+/// The box round `points`.
+fn bounds_of(points: &[(f32, f32)]) -> Rect {
+    let (mut l, mut t, mut r, mut b) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for &(x, y) in points {
+        l = l.min(x);
+        t = t.min(y);
+        r = r.max(x);
+        b = b.max(y);
+    }
+    Rect::from_ltrb(l, t, r, b)
+}
+
+/// The box a text item's glyphs cover: from its cap height down to a
+/// little under its baseline.
+fn text_box(fonts: &Fonts, item: &Item) -> Option<Rect> {
+    let Shape::Text {
+        text,
+        x,
+        y,
+        style,
+        anchor,
+    } = &item.shape
+    else {
+        return None;
+    };
+    let w = fonts.width(text, *style);
+    let left = match anchor {
+        Anchor::Start => *x,
+        Anchor::Middle => x - w / 2.0,
+        Anchor::End => x - w,
+    };
+    Some(Rect::from_ltrb(
+        left,
+        y - 0.75 * style.size,
+        left + w,
+        y + 0.2 * style.size,
+    ))
+}
+
+/// `card` with a value focused (ADR-070): each mark the highlight names
+/// gets a one-pixel ring in the accent, broken round any value label it
+/// passes, and every other mark moves a
+/// little towards the card. A card whose highlight names no mark is
+/// returned as it is.
+pub(crate) fn focus(tokens: &Tokens, fonts: &Fonts, card: &Scene) -> Scene {
+    if !card
+        .items
+        .iter()
+        .any(|i| i.part == Part::Mark && i.highlighted)
+    {
+        return card.clone();
+    }
+    let pal = tokens.palette(card.theme);
+    let labels: Vec<Rect> = card
+        .items
+        .iter()
+        .filter(|i| i.part == Part::Value)
+        .filter_map(|i| text_box(fonts, i))
+        .map(|b| b.with_outset((LABEL_GAP, LABEL_GAP)))
+        .collect();
+    let mut out = card.clone();
+    let mut rings = Vec::new();
+    for item in &mut out.items {
+        if item.part != Part::Mark {
+            continue;
+        }
+        if item.highlighted {
+            if let Some(path) = ring_path(item) {
+                for run in gapped(&path, &labels) {
+                    rings.push(line(run, RING, pal.accent));
+                }
+            }
+        } else {
+            item.color = item.color.mix(pal.card, DIM);
+        }
+    }
+    out.items.extend(rings);
+    out
 }
 
 /// The boxes a tooltip must leave clear: the card's title and the line
@@ -306,7 +465,7 @@ fn place_tip(
             f.right <= c.left || c.right <= f.left || f.bottom <= c.top || c.bottom <= f.top
         })
     };
-    let reach = RING / 2.0 + HALO + TIP_GAP;
+    let reach = RING + 1.0 + TIP_GAP;
     let below = ring.bottom + reach;
     if below + h <= card.height
         && let Some(left) = nearest(0.0, card.width - w, pref_left, |l| free(l, below))
@@ -324,20 +483,16 @@ fn place_tip(
         sides.swap(0, 1);
     }
     for (_, left, fits) in sides {
-        if fits
-            && let Some(top) = nearest(plot.top, card.height - h, ring.top, |t| free(left, t))
-        {
+        if fits && let Some(top) = nearest(plot.top, card.height - h, ring.top, |t| free(left, t)) {
             return (left, top);
         }
     }
     let inside = (mark.center_x() - w / 2.0, mark.top + TIP_GAP);
-    if mark.width() >= w + 2.0 * TIP_GAP
-        && inside.1 + h <= mark.bottom
-        && free(inside.0, inside.1)
+    if mark.width() >= w + 2.0 * TIP_GAP && inside.1 + h <= mark.bottom && free(inside.0, inside.1)
     {
         return inside;
     }
-    if let Some(at) = anywhere(&clear, card, (w, h), (pref_left, below), &free) {
+    if let Some(at) = anywhere(&clear, card, (w, h), (pref_left, below), free) {
         return at;
     }
     let top = if below + h <= card.height {
@@ -348,8 +503,8 @@ fn place_tip(
     (pref_left.min(card.width - w).max(0.0), top)
 }
 
-/// The overlay for `hit` on `card`, at device `scale`: the mark outlined
-/// in ink inside a card-coloured halo, and, as a picture of its own, a
+/// The overlay for `hit` on `card`, at device `scale`: the mark a little
+/// lighter inside a one-pixel accent ring ([`ring_items`]), and, as a picture of its own, a
 /// raised tooltip placed by [`place_tip`], starting just left of the
 /// pointer when it sits below the mark, kept inside the tile (ADR-070).
 pub(crate) fn overlay(
@@ -369,7 +524,7 @@ pub(crate) fn overlay(
     );
     let ring = mark.with_outset((RING_OUT, RING_OUT));
     let laid = tip(fonts, &hit.tip, cue.hint, card.width);
-    let reach = RING / 2.0 + HALO;
+    let reach = RING + 1.0;
     let pref_left = cue
         .pointer_x
         .map_or(ring.center_x() - laid.w / 2.0, |px| px - TIP_LEAD);
@@ -378,15 +533,11 @@ pub(crate) fn overlay(
     let shadow = tip_box
         .with_offset((0.0, SHADOW.0))
         .with_outset((SHADOW.1, SHADOW.1));
-    let path = rounded(ring, RING_RADIUS);
     let ring_piece = piece(
         card,
         ring.with_outset((reach, reach)),
         scale,
-        vec![
-            line(path.clone(), RING + 2.0 * HALO, pal.card),
-            line(path, RING, pal.ink),
-        ],
+        ring_items(fonts, pal, card, hit, ring, cue.focused),
     );
     let mut items = vec![
         rect(shadow, TIP_RADIUS + SHADOW.1, Rgba::black(SHADOW.2)),
@@ -409,6 +560,62 @@ pub(crate) fn overlay(
         ring: ring_piece,
         tip: piece(card, bounds, scale, items),
     }
+}
+
+/// The hover ring's picture: the mark a little lighter, a one-pixel ring
+/// in the accent round it (at [`RING_HOVER`] unless the mark is the
+/// focused value), and, above the ring, any value label the ring's box
+/// reaches, so no label is ever cut.
+fn ring_items(
+    fonts: &Fonts,
+    pal: &crate::tokens::Palette,
+    card: &Scene,
+    hit: &Hit,
+    ring: Rect,
+    focused: bool,
+) -> Vec<Item> {
+    let mut items = Vec::new();
+    let mark = mark_item(card, hit.row);
+    let path = match mark {
+        Some(m) => {
+            if matches!(m.shape, Shape::Rect { .. } | Shape::Circle { .. }) {
+                let mut lit = m.clone();
+                lit.color = m.color.mix(pal.ink, LIGHTEN);
+                lit.part = Part::Guide;
+                lit.datum = None;
+                lit.tip = None;
+                items.push(lit);
+            }
+            ring_path(m).unwrap_or_else(|| rounded(ring, RING_RADIUS))
+        }
+        None => rounded(ring, RING_RADIUS),
+    };
+    let colour = if focused {
+        pal.accent
+    } else {
+        pal.accent.with_opacity(RING_HOVER)
+    };
+    let reach = bounds_of(&path).with_outset((RING, RING));
+    let labels: Vec<Rect> = card
+        .items
+        .iter()
+        .filter(|i| i.part == Part::Value)
+        .filter_map(|i| text_box(fonts, i))
+        .filter(|b| Rect::intersects(b, reach))
+        .map(|b| b.with_outset((LABEL_GAP, LABEL_GAP)))
+        .collect();
+    for run in gapped(&path, &labels) {
+        items.push(line(run, RING, colour));
+    }
+    for label in card
+        .items
+        .iter()
+        .filter(|i| i.part == Part::Value)
+        .filter(|i| text_box(fonts, i).is_some_and(|b| Rect::intersects(&b, reach)))
+    {
+        items.push(label.clone());
+    }
+    items
 }
 
 /// The tooltip's swatch and text inside `tip_box`: the mark's name after

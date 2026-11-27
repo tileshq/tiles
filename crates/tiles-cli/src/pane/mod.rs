@@ -290,21 +290,30 @@ impl App<'_> {
         self.look = look;
         let scale = look.scale;
         self.slots = match &self.content {
-            Content::Dashboard { call, shown, .. } => {
+            Content::Dashboard {
+                call, shown, state, ..
+            } => {
                 let (laid, order) = call
                     .lay_out_pane(shown, &self.painter, &look)
                     .map_err(|e| e.to_string())?;
                 let mut order = order.into_iter();
                 laid.cards
                     .into_iter()
-                    .map(|c| Slot {
-                        intent: c.align.and_then(|_| order.next()),
-                        align: c.align,
-                        at: c.at,
-                        cells: c.cells,
-                        hits: tiles_engine::hit::hit_map(&c.scene, scale),
-                        legend: self.painter.engine().legend(&c.scene, scale),
-                        scene: c.scene,
+                    .map(|c| {
+                        let intent = c.align.and_then(|_| order.next());
+                        let scene = match intent {
+                            Some(k) => self.treat(&shown[k], c.scene, state.focus.as_ref()),
+                            None => c.scene,
+                        };
+                        Slot {
+                            intent,
+                            align: c.align,
+                            at: c.at,
+                            cells: c.cells,
+                            hits: tiles_engine::hit::hit_map(&scene, scale),
+                            legend: self.painter.engine().legend(&scene, scale),
+                            scene,
+                        }
                     })
                     .collect()
             }
@@ -636,7 +645,7 @@ impl App<'_> {
     ) -> Result<Option<Vec<u8>>, String> {
         let slot = &self.slots[s];
         let scale = self.look.scale;
-        let hint = self.hint(slot, &slot.hits[h]);
+        let (hint, focused) = self.hint(slot, &slot.hits[h]);
         let pointer_x = self.pointer.map(|(x, _)| {
             #[allow(clippy::cast_precision_loss)] // Pixel coordinates far below 2^24.
             let dx = x as f32 - f32::from(slot.at.0) * f32::from(self.cell.0);
@@ -645,6 +654,7 @@ impl App<'_> {
         let cue = tiles_engine::pane::Cue {
             pointer_x,
             hint: hint.as_deref(),
+            focused,
         };
         let overlay = self.engine().hover(&slot.scene, &slot.hits[h], scale, cue);
         let ring = self.piece_bytes(slot, &overlay.ring, id)?;
@@ -699,17 +709,21 @@ impl App<'_> {
     }
 
     /// What a click on `hit` in `slot` would do, for the tooltip's foot:
-    /// focus its value, or clear the focus when that value is focused.
-    fn hint(&self, slot: &Slot, hit: &tiles_engine::hit::Hit) -> Option<String> {
+    /// focus its value, or clear the focus when that value is focused; and
+    /// whether it is, which rings the mark in the full accent.
+    fn hint(&self, slot: &Slot, hit: &tiles_engine::hit::Hit) -> (Option<String>, bool) {
         let Content::Dashboard { shown, state, .. } = &self.content else {
-            return None;
+            return (None, false);
         };
-        let picked = board::pick(shown, slot.intent?, hit.row?, self.engine().forms())?;
-        Some(if state.focuses(&picked) {
-            "click again to clear".to_string()
-        } else {
-            format!("click to focus {}", picked.value)
-        })
+        let picked = slot
+            .intent
+            .zip(hit.row)
+            .and_then(|(card, row)| board::pick(shown, card, row, self.engine().forms()));
+        match picked {
+            Some(p) if state.focuses(&p) => (Some("click again to clear".to_string()), true),
+            Some(p) => (Some(format!("click to focus {}", p.value)), false),
+            None => (None, false),
+        }
     }
 
     /// The card under device pixel `x`, `y`, as its intent's index.
@@ -907,13 +921,16 @@ impl App<'_> {
         kind: &str,
         note: Option<String>,
     ) -> Result<Update, String> {
-        let Content::Dashboard { call, .. } = &self.content else {
+        let Content::Dashboard { call, state, .. } = &self.content else {
             return Err("not a dashboard".into());
         };
         let wanted = next.apply(&call.intents, self.engine().forms());
+        let refocus = next.focus != state.focus;
         self.begin(kind);
         let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
-        let (intents, mut cards, refused) = self.relay(wanted, &mut bytes)?;
+        let focus = next.focus.clone();
+        let (intents, mut cards, refused) =
+            self.relay(wanted, focus.as_ref(), refocus, &mut bytes)?;
         if self.note.is_none() {
             self.note = note;
         }
@@ -950,7 +967,19 @@ impl App<'_> {
         self.painter.lay_card(&tile, &look, align).ok()
     }
 
-    /// Lays out again each card whose intent `intents` changes, in its own
+    /// `scene`, drawn from `intent`, with the focus treatment (a ring round
+    /// the focused mark, the other marks dimmed) when `focus` is the value
+    /// its highlight names (ADR-070).
+    fn treat(&self, intent: &Intent, scene: Scene, focus: Option<&board::Selection>) -> Scene {
+        if focus.is_some_and(|f| intent.highlight.len() == 1 && intent.highlight[0] == f.value) {
+            self.engine().pane_focus(&scene)
+        } else {
+            scene
+        }
+    }
+
+    /// Lays out again each card whose intent `intents` changes, or every
+    /// card when `refocus` says the focus changed, in its own
     /// slot, and sends those whose scene changed. A card that cannot be
     /// drawn with its focus, hidden series, sort or drill keeps its picture
     /// and its intent, and names itself on the status line. Returns the intents the cards now show, how many
@@ -958,6 +987,8 @@ impl App<'_> {
     fn relay(
         &mut self,
         mut intents: Vec<Intent>,
+        focus: Option<&board::Selection>,
+        refocus: bool,
         bytes: &mut Vec<u8>,
     ) -> Result<(Vec<Intent>, usize, Vec<usize>), String> {
         let Content::Dashboard { shown, .. } = &self.content else {
@@ -970,10 +1001,13 @@ impl App<'_> {
             let (Some(k), Some(_)) = (slot.intent, slot.align) else {
                 continue;
             };
-            if intents[k] == shown[k] {
+            if intents[k] == shown[k] && !refocus {
                 continue;
             }
-            match self.lay(slot, &intents[k]) {
+            match self
+                .lay(slot, &intents[k])
+                .map(|s| self.treat(&intents[k], s, focus))
+            {
                 Some(scene) if scene != slot.scene => changed.push((i, scene)),
                 Some(_) => {}
                 None => refused.push(k),
