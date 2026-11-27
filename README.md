@@ -30,7 +30,7 @@ Then ask for a chart: "chart our weekly signups: W1 120, W2 180, W3 150; W3 dipp
 
 ## What you get
 
-- Twenty-four chart forms: column, bar, grouped, stacked and 100% stacked bars, diverging bar, funnel, line and multi-line, area and labelled area, scatter, dot plot, dumbbell, lollipop, slope, bump chart, bullet, waterfall, histogram, box plot, range bands, calendar heatmap and a big number. `tiles forms` lists them, each with when to use it.
+- Twenty-five chart forms: column, bar, grouped, stacked and 100% stacked bars, diverging bar, funnel, line and multi-line, small multiples, area and labelled area, scatter, dot plot, dumbbell, lollipop, slope, bump chart, bullet, waterfall, histogram, box plot, range bands, calendar heatmap and a big number. `tiles forms` lists them, each with when to use it.
 - Craft built in. The model says what the chart claims and which value to highlight; Tiles picks the sort order, the colours, the labels and the axes. A slip in the intent is corrected and named, and an intent that cannot be drawn right is refused with a one-line fix the model can act on.
 - Three themes in the official build: Obsidian, a dark graphite, and tuned light and dark. `tiles theme light` switches, and the model can switch for you with the `tiles_theme` tool.
 - Your data stays yours. Rows you type stay in your conversation. With [Omni](docs/omni.md) connected, Tiles fetches the rows itself with your key, and the model sees the chart's title and id, never the values, unless you opt in.

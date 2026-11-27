@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "form": "small-multiples",
+  "title": "Benachrichtigungseinstellungen lead the year",
+  "claim": {
+    "kind": "trend",
+    "tone": "good"
+  },
+  "fields": {
+    "x": "period",
+    "y": "value",
+    "series": "name"
+  },
+  "unit": "usd",
+  "data": {
+    "rows": [
+      {
+        "period": "2026-01",
+        "name": "Aleksandra Wiśniewska-Kowalczyk",
+        "value": 12345678.9
+      }
+    ]
+  }
+}

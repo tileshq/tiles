@@ -73,6 +73,7 @@ Older records cite `docs/playbook.md`, `tests/reference.rs` and `tools/`, which 
 | [ADR-065](ADR-065-pane-ships-with-fetched-rows-and-one-interaction-state.md) | `tiles pane` ships in every build and draws a chart call from a file, or a drawn card by its id, with its rows fetched through the source seam and held in memory only; what the user picks is one state: a click on a mark cross-filters, a click on a legend entry hides its series, `s` sorts by category totals, `d` drills an Omni date field one timeframe finer with no Omni filter, `u` goes up, `r` clears; only cards whose scene changed are sent |
 | [ADR-066](ADR-066-distribution-forms-and-an-axis-title.md) | Histogram, box plot and range bands draw from their gallery cards; intent v1 takes an optional `axis` title under a bottom value axis, which gives the bullet `€ thousand` with full ticks and the dumbbell `Minutes` |
 | [ADR-067](ADR-067-funnel-diverging-bump-and-heatmap-forms.md) | Funnel, diverging bar, bump chart and calendar heatmap draw from their gallery cards; the heatmap shades on a linear scale with ink over the top fifth so its peaks read on dark cards |
+| [ADR-068](ADR-068-small-multiples-form.md) | Small multiples draw from their gallery card: a panel per series on one shared scale, each over the others in faint grey, every named panel in the accent, up to 12 panels |
 
 When a decision changes, add `ADR-NNN-short-title.md` with the next number, set the old record's status to "Superseded by ADR-NNN", and link both ways.
 

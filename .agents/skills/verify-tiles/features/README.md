@@ -64,5 +64,6 @@ Chart forms, one per file:
 - [funnel](./funnel.md): "Four in ten shoppers give up at the payment-details step".
 - [diverging-bar](./diverging-bar.md): "Three markets are above the 2.0% refund target".
 - [bump](./bump.md): "Wallets climbed from 4th to 1st in payment volume this year".
+- [small-multiples](./small-multiples.md): "Win rate held steady in every segment except mid-market".
 - [calendar-heatmap](./calendar-heatmap.md): "Monday 9 to 11am is the worst two hours of the support week".
 

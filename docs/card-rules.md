@@ -64,6 +64,7 @@ A rule test reads its values from the tokens and fails with the rule's id. `crat
 | M18 | A bump chart ranks each period largest first, the named line firm and the rest in ordered greys, and names the lines still ranked in the last period beside their lanes at the right edge | test `crates/tiles-engine/tests/rules.rs` |
 | M19 | Diverging bars meet at a zero rule, largest first, each value signed and written past its bar's end | test `crates/tiles-engine/tests/rules.rs` |
 | M20 | A heatmap never shades a larger value lighter, writes the named cells' values, and keys its shades from zero, or the lowest value when one is below zero, to the highest | test `crates/tiles-engine/tests/rules.rs` |
+| M21 | Small multiples share one scale, a named panel per series, each over the others in faint grey | test `crates/tiles-engine/tests/rules.rs` |
 
 ## Motion
 

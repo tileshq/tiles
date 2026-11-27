@@ -4,7 +4,7 @@
 
 ## Sub-features
 
-- `forms-list` lists all 24 forms in a stable order.
+- `forms-list` lists all 25 forms in a stable order.
 - `forms-roles` lists each form's roles with kind and requirement.
 
 ## How to get to it (user POV)
@@ -17,7 +17,7 @@ Preconditions:
 
 - `scripts/doctor.sh` passes.
 
-- **List.** Run `.agents/skills/verify-tiles/scripts/drive.sh <run> forms forms`. Exit 0; the transcript starts with `column` and lists, in order, `bar`, `line`, `area`, `area-labelled`, `big-number`, `multi-line`, `grouped-bar`, `stacked-bar`, `stacked-100-bar`, `lollipop`, `dot-plot`, `slope`, `dumbbell`, `bullet`, `waterfall`, `scatter`, `histogram`, `box-plot`, `range-bands`, `funnel`, `diverging-bar`, `bump` and `calendar-heatmap`.
+- **List.** Run `.agents/skills/verify-tiles/scripts/drive.sh <run> forms forms`. Exit 0; the transcript starts with `column` and lists, in order, `bar`, `line`, `area`, `area-labelled`, `big-number`, `multi-line`, `grouped-bar`, `stacked-bar`, `stacked-100-bar`, `lollipop`, `dot-plot`, `slope`, `dumbbell`, `bullet`, `waterfall`, `scatter`, `histogram`, `box-plot`, `range-bands`, `funnel`, `diverging-bar`, `bump`, `small-multiples` and `calendar-heatmap`.
 - **Roles.** In the same transcript, `scatter` lists `x` and `y` as `Number, required` and `label` as `Category, optional`.
 - **New roles.** In the same transcript, `histogram` lists `x` as `Number, required` and `y` and `threshold` as `Number, optional`, and `calendar-heatmap` lists `x`, `row` and `y`.
 

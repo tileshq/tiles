@@ -1,0 +1,26 @@
+{
+  "name": "small-multiples",
+  "summary": "One small line chart per series on a shared scale, for comparing the shape of several trends without a tangle: each panel draws its own line over the others in faint grey, up to 12 panels.",
+  "layout": "multiples",
+  "width": { "min": 56, "max": 88 },
+  "roles": [
+    {
+      "name": "x",
+      "kind": "category",
+      "required": true,
+      "doc": "the period, in time order"
+    },
+    {
+      "name": "y",
+      "kind": "number",
+      "required": true,
+      "doc": "the value"
+    },
+    {
+      "name": "series",
+      "kind": "category",
+      "required": true,
+      "doc": "the panel each row belongs to, such as each segment"
+    }
+  ]
+}

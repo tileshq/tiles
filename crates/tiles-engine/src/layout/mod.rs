@@ -19,6 +19,7 @@ mod heatmap;
 mod histogram;
 mod kpi;
 mod line;
+mod multiples;
 mod scatter;
 mod shares;
 mod slope;
@@ -51,6 +52,7 @@ use heatmap::heatmap;
 use histogram::histogram;
 use kpi::kpi;
 use line::line;
+use multiples::multiples;
 use scatter::scatter;
 use shares::shares;
 use slope::slope;
@@ -286,6 +288,7 @@ pub(crate) fn scene(
         Layout::Funnel => funnel(&mut ctx),
         Layout::Diverging => diverging(&mut ctx),
         Layout::Bump => bump(&mut ctx),
+        Layout::Multiples => multiples(&mut ctx),
         Layout::Heatmap => heatmap(&mut ctx),
     };
     if ctx.note_unplaced {
@@ -436,6 +439,12 @@ fn default_subtitle(form: &Form, intent: &Intent) -> String {
             col("y").unwrap_or_default(),
             col("x").unwrap_or_default()
         ),
+        Layout::Multiples => format!(
+            "{} by {}, one panel per {}",
+            col("y").unwrap_or_default(),
+            col("x").unwrap_or_default(),
+            col("series").unwrap_or_default()
+        ),
         Layout::Heatmap => format!(
             "{} by {} and {}",
             col("y").unwrap_or_default(),
@@ -531,7 +540,7 @@ pub(crate) fn validate(form: &Form, intent: &Intent, pal: &Palette) -> Result<()
             ));
         }
         Layout::Slope => slope_pairs(intent)?,
-        Layout::Bump => periods(form, intent)?,
+        Layout::Bump | Layout::Multiples => periods(form, intent)?,
         Layout::Bands => band_rows(intent)?,
         Layout::Histogram => histogram::check(intent)?,
         _ => {}
@@ -613,12 +622,17 @@ pub(crate) fn validate(form: &Form, intent: &Intent, pal: &Palette) -> Result<()
                 seen.push(l);
             }
         }
-        let named: Vec<bool> = seen.iter().map(|s| intent.highlight.contains(s)).collect();
-        let filled = matches!(
-            form.layout,
-            Layout::Grouped | Layout::Stacked | Layout::Shares
-        );
-        distinct_series_colours(form, &named, filled, pal, intent.claim.tone)?;
+        // Small multiples part their series by panel, not by colour.
+        if form.layout == Layout::Multiples {
+            multiples::check(&seen)?;
+        } else {
+            let named: Vec<bool> = seen.iter().map(|s| intent.highlight.contains(s)).collect();
+            let filled = matches!(
+                form.layout,
+                Layout::Grouped | Layout::Stacked | Layout::Shares
+            );
+            distinct_series_colours(form, &named, filled, pal, intent.claim.tone)?;
+        }
     }
     if let Some(row) = intent
         .column("row")
@@ -822,7 +836,12 @@ fn mend_highlight(form: &Form, intent: &mut Intent, pal: &Palette) {
         }
         intent.highlight = kept;
     }
-    if let Some(sc) = intent.column("series") {
+    // Small multiples colour every named panel; only lines that share one
+    // plot keep one accent.
+    if let Some(sc) = intent
+        .column("series")
+        .filter(|_| form.layout != Layout::Multiples)
+    {
         let mut series: Vec<String> = Vec::new();
         for row in &intent.table.rows {
             let l = row[sc].label();

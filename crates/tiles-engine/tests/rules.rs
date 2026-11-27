@@ -141,6 +141,7 @@ const SINGLE_EMPHASIS: &[&str] = &[
     "funnel",
     "diverging-bar",
     "bump",
+    "small-multiples",
 ];
 
 #[test]
@@ -4096,6 +4097,75 @@ fn m20_a_heatmap_shades_each_cell_by_value_and_writes_the_named_cells() {
     ))
     .unwrap_err();
     assert!(e.to_string().contains("more than 31 distinct rows"), "{e}");
+}
+
+#[test]
+fn m21_small_multiples_share_one_scale_with_a_panel_per_series() {
+    let s = scene("small-multiples");
+    assert_eq!(
+        texts(&s, Part::Legend),
+        ["SMB", "Mid-market", "Enterprise", "Partner-sourced"],
+        "M21: a named panel per series"
+    );
+    let ticks = texts(&s, Part::AxisLabel);
+    for tick in ["0%", "20%", "40%"] {
+        assert_eq!(
+            ticks.iter().filter(|t| *t == tick).count(),
+            4,
+            "M21: every panel reads the same scale, {ticks:?}"
+        );
+    }
+    let lines: Vec<&Item> = s
+        .marks()
+        .filter(|m| matches!(m.shape, Shape::Line { .. }))
+        .collect();
+    assert_eq!(lines.len(), 4, "M21: each panel draws its own line");
+    let named: Vec<Emphasis> = lines.iter().map(|l| l.emphasis).collect();
+    assert_eq!(
+        named,
+        [
+            Emphasis::Muted,
+            Emphasis::Bad,
+            Emphasis::Muted,
+            Emphasis::Muted
+        ],
+        "M21: the named panel in red for a bad finding"
+    );
+    let context = s
+        .part(Part::Guide)
+        .filter(|g| g.emphasis == Emphasis::Grid && matches!(g.shape, Shape::Line { .. }))
+        .count();
+    assert_eq!(
+        context, 12,
+        "M21: every other series faint behind each panel"
+    );
+    // Two named panels both take the accent; thirteen are refused.
+    let mut v = fixture("small-multiples");
+    v["highlight"] = serde_json::json!(["SMB", "Mid-market"]);
+    let s = scene_of(&v).unwrap();
+    assert_eq!(
+        s.marks()
+            .filter(|m| matches!(m.shape, Shape::Line { .. }) && m.emphasis == Emphasis::Bad)
+            .count(),
+        2,
+        "M21"
+    );
+    let rows: Vec<serde_json::Value> = (0..13)
+        .flat_map(|p| {
+            ["Q1", "Q2"].map(|q| serde_json::json!({"q": q, "s": format!("P{p}"), "v": p}))
+        })
+        .collect();
+    let e = scene_of(&intent(
+        "small-multiples",
+        &serde_json::json!({"x": "q", "y": "v", "series": "s"}),
+        &rows,
+    ))
+    .unwrap_err();
+    assert!(
+        e.to_string()
+            .starts_with("fields.series: 13 panels is more than"),
+        "{e}"
+    );
 }
 
 #[test]
