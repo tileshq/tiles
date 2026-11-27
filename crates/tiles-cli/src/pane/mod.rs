@@ -370,8 +370,8 @@ impl App<'_> {
         )
     }
 
-    /// The page: one pixel of the theme's page colour stretched over the
-    /// whole window under the text and the cards.
+    /// The page: the theme's page colour stretched over the whole window
+    /// under the text and the cards ([`kitty::fill`]).
     fn page_bytes(&self) -> Vec<u8> {
         let c = self.engine().tokens().palette(self.look.theme).page();
         let mut out = pane::move_to(0, 0).into_bytes();
