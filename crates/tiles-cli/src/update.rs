@@ -691,7 +691,7 @@ pub fn update(args: &Args, cx: &Context<'_>) -> Result<Vec<String>, String> {
     let mut out = updated(cx, current, new);
     if let Some(dirs) = crate::install::Dirs::from_env(cx.env) {
         let places = crate::shell::Places::new(&dirs, cx.env);
-        match crate::shell::follow(&places, &cx.dest) {
+        match crate::shell::follow(&places, &cx.dest, &crate::shell::found()) {
             Ok(rewritten) => out.extend(rewritten.iter().map(|p| {
                 format!(
                     "pointed {} at {}",

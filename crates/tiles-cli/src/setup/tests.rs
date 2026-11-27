@@ -1394,6 +1394,7 @@ fn zsh_machine(name: &str) -> (PathBuf, crate::shell::Places, Report) {
         &places,
         &|k| (k == "SHELL").then(|| "/bin/zsh".into()),
         Path::new("/opt/homebrew/bin/tiles"),
+        &Harness::ALL,
     );
     (dirs.home.parent().unwrap().to_path_buf(), places, r)
 }
@@ -1407,7 +1408,7 @@ fn the_shell_is_wired_only_after_the_one_question() {
         assert_eq!(
             text,
             format!(
-                "{}  Shell          (will wire zsh: claude, codex, opencode and pi typed in a new terminal tab start through tiles run)
+                "{}  Shell          (will wire zsh: pi, opencode, claude and codex typed in a new terminal tab start through tiles run)
 tiles setup --dry-run --verbose lists each change.
 Set up Tiles for zsh? [y/N] 
 
@@ -1446,7 +1447,7 @@ Nothing changed. To set it up, run tiles setup again, or tiles install <harness>
     );
     assert_eq!(
         std::fs::read_to_string(&places.script).unwrap(),
-        crate::shell::script(Path::new("/opt/homebrew/bin/tiles"))
+        crate::shell::script(Path::new("/opt/homebrew/bin/tiles"), &Harness::ALL)
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -1461,6 +1462,7 @@ fn a_wired_shell_is_left_as_it_is_and_listed_with_its_files_under_verbose() {
         &places,
         &|k| (k == "SHELL").then(|| "/bin/zsh".into()),
         Path::new("/opt/homebrew/bin/tiles"),
+        &Harness::ALL,
     );
     let (text, _, ok) = drive(Args::default(), &again, None);
     assert!(ok);
@@ -1487,6 +1489,32 @@ Next: run tiles check, then open a new terminal tab and type pi.
             places.zshrc.display()
         )),
         "{text}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_shell_found_after_another_was_wired_is_the_one_setup_names() {
+    let (root, places, r) = zsh_machine("shell-partial");
+    crate::shell::apply(&r.shell.as_ref().unwrap().edits).unwrap();
+    std::fs::write(&places.bashrc, "export N=1\n").unwrap();
+    let mut again = r;
+    again.shell = crate::shell::plan(
+        &places,
+        &|k| (k == "SHELL").then(|| "/bin/zsh".into()),
+        Path::new("/opt/homebrew/bin/tiles"),
+        &[Harness::Pi],
+    );
+    let (text, asked, _) = drive(Args::default(), &again, Some("n\n"));
+    assert!(
+        text.contains(
+            "  Shell          (will wire bash: pi typed in a new terminal tab starts through tiles run)\n"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("Set up Tiles for bash? [y/N] "),
+        "{text} {asked:?}"
     );
     let _ = std::fs::remove_dir_all(root);
 }

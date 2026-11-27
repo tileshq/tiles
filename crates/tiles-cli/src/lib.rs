@@ -531,6 +531,7 @@ fn doctor_main(sources: &[&dyn Source]) -> String {
             &shell::Places::new(d, &serve::env),
             &serve::env,
             &shell::this_tiles(),
+            &shell::found(),
         );
         setup.push(format!(
             "  {}",

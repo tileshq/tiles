@@ -551,7 +551,7 @@ impl Report {
         self.installs
             .iter()
             .map(|(h, _)| title(*h))
-            .chain(shells.flat_map(|p| p.shells.iter().map(|k| k.name())))
+            .chain(shells.flat_map(|p| p.to_wire().into_iter().map(crate::shell::Kind::name)))
             .collect()
     }
 
@@ -623,7 +623,7 @@ pub fn report(
 pub type Apply<'a> = dyn Fn(Harness, &[Step]) -> Result<(), String> + 'a;
 
 /// `a`, `a and b`, `a, b and c`.
-fn listed(names: &[&str]) -> String {
+pub(crate) fn listed(names: &[&str]) -> String {
     match names {
         [] => String::new(),
         [one] => (*one).to_string(),
@@ -713,10 +713,14 @@ const SHELL: &str = "Shell";
 /// have got.
 fn shell_row(plan: &crate::shell::Plan, change: Change<'_>) -> Row {
     use crate::shell::Kind;
-    let names: Vec<&str> = plan.shells.iter().map(|k| Kind::name(*k)).collect();
+    let shells = if plan.edits.is_empty() {
+        plan.shells.clone()
+    } else {
+        plan.to_wire()
+    };
+    let names: Vec<&str> = shells.iter().map(|k| Kind::name(*k)).collect();
     let names = listed(&names);
-    let typed =
-        "claude, codex, opencode and pi typed in a new terminal tab start through tiles run";
+    let typed = crate::shell::typed(&plan.harnesses, " tab", "through tiles run");
     let mut row = if plan.edits.is_empty() {
         Row::new(Mark::Done, SHELL, format!("already wired for {names}")).with(
             plan.files
@@ -1308,6 +1312,7 @@ pub fn main(args: &[String], sources: &[&dyn Source]) -> std::process::ExitCode 
         &crate::shell::Places::new(&dirs, &crate::serve::env),
         &crate::serve::env,
         &crate::shell::this_tiles(),
+        &crate::shell::found(),
     );
     let mut answer = || {
         let mut line = String::new();

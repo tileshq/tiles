@@ -8,7 +8,8 @@
 //! file it wires ([`startup_files`]). For fish it writes [`fish`] to
 //! `fish/conf.d/tiles.fish`, which fish reads by itself, so no file of the
 //! user's changes. Each script records the `tiles` that ran setup, as
-//! installed ([`installed`]), and defines one function per harness that runs
+//! installed ([`installed`]), and defines one function per harness found on
+//! `PATH` ([`found`]) that runs
 //! `<that tiles> run --from-shell <harness>` when standard input and output
 //! are a terminal, that file is executable and no `tiles run` is already
 //! around the shell, and the harness itself otherwise. `tiles run
@@ -59,13 +60,14 @@ fn fish_word(p: &Path) -> String {
 }
 
 /// The zsh and bash script, `shell.sh` in the Tiles config directory, which
-/// runs `tiles`. `function name {` keeps an alias of the same name, which a
-/// shell expands before a `name()` definition, from breaking the file.
+/// runs `tiles` for each of `harnesses`. `function name {` keeps an alias of
+/// the same name, which a shell expands before a `name()` definition, from
+/// breaking the file.
 #[must_use]
-pub fn script(tiles: &Path) -> String {
-    format!(
-        r#"{MARK} claude, codex, opencode and pi typed at an interactive
-# prompt start through `tiles run`, which draws chart cards in this terminal.
+pub fn script(tiles: &Path, harnesses: &[Harness]) -> String {
+    let mut out = format!(
+        r#"{MARK} each harness below, typed at an interactive
+# prompt, starts through `tiles run`, which draws chart cards in this terminal.
 # `command claude` skips Tiles once; `tiles shell off` removes this file and
 # the lines that read it.
 function __tiles_start {{{SH_TILES}{tiles}
@@ -75,22 +77,26 @@ function __tiles_start {{{SH_TILES}{tiles}
     command "$@"
   fi
 }}
-function claude {{ __tiles_start claude "$@"; }}
-function codex {{ __tiles_start codex "$@"; }}
-function opencode {{ __tiles_start opencode "$@"; }}
-function pi {{ __tiles_start pi "$@"; }}
 "#,
         tiles = sh_word(tiles)
-    )
+    );
+    for h in harnesses {
+        let _ = writeln!(
+            out,
+            "function {0} {{ __tiles_start {0} \"$@\"; }}",
+            h.name()
+        );
+    }
+    out
 }
 
 /// The fish script, `fish/conf.d/tiles.fish` in the XDG config directory,
-/// which runs `tiles`.
+/// which runs `tiles` for each of `harnesses`.
 #[must_use]
-pub fn fish(tiles: &Path) -> String {
-    format!(
-        r#"{MARK} claude, codex, opencode and pi typed at an interactive
-# prompt start through `tiles run`, which draws chart cards in this terminal.
+pub fn fish(tiles: &Path, harnesses: &[Harness]) -> String {
+    let mut out = format!(
+        r#"{MARK} each harness below, typed at an interactive
+# prompt, starts through `tiles run`, which draws chart cards in this terminal.
 # `command claude` skips Tiles once; `tiles shell off` removes this file.
 function __tiles_start{FISH_TILES}{tiles}
     if isatty stdin; and isatty stdout; and test -z "$TILES_RUN"; and test -f $tiles; and test -x $tiles
@@ -99,21 +105,53 @@ function __tiles_start{FISH_TILES}{tiles}
         command $argv
     end
 end
-function claude
-    __tiles_start claude $argv
-end
-function codex
-    __tiles_start codex $argv
-end
-function opencode
-    __tiles_start opencode $argv
-end
-function pi
-    __tiles_start pi $argv
-end
 "#,
         tiles = fish_word(tiles)
-    )
+    );
+    for h in harnesses {
+        let _ = writeln!(
+            out,
+            "function {0}\n    __tiles_start {0} $argv\nend",
+            h.name()
+        );
+    }
+    out
+}
+
+/// The harnesses a script [`script`] or [`fish`] wrote defines a function
+/// for.
+fn defined(text: &str) -> Vec<Harness> {
+    Harness::ALL
+        .into_iter()
+        .filter(|h| {
+            text.contains(&format!("\nfunction {} {{", h.name()))
+                || text.contains(&format!("\nfunction {}\n", h.name()))
+        })
+        .collect()
+}
+
+/// The harnesses on this machine's `PATH`, the ones the scripts define.
+#[must_use]
+pub fn found() -> Vec<Harness> {
+    Harness::ALL
+        .into_iter()
+        .filter(|h| crate::which(h.name()).is_some())
+        .collect()
+}
+
+/// `harnesses` typed in a new terminal (`tab` adds to it), starting `how`.
+#[must_use]
+pub fn typed(harnesses: &[Harness], tab: &str, how: &str) -> String {
+    let names: Vec<&str> = harnesses.iter().map(|h| h.name()).collect();
+    match names.as_slice() {
+        [] => "no harness Tiles supports was on PATH; tiles setup adds one installed later"
+            .to_string(),
+        [one] => format!("{one} typed in a new terminal{tab} starts {how}"),
+        _ => format!(
+            "{} typed in a new terminal{tab} start {how}",
+            crate::setup::listed(&names)
+        ),
+    }
 }
 
 /// The `tiles` a script [`script`] or [`fish`] wrote runs, read back from
@@ -240,6 +278,33 @@ pub struct Plan {
     pub left: Vec<PathBuf>,
     /// The `tiles` Tiles' script on disk runs, `None` when there is none.
     pub recorded: Option<PathBuf>,
+    /// The shells a new terminal already starts through Tiles, each with the
+    /// files that read its script: every startup file of the shell holds
+    /// the block and the script is there.
+    pub wired: Vec<(Kind, PathBuf)>,
+    /// The harnesses the scripts get a function for: those on `PATH`.
+    pub harnesses: Vec<Harness>,
+    /// The harnesses Tiles' script on disk defines a function for.
+    pub commands: Vec<Harness>,
+}
+
+impl Plan {
+    /// The shells the edits wire: those not wired yet, or every shell when
+    /// the edits only rewrite the scripts.
+    #[must_use]
+    pub fn to_wire(&self) -> Vec<Kind> {
+        let pending: Vec<Kind> = self
+            .shells
+            .iter()
+            .copied()
+            .filter(|k| !self.wired.iter().any(|(w, _)| w == k))
+            .collect();
+        if pending.is_empty() {
+            self.shells.clone()
+        } else {
+            pending
+        }
+    }
 }
 
 /// Where the wiring's files are.
@@ -368,45 +433,73 @@ fn startup_files(places: &Places, login: Option<Kind>) -> Vec<(Kind, PathBuf)> {
     out
 }
 
-/// The plan on this machine for scripts that run `tiles`; `None` when no
-/// zsh, bash or fish is found.
+/// The plan on this machine for scripts that run `tiles` for each of
+/// `harnesses`; `None` when no zsh, bash or fish is found.
 #[must_use]
-pub fn plan(places: &Places, env: &dyn Fn(&str) -> Option<String>, tiles: &Path) -> Option<Plan> {
+pub fn plan(
+    places: &Places,
+    env: &dyn Fn(&str) -> Option<String>,
+    tiles: &Path,
+    harnesses: &[Harness],
+) -> Option<Plan> {
     let login = login_shell(env);
-    let read = |p: &Path| fs::read_to_string(p).ok();
-    let mut out = Plan::default();
+    let read = |p: &Path| fs::read_to_string(p).ok().filter(|t| t.starts_with(MARK));
+    let mut out = Plan {
+        harnesses: harnesses.to_vec(),
+        ..Plan::default()
+    };
+    let mut held_by = Vec::new();
     for (kind, rc) in startup_files(places, login) {
         if !out.shells.contains(&kind) {
             out.shells.push(kind);
         }
         let block = places.block(&rc);
-        match held(read(&rc).as_deref(), &block) {
-            Held::Block => out.files.push(rc),
+        let h = held(fs::read_to_string(&rc).ok().as_deref(), &block);
+        match h {
+            Held::Block => out.files.push(rc.clone()),
             Held::None => {
                 out.edits.push(Edit::Append(rc.clone(), block));
-                out.files.push(rc);
+                out.files.push(rc.clone());
             }
-            Held::Changed => out.left.push(rc),
+            Held::Changed => out.left.push(rc.clone()),
         }
+        held_by.push((kind, rc, h));
     }
     let written = read(&places.script);
     if !out.files.is_empty() {
-        let wanted = script(tiles);
+        let wanted = script(tiles, harnesses);
         if written.as_deref() != Some(wanted.as_str()) {
             out.edits
                 .insert(0, Edit::Write(places.script.clone(), wanted));
+        }
+    }
+    for kind in [Kind::Zsh, Kind::Bash] {
+        let files: Vec<&(Kind, PathBuf, Held)> =
+            held_by.iter().filter(|(k, _, _)| *k == kind).collect();
+        let all = !files.is_empty() && files.iter().all(|(_, _, h)| *h == Held::Block);
+        if all && written.is_some() {
+            out.wired
+                .extend(files.iter().map(|(k, rc, _)| (*k, rc.clone())));
         }
     }
     let fished = read(&places.fish);
     if login == Some(Kind::Fish) || places.fish_dir.is_dir() {
         out.shells.push(Kind::Fish);
         out.files.push(places.fish.clone());
-        let wanted = fish(tiles);
+        if fished.is_some() {
+            out.wired.push((Kind::Fish, places.fish.clone()));
+        }
+        let wanted = fish(tiles, harnesses);
         if fished.as_deref() != Some(wanted.as_str()) {
             out.edits.push(Edit::Write(places.fish.clone(), wanted));
         }
     }
-    out.recorded = [written, fished].iter().flatten().find_map(|t| recorded(t));
+    let ours = [written, fished]
+        .into_iter()
+        .flatten()
+        .find(|t| recorded(t).is_some());
+    out.recorded = ours.as_deref().and_then(recorded);
+    out.commands = ours.as_deref().map(defined).unwrap_or_default();
     (!out.shells.is_empty()).then_some(out)
 }
 
@@ -447,23 +540,28 @@ pub fn apply(edits: &[Edit]) -> Result<(), String> {
     Ok(())
 }
 
-/// Points each Tiles script that runs another `tiles` at `tiles`, as `tiles
-/// update` does after writing `tiles`. Returns the scripts it rewrote.
+/// Points each Tiles script that runs another `tiles` at `tiles`, with a
+/// function for each of `harnesses`, as `tiles update` does after writing
+/// `tiles`. Returns the scripts it rewrote.
 ///
 /// # Errors
 ///
 /// The first script that could not be written, with why.
-pub fn follow(places: &Places, tiles: &Path) -> Result<Vec<PathBuf>, String> {
+pub fn follow(
+    places: &Places,
+    tiles: &Path,
+    harnesses: &[Harness],
+) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     for (path, make) in [
-        (&places.script, script as fn(&Path) -> String),
+        (&places.script, script as fn(&Path, &[Harness]) -> String),
         (&places.fish, fish),
     ] {
         let Ok(text) = fs::read_to_string(path) else {
             continue;
         };
         if text.starts_with(MARK) && recorded(&text).is_some_and(|r| r != tiles) {
-            fs::write(path, make(tiles))
+            fs::write(path, make(tiles, harnesses))
                 .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
             out.push(path.clone());
         }
@@ -567,36 +665,67 @@ pub fn undo(places: &Places, dry_run: bool) -> Result<Vec<Undone>, String> {
     Ok(out)
 }
 
-/// `tiles doctor`'s line: the shells wired and through which files, the
-/// `tiles` their script runs when it is missing, or not wired.
+/// `tiles doctor`'s line: the shells wired, through which files, and the
+/// commands they start through Tiles, or the `tiles` their script runs when
+/// it is missing; then the shells not wired yet.
 #[must_use]
 pub fn status_line(plan: Option<&Plan>) -> String {
     let Some(plan) = plan else {
         return "shell: no zsh, bash or fish found; start a session with tiles run <harness>"
             .to_string();
     };
-    let names: Vec<&str> = plan.shells.iter().map(|k| k.name()).collect();
-    let names = names.join(", ");
-    let files: Vec<String> = plan.files.iter().map(|p| p.display().to_string()).collect();
-    let files = files.join(", ");
-    let typed = "claude, codex, opencode and pi typed in a new terminal";
-    let read = !plan.files.is_empty() && plan.edits.iter().all(|e| matches!(e, Edit::Write(..)));
-    let mut line = match &plan.recorded {
-        Some(tiles) if read && !runnable(tiles) => format!(
-            "shell: wired for {names} through {files}, but {} is missing, so {typed} start plain; run tiles setup",
-            tiles.display()
-        ),
-        _ if read && plan.edits.is_empty() => {
-            format!("shell: wired for {names} through {files}: {typed} start through tiles run")
+    let mut wired: Vec<Kind> = Vec::new();
+    for (k, _) in &plan.wired {
+        if !wired.contains(k) {
+            wired.push(*k);
         }
-        Some(tiles) if read => format!(
-            "shell: wired for {names} through {files}: {typed} start through {}; tiles setup rewrites the script for this tiles",
-            tiles.display()
-        ),
-        _ => format!(
-            "shell: not wired for {names}: plain sessions get no inline card; run tiles setup"
-        ),
+    }
+    let names = |kinds: &[Kind]| {
+        let names: Vec<&str> = kinds.iter().map(|k| k.name()).collect();
+        crate::setup::listed(&names)
     };
+    let pending: Vec<Kind> = plan
+        .shells
+        .iter()
+        .copied()
+        .filter(|k| !wired.contains(k))
+        .collect();
+    let mut line = if wired.is_empty() {
+        format!(
+            "shell: not wired for {}: plain sessions get no inline card; run tiles setup",
+            names(&plan.shells)
+        )
+    } else {
+        let files: Vec<String> = plan
+            .wired
+            .iter()
+            .map(|(_, p)| p.display().to_string())
+            .collect();
+        let head = format!(
+            "shell: wired for {} through {}",
+            names(&wired),
+            files.join(", ")
+        );
+        let rewrite = plan
+            .edits
+            .iter()
+            .any(|e| matches!(e, Edit::Write(p, _) if p.exists()));
+        match &plan.recorded {
+            Some(tiles) if !runnable(tiles) => format!(
+                "{head}, but {} is missing, so {}; run tiles setup",
+                tiles.display(),
+                typed(&plan.commands, "", "plain")
+            ),
+            Some(tiles) if rewrite => format!(
+                "{head}: {}; tiles setup rewrites the script for this tiles",
+                typed(&plan.commands, "", &format!("through {}", tiles.display()))
+            ),
+            _ => format!("{head}: {}", typed(&plan.commands, "", "through tiles run")),
+        }
+    };
+    if !wired.is_empty() && !pending.is_empty() {
+        let _ = write!(line, "; {} not wired yet: run tiles setup", names(&pending));
+    }
     for p in &plan.left {
         let _ = write!(
             line,

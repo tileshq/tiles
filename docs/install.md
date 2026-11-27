@@ -27,7 +27,7 @@ What the package cannot do yet ([ADR-035](adr/ADR-035-macos-package-and-tiles-se
 Tiles 0.2.0 setup
   Claude Code    (will configure)
   Codex          (will configure)
-  Shell          (will wire zsh: claude, codex, opencode and pi typed in a new terminal tab start through tiles run)
+  Shell          (will wire zsh: pi, claude and codex typed in a new terminal tab start through tiles run)
 tiles setup --dry-run --verbose lists each change.
 Set up Tiles for Claude Code, Codex and zsh? [y/N] y
 
@@ -44,7 +44,7 @@ Next: run tiles check, then open a new terminal tab and type pi.
 
 In a terminal each line starts with a mark: a green check for a finished step, a dot for a pending one, `-` for a skipped one, `!` for one left to you and a red cross for a failure. Piped, or with `NO_COLOR` set, the words stay the same and the marks go. `tiles setup --verbose` adds each path and each change under its step, and shows what each harness's own command prints; `tiles doctor` shows the paths as well.
 
-On `y` it runs, for each harness, the steps `tiles install <harness>` runs, and wires the shell: from the next terminal tab, `claude`, `codex`, `opencode` and `pi` typed at the prompt start through `tiles run`, which draws the cards inline ([surfaces.md](surfaces.md#from-your-shell), [ADR-069](adr/ADR-069-shell-starts-a-typed-harness-through-tiles-run.md)). The shell runs the `tiles` that ran setup by its full path, so it works when `~/.local/bin` is not on your `PATH`. A data source's line names the commands that finish it, which need a key or a choice only you have: `tiles omni set-key https://<host>` ([omni.md](omni.md)). After those, run `tiles setup` again so each harness gets the data tools and asks before each Tiles tool call.
+On `y` it runs, for each harness, the steps `tiles install <harness>` runs, and wires the shell: from the next terminal tab, `claude`, `codex`, `opencode` and `pi` typed at the prompt start through `tiles run`, which draws the cards inline ([surfaces.md](surfaces.md#from-your-shell), [ADR-069](adr/ADR-069-shell-starts-a-typed-harness-through-tiles-run.md)). The shell runs the `tiles` that ran setup by its full path, so it works when `~/.local/bin` is not on your `PATH`. Only the harnesses on your `PATH` get a function; after installing another, run `tiles setup` again. A data source's line names the commands that finish it, which need a key or a choice only you have: `tiles omni set-key https://<host>` ([omni.md](omni.md)). After those, run `tiles setup` again so each harness gets the data tools and asks before each Tiles tool call.
 
 Running it again changes nothing and prints the same list with `(already set up)` and `Shell (already wired for zsh)`. `tiles setup --dry-run` prints the list and changes nothing; `tiles setup --yes` answers for a script. A harness installed later shows up in `tiles doctor` as `setup: Tiles is not set up, or is out of date, for <harness>; run tiles setup`; for Claude Code, doctor reads its registration from `~/.claude.json` and starts nothing. `tiles setup` leaves alone an OpenCode `config.json` or a Codex approval setting of your own, as `tiles install` does, and says so.
 

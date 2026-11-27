@@ -8,7 +8,8 @@
 //! harness typed in a terminal through the `tiles` that ran setup, with no
 //! `tiles` on `PATH` or an older one ahead of it, and starts it plain when
 //! its input is not a terminal, inside `tiles run`, or once that `tiles` is
-//! gone.
+//! gone. A harness not on `PATH` at setup gets no function, so the shell
+//! runs it itself, until setup runs again.
 
 use std::io::Read as _;
 use std::os::unix::fs::PermissionsExt as _;
@@ -26,6 +27,12 @@ fn machine(name: &str) -> PathBuf {
     for d in ["home", "path", "config", "cache"] {
         std::fs::create_dir_all(root.join(d)).unwrap();
     }
+    stub_pi(&root);
+    root
+}
+
+/// The stub `pi` on the machine's `PATH`.
+fn stub_pi(root: &Path) {
     let pi = root.join("path/pi");
     std::fs::write(
         &pi,
@@ -33,7 +40,6 @@ fn machine(name: &str) -> PathBuf {
     )
     .unwrap();
     std::fs::set_permissions(&pi, std::fs::Permissions::from_mode(0o755)).unwrap();
-    root
 }
 
 /// The environment `tiles` runs in on the machine: zsh as the login shell.
@@ -299,7 +305,13 @@ fn wired(name: &str) -> PathBuf {
     std::fs::create_dir_all(root.join("bin")).unwrap();
     std::fs::create_dir_all(root.join("home/.config/fish")).unwrap();
     std::os::unix::fs::symlink(TILES, root.join("bin/tiles")).unwrap();
-    let out = command(&root, root.join("bin/tiles").to_str().unwrap())
+    set_up(&root);
+    root
+}
+
+/// Runs `tiles setup --yes` as the machine's `bin/tiles`, first on `PATH`.
+fn set_up(root: &Path) {
+    let out = command(root, root.join("bin/tiles").to_str().unwrap())
         .arg("setup")
         .arg("--yes")
         .env(
@@ -314,7 +326,6 @@ fn wired(name: &str) -> PathBuf {
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", text(&out));
-    root
 }
 
 /// Each shell found here with the line that reads Tiles' script for it.
@@ -443,7 +454,7 @@ fn a_harness_typed_in_a_terminal_starts_plain_inside_tiles_run_or_once_its_tiles
     );
     assert!(
         doctor.contains(&format!(
-            "but {} is missing, so claude, codex, opencode and pi typed in a new terminal start plain; run tiles setup",
+            "but {} is missing, so pi typed in a new terminal starts plain; run tiles setup",
             root.join("bin/tiles").display()
         )),
         "{doctor}"
@@ -453,6 +464,36 @@ fn a_harness_typed_in_a_terminal_starts_plain_inside_tiles_run_or_once_its_tiles
         assert!(
             said.contains("pi [a b] TILES_RUN=[]"),
             "{shell}, tiles gone: {said}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_harness_missing_at_setup_gets_its_function_once_setup_runs_again() {
+    let root = machine("later");
+    std::fs::remove_file(root.join("path/pi")).unwrap();
+    std::fs::create_dir_all(root.join("bin")).unwrap();
+    std::fs::create_dir_all(root.join("home/.config/fish")).unwrap();
+    std::os::unix::fs::symlink(TILES, root.join("bin/tiles")).unwrap();
+    set_up(&root);
+    stub_pi(&root);
+    let path = format!("{}:/usr/bin:/bin", root.join("path").display());
+    let found = shells(&root);
+    assert!(!found.is_empty(), "no zsh, bash or fish here");
+    for (shell, read) in &found {
+        let said = at_prompt(&root, shell, read, &path, None);
+        assert!(
+            said.contains("pi [a b] TILES_RUN=[]"),
+            "{shell}, pi installed after setup: {said}"
+        );
+    }
+    set_up(&root);
+    for (shell, read) in &found {
+        let said = at_prompt(&root, shell, read, &path, None);
+        assert!(
+            said.contains("/pi/index.ts a b] TILES_RUN=[1]"),
+            "{shell}, after setup again: {said}"
         );
     }
     let _ = std::fs::remove_dir_all(&root);
