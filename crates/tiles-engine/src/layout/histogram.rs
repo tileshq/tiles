@@ -106,7 +106,7 @@ pub(super) fn check(intent: &Intent) -> Result<(), IntentError> {
             return Err(IntentError::new(
                 "fields.threshold",
                 "the threshold falls inside a bin, so the share past it cannot be counted",
-                "send a threshold that is one of the bins' starts, or leave y out and send the values",
+                "send a threshold on a bin edge (a start or the last bin's end), or leave y out and send the values",
             ));
         }
     }

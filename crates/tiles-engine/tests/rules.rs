@@ -3451,7 +3451,13 @@ fn m14_a_histogram_refuses_what_would_draw_a_wrong_count() {
             &rows,
         )
     };
-    assert_eq!(refuse(binned(7.0, 3.0)).key, "fields.threshold", "M14");
+    assert_eq!(
+        refuse(binned(7.0, 3.0)).to_string(),
+        "fields.threshold: the threshold falls inside a bin, so the share past it cannot be \
+         counted; send a threshold on a bin edge (a start or the last bin's end), or leave y \
+         out and send the values",
+        "M14"
+    );
     let s = scene_of(&binned(5.0, 3.0)).expect("M14: a threshold on an edge draws");
     assert_eq!(texts(&s, Part::Value), ["73% at 5 or more"], "M14");
     let uneven = |limit: f64| {
