@@ -311,6 +311,11 @@ const WORST_REFUSED: &[(&str, &str)] = &[
          second period, or use bar to compare one period",
     ),
     (
+        "small-multiples-one-row",
+        "data.rows: small-multiples needs at least two periods in x with a y number; add rows \
+         for a second period, or use bar to compare one period",
+    ),
+    (
         "slope-one-row",
         "data.rows: slope needs at least two periods in x; add rows for a second period",
     ),

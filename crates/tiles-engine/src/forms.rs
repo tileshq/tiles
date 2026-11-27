@@ -52,6 +52,10 @@ pub const EMBEDDED: &[(&str, &[u8])] = &[
     ),
     ("bump", crate::seal::sealed!("forms/bump.json")),
     (
+        "small-multiples",
+        crate::seal::sealed!("forms/small-multiples.json"),
+    ),
+    (
         "calendar-heatmap",
         crate::seal::sealed!("forms/calendar-heatmap.json"),
     ),
@@ -103,6 +107,8 @@ pub enum Layout {
     Diverging,
     /// Lines of ranks across periods.
     Bump,
+    /// One small line panel per series on a shared scale.
+    Multiples,
     /// A grid of cells shaded by value.
     Heatmap,
 }
@@ -149,7 +155,12 @@ impl Layout {
                 ("y", Number, true),
                 ("series", Category, false),
             ],
-            Layout::Grouped | Layout::Stacked | Layout::Shares | Layout::Slope | Layout::Bump => &[
+            Layout::Grouped
+            | Layout::Stacked
+            | Layout::Shares
+            | Layout::Slope
+            | Layout::Bump
+            | Layout::Multiples => &[
                 ("x", Category, true),
                 ("y", Number, true),
                 ("series", Category, true),
@@ -183,7 +194,9 @@ impl Layout {
     pub fn highlight_roles(self) -> &'static [&'static str] {
         match self {
             Layout::Kpi | Layout::Histogram => &[],
-            Layout::Stacked | Layout::Shares | Layout::Slope | Layout::Bump => &["series"],
+            Layout::Stacked | Layout::Shares | Layout::Slope | Layout::Bump | Layout::Multiples => {
+                &["series"]
+            }
             Layout::Heatmap => &["x", "row"],
             Layout::Line | Layout::Grouped => &["series", "x"],
             Layout::Scatter => &["label"],
