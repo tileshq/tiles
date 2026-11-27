@@ -3,8 +3,8 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use super::{
-    Edit, Kind, Places, Undone, apply, block, fish, follow, installed, plan, script, status_line,
-    steps_aside, undo,
+    Edit, Found, Kind, Places, Undone, answers_as, apply, block, fish, follow, installed, plan,
+    script, status_line, steps_aside, undo,
 };
 use crate::harness::Harness;
 use crate::install::Dirs;
@@ -27,12 +27,25 @@ fn shell_is(name: &'static str) -> impl Fn(&str) -> Option<String> {
     move |k: &str| (k == "SHELL").then(|| format!("/bin/{name}"))
 }
 
+/// What [`super::found`] finds when each of `harnesses` answers as itself.
+fn of(harnesses: &[Harness]) -> Found {
+    Found {
+        harnesses: harnesses.to_vec(),
+        others: Vec::new(),
+    }
+}
+
 /// The `tiles` the tests' scripts run.
 const TILES: &str = "/opt/homebrew/bin/tiles";
 
 /// [`plan`] for scripts that run [`TILES`], with `name` as the login shell.
 fn plan_for(places: &Places, name: &'static str) -> Option<super::Plan> {
-    plan(places, &shell_is(name), Path::new(TILES), &Harness::ALL)
+    plan(
+        places,
+        &shell_is(name),
+        Path::new(TILES),
+        &of(&Harness::ALL),
+    )
 }
 
 #[test]
@@ -77,7 +90,7 @@ fn the_block_reads_the_script_only_when_it_is_there_and_quotes_its_path() {
 fn no_shell_found_means_no_plan() {
     let (root, places) = home("none");
     assert_eq!(
-        plan(&places, &|_| None, Path::new(TILES), &Harness::ALL),
+        plan(&places, &|_| None, Path::new(TILES), &of(&Harness::ALL)),
         None
     );
     let _ = fs::remove_dir_all(root);
@@ -349,13 +362,13 @@ fn the_status_line_says_what_is_wired_and_what_is_not() {
     fs::create_dir_all(root.join("bin")).unwrap();
     fs::write(&tiles, "#!/bin/sh\n").unwrap();
     fs::set_permissions(&tiles, fs::Permissions::from_mode(0o755)).unwrap();
-    let p = plan(&places, &shell_is("zsh"), &tiles, &Harness::ALL).unwrap();
+    let p = plan(&places, &shell_is("zsh"), &tiles, &of(&Harness::ALL)).unwrap();
     assert_eq!(
         status_line(Some(&p)),
         "shell: not wired for zsh: plain sessions get no inline card; run tiles setup"
     );
     apply(&p.edits).unwrap();
-    let p = plan(&places, &shell_is("zsh"), &tiles, &Harness::ALL).unwrap();
+    let p = plan(&places, &shell_is("zsh"), &tiles, &of(&Harness::ALL)).unwrap();
     assert_eq!(p.recorded.as_deref(), Some(tiles.as_path()));
     assert_eq!(
         status_line(Some(&p)),
@@ -373,7 +386,7 @@ fn the_status_line_says_what_is_wired_and_what_is_not() {
         "{other:?}"
     );
     fs::remove_file(&tiles).unwrap();
-    let gone = plan(&places, &shell_is("zsh"), &tiles, &Harness::ALL).unwrap();
+    let gone = plan(&places, &shell_is("zsh"), &tiles, &of(&Harness::ALL)).unwrap();
     assert_eq!(
         status_line(Some(&gone)),
         format!(
@@ -399,7 +412,7 @@ fn stub_tiles(root: &Path) -> std::path::PathBuf {
 fn a_wired_shell_reads_as_wired_while_another_waits_for_its_lines() {
     let (root, places) = home("partial");
     let tiles = stub_tiles(&root);
-    let zsh = |h: &[Harness]| plan(&places, &shell_is("zsh"), &tiles, h).unwrap();
+    let zsh = |h: &[Harness]| plan(&places, &shell_is("zsh"), &tiles, &of(h)).unwrap();
     apply(&zsh(&Harness::ALL).edits).unwrap();
     fs::write(&places.bashrc, "export N=1\n").unwrap();
     let p = zsh(&Harness::ALL);
@@ -428,7 +441,7 @@ fn the_scripts_follow_the_harnesses_on_path() {
     let (root, places) = home("found");
     fs::create_dir_all(&places.fish_dir).unwrap();
     let tiles = stub_tiles(&root);
-    let zsh = |h: &[Harness]| plan(&places, &shell_is("zsh"), &tiles, h).unwrap();
+    let zsh = |h: &[Harness]| plan(&places, &shell_is("zsh"), &tiles, &of(h)).unwrap();
     apply(&zsh(&[Harness::Pi]).edits).unwrap();
     let p = zsh(&[Harness::Pi]);
     assert_eq!(p.edits, Vec::<Edit>::new());
@@ -452,6 +465,12 @@ fn the_scripts_follow_the_harnesses_on_path() {
         ]
     );
     assert_eq!(more.to_wire(), [Kind::Zsh, Kind::Fish]);
+    assert!(
+        status_line(Some(&more)).ends_with(
+            ": pi typed in a new terminal starts through tiles run; claude not wired yet: run tiles setup"
+        ),
+        "{more:?}"
+    );
     apply(&more.edits).unwrap();
     let p = zsh(&[Harness::Pi, Harness::Claude]);
     assert_eq!(p.commands, [Harness::Pi, Harness::Claude]);
@@ -461,8 +480,59 @@ fn the_scripts_follow_the_harnesses_on_path() {
         "{p:?}"
     );
     let fewer = zsh(&[Harness::Claude]);
+    assert!(
+        status_line(Some(&fewer)).ends_with(
+            ": pi and claude typed in a new terminal start through tiles run; tiles setup removes the function for pi, no longer on PATH"
+        ),
+        "{fewer:?}"
+    );
     apply(&fewer.edits).unwrap();
     assert_eq!(zsh(&[Harness::Claude]).commands, [Harness::Claude]);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn only_a_harness_that_answers_as_itself_is_wired() {
+    for (h, answer) in [
+        (Harness::Claude, "2.1.316 (Claude Code)\n"),
+        (Harness::Codex, "codex-cli 0.166.0\n"),
+        (Harness::OpenCode, "1.19.3\n"),
+        (Harness::OpenCode, "opencode v2.0.32\n"),
+        (Harness::Pi, "1.4.0\n"),
+        (Harness::Pi, "Debugger attached.\n1.4.0\n"),
+    ] {
+        assert!(answers_as(h, answer), "{} {answer:?}", h.name());
+    }
+    for (h, answer) in [
+        (Harness::Pi, "pi (cln) 1.3\n"),
+        (Harness::Pi, ""),
+        (Harness::Pi, "3.14159265358979323846\n"),
+        (Harness::Claude, "1.4.0\n"),
+        (Harness::Codex, "2.1.316 (Claude Code)\n"),
+        (Harness::OpenCode, "codex-cli 0.166.0\n"),
+    ] {
+        assert!(!answers_as(h, answer), "{} {answer:?}", h.name());
+    }
+    let (root, places) = home("others");
+    let tiles = stub_tiles(&root);
+    let found = Found {
+        harnesses: vec![Harness::Claude],
+        others: vec![Harness::Pi],
+    };
+    apply(
+        &plan(&places, &shell_is("zsh"), &tiles, &found)
+            .unwrap()
+            .edits,
+    )
+    .unwrap();
+    let p = plan(&places, &shell_is("zsh"), &tiles, &found).unwrap();
+    assert_eq!(p.commands, [Harness::Claude]);
+    assert!(
+        status_line(Some(&p)).ends_with(
+            ": claude typed in a new terminal starts through tiles run; the pi on PATH did not answer --version as Pi, so tiles setup does not wire pi"
+        ),
+        "{p:?}"
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -478,13 +548,13 @@ fn each_script_records_its_tiles_however_the_path_is_quoted() {
         fs::create_dir_all(&places.fish_dir).unwrap();
         let tiles = Path::new(tiles);
         apply(
-            &plan(&places, &shell_is("zsh"), tiles, &Harness::ALL)
+            &plan(&places, &shell_is("zsh"), tiles, &of(&Harness::ALL))
                 .unwrap()
                 .edits,
         )
         .unwrap();
         assert_eq!(
-            plan(&places, &shell_is("zsh"), tiles, &Harness::ALL)
+            plan(&places, &shell_is("zsh"), tiles, &of(&Harness::ALL))
                 .unwrap()
                 .recorded
                 .as_deref(),
@@ -494,7 +564,7 @@ fn each_script_records_its_tiles_however_the_path_is_quoted() {
         fs::remove_file(&places.script).unwrap();
         fs::remove_file(&places.zshrc).unwrap();
         assert_eq!(
-            plan(&places, &shell_is("fish"), tiles, &Harness::ALL)
+            plan(&places, &shell_is("fish"), tiles, &of(&Harness::ALL))
                 .unwrap()
                 .recorded
                 .as_deref(),
@@ -535,7 +605,7 @@ fn an_update_points_the_scripts_at_the_new_tiles() {
     let old = Path::new("/opt/homebrew/bin/tiles");
     let new = root.join(".local/bin/tiles");
     apply(
-        &plan(&places, &shell_is("zsh"), old, &Harness::ALL)
+        &plan(&places, &shell_is("zsh"), old, &of(&Harness::ALL))
             .unwrap()
             .edits,
     )
@@ -553,7 +623,7 @@ fn an_update_points_the_scripts_at_the_new_tiles() {
         fish(&new, &Harness::ALL)
     );
     assert_eq!(
-        plan(&places, &shell_is("zsh"), &new, &Harness::ALL)
+        plan(&places, &shell_is("zsh"), &new, &of(&Harness::ALL))
             .unwrap()
             .edits,
         Vec::<Edit>::new()

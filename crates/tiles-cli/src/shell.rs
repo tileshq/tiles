@@ -8,8 +8,10 @@
 //! file it wires ([`startup_files`]). For fish it writes [`fish`] to
 //! `fish/conf.d/tiles.fish`, which fish reads by itself, so no file of the
 //! user's changes. Each script records the `tiles` that ran setup, as
-//! installed ([`installed`]), and defines one function per harness found on
-//! `PATH` ([`found`]) that runs
+//! installed ([`installed`]), and defines one function per harness on
+//! `PATH` whose `--version` answered as that harness when setup ran
+//! ([`found`], [`answers_as`]), so another program named `pi` keeps its
+//! name. The function runs
 //! `<that tiles> run --from-shell <harness>` when standard input and output
 //! are a terminal, that file is executable and no `tiles run` is already
 //! around the shell, and the harness itself otherwise. `tiles run
@@ -130,13 +132,68 @@ fn defined(text: &str) -> Vec<Harness> {
         .collect()
 }
 
-/// The harnesses on this machine's `PATH`, the ones the scripts define.
+/// The harnesses on `PATH`, told apart by their `--version` answer.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Found {
+    /// Those that answered as that harness: the scripts define them.
+    pub harnesses: Vec<Harness>,
+    /// Those that did not: another program of the same name, which the
+    /// scripts leave alone.
+    pub others: Vec<Harness>,
+}
+
+/// Whether `answer`, a `--version` answer, is the one `harness` gives: a
+/// line `2.1.316 (Claude Code)`, `codex-cli 0.166.0`, `1.19.3` or
+/// `opencode v2.0.32` for `OpenCode`, or `1.4.0` for Pi, each version
+/// `X.Y.Z`. The digits-of-pi `pi`'s `pi (cln) 1.3` is not Pi's.
 #[must_use]
-pub fn found() -> Vec<Harness> {
-    Harness::ALL
+pub fn answers_as(harness: Harness, answer: &str) -> bool {
+    let version = |w: &str| {
+        let w = w.strip_prefix('v').unwrap_or(w);
+        let core = w.split(['-', '+']).next().unwrap_or_default();
+        let parts: Vec<&str> = core.split('.').collect();
+        crate::opencode::version_of(w).as_deref() == Some(w)
+            && parts.len() == 3
+            && parts
+                .iter()
+                .all(|p| (1..=6).contains(&p.len()) && p.chars().all(|c| c.is_ascii_digit()))
+    };
+    answer.lines().any(|line| {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        match (harness, words.as_slice()) {
+            (Harness::Claude, [v, "(Claude", "Code)"]) | (Harness::Codex, ["codex-cli", v]) => {
+                version(v)
+            }
+            (Harness::OpenCode, [v] | ["opencode", v]) | (Harness::Pi, [v]) => version(v),
+            _ => false,
+        }
+    })
+}
+
+/// The harnesses on this machine's `PATH`, each asked its `--version` at
+/// once, within [`crate::opencode::ask`]'s patience.
+#[must_use]
+pub fn found() -> Found {
+    let asking: Vec<_> = Harness::ALL
         .into_iter()
-        .filter(|h| crate::which(h.name()).is_some())
-        .collect()
+        .filter_map(|h| {
+            let path = crate::which(h.name())?;
+            Some((
+                h,
+                std::thread::spawn(move || crate::opencode::ask(&path, "--version")),
+            ))
+        })
+        .collect();
+    let mut out = Found::default();
+    for (h, asked) in asking {
+        let answer = asked.join().ok().flatten();
+        if answer.is_some_and(|a| answers_as(h, &a)) {
+            out.harnesses.push(h);
+        } else {
+            out.others.push(h);
+        }
+    }
+    out
 }
 
 /// `harnesses` typed in a new terminal (`tab` adds to it), starting `how`.
@@ -282,8 +339,14 @@ pub struct Plan {
     /// files that read its script: every startup file of the shell holds
     /// the block and the script is there.
     pub wired: Vec<(Kind, PathBuf)>,
-    /// The harnesses the scripts get a function for: those on `PATH`.
+    /// The `tiles` the scripts run once the edits are made.
+    pub tiles: PathBuf,
+    /// The harnesses the scripts get a function for: those on `PATH` that
+    /// answered as themselves.
     pub harnesses: Vec<Harness>,
+    /// The commands on `PATH` that did not answer as the harness of their
+    /// name, which get no function.
+    pub others: Vec<Harness>,
     /// The harnesses Tiles' script on disk defines a function for.
     pub commands: Vec<Harness>,
 }
@@ -434,18 +497,21 @@ fn startup_files(places: &Places, login: Option<Kind>) -> Vec<(Kind, PathBuf)> {
 }
 
 /// The plan on this machine for scripts that run `tiles` for each of
-/// `harnesses`; `None` when no zsh, bash or fish is found.
+/// the harnesses `found` names; `None` when no zsh, bash or fish is found.
 #[must_use]
 pub fn plan(
     places: &Places,
     env: &dyn Fn(&str) -> Option<String>,
     tiles: &Path,
-    harnesses: &[Harness],
+    found: &Found,
 ) -> Option<Plan> {
+    let harnesses = found.harnesses.as_slice();
     let login = login_shell(env);
     let read = |p: &Path| fs::read_to_string(p).ok().filter(|t| t.starts_with(MARK));
     let mut out = Plan {
+        tiles: tiles.to_path_buf(),
         harnesses: harnesses.to_vec(),
+        others: found.others.clone(),
         ..Plan::default()
     };
     let mut held_by = Vec::new();
@@ -667,7 +733,9 @@ pub fn undo(places: &Places, dry_run: bool) -> Result<Vec<Undone>, String> {
 
 /// `tiles doctor`'s line: the shells wired, through which files, and the
 /// commands they start through Tiles, or the `tiles` their script runs when
-/// it is missing; then the shells not wired yet.
+/// it is missing; then the shells and harnesses not wired yet, a function
+/// for a harness no longer on `PATH`, and each command on `PATH` that did
+/// not answer as its harness.
 #[must_use]
 pub fn status_line(plan: Option<&Plan>) -> String {
     let Some(plan) = plan else {
@@ -706,17 +774,13 @@ pub fn status_line(plan: Option<&Plan>) -> String {
             names(&wired),
             files.join(", ")
         );
-        let rewrite = plan
-            .edits
-            .iter()
-            .any(|e| matches!(e, Edit::Write(p, _) if p.exists()));
         match &plan.recorded {
             Some(tiles) if !runnable(tiles) => format!(
                 "{head}, but {} is missing, so {}; run tiles setup",
                 tiles.display(),
                 typed(&plan.commands, "", "plain")
             ),
-            Some(tiles) if rewrite => format!(
+            Some(tiles) if *tiles != plan.tiles => format!(
                 "{head}: {}; tiles setup rewrites the script for this tiles",
                 typed(&plan.commands, "", &format!("through {}", tiles.display()))
             ),
@@ -725,6 +789,46 @@ pub fn status_line(plan: Option<&Plan>) -> String {
     };
     if !wired.is_empty() && !pending.is_empty() {
         let _ = write!(line, "; {} not wired yet: run tiles setup", names(&pending));
+    }
+    let commands = |hs: Vec<Harness>| {
+        let names: Vec<&str> = hs.iter().map(|h| h.name()).collect();
+        crate::setup::listed(&names)
+    };
+    if !wired.is_empty() {
+        let missing: Vec<Harness> = plan
+            .harnesses
+            .iter()
+            .copied()
+            .filter(|h| !plan.commands.contains(h))
+            .collect();
+        if !missing.is_empty() {
+            let _ = write!(
+                line,
+                "; {} not wired yet: run tiles setup",
+                commands(missing)
+            );
+        }
+        let gone: Vec<Harness> = plan
+            .commands
+            .iter()
+            .copied()
+            .filter(|h| !plan.harnesses.contains(h) && !plan.others.contains(h))
+            .collect();
+        if !gone.is_empty() {
+            let _ = write!(
+                line,
+                "; tiles setup removes the function for {}, no longer on PATH",
+                commands(gone)
+            );
+        }
+    }
+    for h in &plan.others {
+        let _ = write!(
+            line,
+            "; the {0} on PATH did not answer --version as {1}, so tiles setup does not wire {0}",
+            h.name(),
+            crate::proved::title(*h)
+        );
     }
     for p in &plan.left {
         let _ = write!(

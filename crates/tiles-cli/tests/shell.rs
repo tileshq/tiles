@@ -9,7 +9,8 @@
 //! `tiles` on `PATH` or an older one ahead of it, and starts it plain when
 //! its input is not a terminal, inside `tiles run`, or once that `tiles` is
 //! gone. A harness not on `PATH` at setup gets no function, so the shell
-//! runs it itself, until setup runs again.
+//! runs it itself, until setup runs again, and a `pi` that does not answer
+//! `--version` as Pi never gets one.
 
 use std::io::Read as _;
 use std::os::unix::fs::PermissionsExt as _;
@@ -31,12 +32,13 @@ fn machine(name: &str) -> PathBuf {
     root
 }
 
-/// The stub `pi` on the machine's `PATH`.
+/// The stub `pi` on the machine's `PATH`: it answers `--version` as Pi
+/// 1.4.0, and otherwise prints its arguments and `TILES_RUN`.
 fn stub_pi(root: &Path) {
     let pi = root.join("path/pi");
     std::fs::write(
         &pi,
-        "#!/bin/sh\necho \"pi [$*] TILES_RUN=[$TILES_RUN]\"\nexit \"${PI_EXIT:-0}\"\n",
+        "#!/bin/sh\n[ \"$1\" = --version ] && { echo 1.4.0; exit 0; }\necho \"pi [$*] TILES_RUN=[$TILES_RUN]\"\nexit \"${PI_EXIT:-0}\"\n",
     )
     .unwrap();
     std::fs::set_permissions(&pi, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -494,6 +496,53 @@ fn a_harness_missing_at_setup_gets_its_function_once_setup_runs_again() {
         assert!(
             said.contains("/pi/index.ts a b] TILES_RUN=[1]"),
             "{shell}, after setup again: {said}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_pi_that_is_another_program_gets_no_function_and_keeps_its_name() {
+    let root = machine("digits");
+    std::fs::write(
+        root.join("path/pi"),
+        "#!/bin/sh\ncase \"$1\" in --version) echo 'pi (cln) 1.3' ;; *) echo \"digits [$*] TILES_RUN=[$TILES_RUN]\" ;; esac\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join("bin")).unwrap();
+    std::fs::create_dir_all(root.join("home/.config/fish")).unwrap();
+    std::os::unix::fs::symlink(TILES, root.join("bin/tiles")).unwrap();
+    set_up(&root);
+    let path = format!("{}:/usr/bin:/bin", root.join("path").display());
+    let found = shells(&root);
+    assert!(!found.is_empty(), "no zsh, bash or fish here");
+    for (shell, read) in &found {
+        let said = at_prompt(&root, shell, read, &path, None);
+        assert!(
+            said.contains("digits [a b] TILES_RUN=[]"),
+            "{shell}, another pi: {said}"
+        );
+    }
+    let doctor = text(
+        &command(&root, TILES)
+            .arg("doctor")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap(),
+    );
+    assert!(
+        doctor.contains(
+            "; the pi on PATH did not answer --version as Pi, so tiles setup does not wire pi"
+        ),
+        "{doctor}"
+    );
+    stub_pi(&root);
+    set_up(&root);
+    for (shell, read) in &found {
+        let said = at_prompt(&root, shell, read, &path, None);
+        assert!(
+            said.contains("/pi/index.ts a b] TILES_RUN=[1]"),
+            "{shell}, Pi: {said}"
         );
     }
     let _ = std::fs::remove_dir_all(&root);

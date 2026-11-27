@@ -1394,7 +1394,10 @@ fn zsh_machine(name: &str) -> (PathBuf, crate::shell::Places, Report) {
         &places,
         &|k| (k == "SHELL").then(|| "/bin/zsh".into()),
         Path::new("/opt/homebrew/bin/tiles"),
-        &Harness::ALL,
+        &crate::shell::Found {
+            harnesses: Harness::ALL.to_vec(),
+            others: Vec::new(),
+        },
     );
     (dirs.home.parent().unwrap().to_path_buf(), places, r)
 }
@@ -1462,7 +1465,10 @@ fn a_wired_shell_is_left_as_it_is_and_listed_with_its_files_under_verbose() {
         &places,
         &|k| (k == "SHELL").then(|| "/bin/zsh".into()),
         Path::new("/opt/homebrew/bin/tiles"),
-        &Harness::ALL,
+        &crate::shell::Found {
+            harnesses: Harness::ALL.to_vec(),
+            others: Vec::new(),
+        },
     );
     let (text, _, ok) = drive(Args::default(), &again, None);
     assert!(ok);
@@ -1503,7 +1509,10 @@ fn a_shell_found_after_another_was_wired_is_the_one_setup_names() {
         &places,
         &|k| (k == "SHELL").then(|| "/bin/zsh".into()),
         Path::new("/opt/homebrew/bin/tiles"),
-        &[Harness::Pi],
+        &crate::shell::Found {
+            harnesses: vec![Harness::Pi],
+            others: Vec::new(),
+        },
     );
     let (text, asked, _) = drive(Args::default(), &again, Some("n\n"));
     assert!(
