@@ -1099,7 +1099,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("{want}\n{}", lines.join("\n")))
         };
         assert_eq!(
-            at("pass pi version: Pi 1.3.4, proved on 1.4.0 (ADR-032)"),
+            at("pass pi version: Pi 1.3.4, proved on 1.7.0 (ADR-032)"),
             at("pass pi: /opt/bin/pi, drawn by the wrapper") + 1
         );
         assert_eq!(

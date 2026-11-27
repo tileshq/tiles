@@ -1,7 +1,7 @@
 // Contract tests for the Pi extension against a fake Pi API and a fake tiles
 // binary: node --test adapters/pi/index.test.ts
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -199,6 +199,22 @@ test("an installed copy stands down under tiles run", () => {
   assert.equal(standsDown(env, "/home/u/.pi/agent/extensions/tiles/"), true);
   assert.equal(standsDown(env, "/c/run/42/pi/"), false);
   assert.equal(standsDown({}, "/home/u/.pi/agent/extensions/tiles/"), false);
+});
+
+// Pi 1.5.1 and later import an extension from its real path, so the launch's
+// copy sees the folder with its links resolved while TILES_ADDONS names the
+// link, as with a cache under /tmp on macOS.
+test("the launch's own copy stays up when its folder is reached through a link", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiles-pi-link-"));
+  mkdirSync(join(root, "real", "run", "42", "pi"), { recursive: true });
+  mkdirSync(join(root, "installed"));
+  symlinkSync(join(root, "real"), join(root, "link"));
+  const real = realpathSync(join(root, "real"));
+  const env = { TILES_RUN: "1", TILES_ADDONS: join(root, "link", "run", "42") + "/" };
+  assert.equal(standsDown(env, join(real, "run", "42", "pi") + "/"), false);
+  assert.equal(standsDown(env, join(root, "link", "run", "42", "pi") + "/"), false);
+  assert.equal(standsDown(env, realpathSync(join(root, "installed")) + "/"), true);
+  assert.equal(standsDown({ ...env, TILES_ADDONS: join(real, "run", "42") + "/" }, join(root, "link", "run", "42", "pi") + "/"), false);
 });
 
 const omniCard = (topic: unknown) => ({ title: "Revenue", form: "bar", data: { omni: { topic, fields: ["orders.revenue"] } } });
