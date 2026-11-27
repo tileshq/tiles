@@ -256,7 +256,8 @@ fn nearest(lo: f32, hi: f32, pref: f32, free: impl Fn(f32) -> bool) -> Option<f3
 /// goes on `card` (ADR-069): below the mark, from `pref_left`; else beside
 /// it, on the side with more room, inside the plot's width, from the plot's
 /// top down to the axis labels under it; else inside the mark's
-/// upper part when the mark is wide and tall enough; each only where it
+/// upper part when the mark is wide and tall enough; else as low as the
+/// tile allows, over the mark's foot, from `pref_left`; each only where it
 /// leaves the card's title and value labels clear. When none does, below
 /// the mark, or above it when the tile has no room below.
 fn place_tip(
@@ -303,6 +304,12 @@ fn place_tip(
         && free(inside.0, inside.1)
     {
         return inside;
+    }
+    let low = (card.height - h).max(0.0);
+    if low < below
+        && let Some(left) = nearest(0.0, card.width - w, pref_left, |l| free(l, low))
+    {
+        return (left, low);
     }
     let top = if below + h <= card.height {
         below

@@ -761,19 +761,21 @@ fn a_tall_columns_tooltip_leaves_the_title_and_value_labels_clear() {
         let hits = hit_map(&s, scale);
         let germany = hits.iter().find(|h| h.row == Some(0)).unwrap();
         assert!(germany.tip.contains("Germany"), "{:?}", germany.tip);
-        let pointer = f32::midpoint(germany.left as f32, germany.right as f32) / scale;
         let mut clear = vec![text_box(&e, s.part(Part::Title).next().unwrap())];
         assert!(
             s.part(Part::Value).any(|v| v.text() == Some("6,900")),
             "the Germany column has its value label"
         );
         clear.extend(s.part(Part::Value).map(|v| text_box(&e, v)));
-        for hint in [None, Some("click again to clear")] {
+        // Every column, each with and without the hint line, at each width.
+        let columns = hits.iter().filter(|h| h.row.is_some());
+        for (hit, hint) in columns.flat_map(|h| [(h, None), (h, Some("click again to clear"))]) {
+            let pointer = f32::midpoint(hit.left as f32, hit.right as f32) / scale;
             let cue = tiles_engine::pane::Cue {
                 pointer_x: Some(pointer),
                 hint,
             };
-            let tip = e.hover(&s, germany, scale, cue).tip;
+            let tip = e.hover(&s, hit, scale, cue).tip;
             let tip_box = skia_safe::Rect::from_xywh(
                 tip.left as f32 / scale,
                 tip.top as f32 / scale,
@@ -787,7 +789,8 @@ fn a_tall_columns_tooltip_leaves_the_title_and_value_labels_clear() {
             for r in &clear {
                 assert!(
                     !skia_safe::Rect::intersects2(&tip_box, r),
-                    "the tooltip {tip_box:?} covers {r:?}"
+                    "the tooltip {tip_box:?} for {:?} at {width} covers {r:?}",
+                    hit.tip
                 );
             }
         }
