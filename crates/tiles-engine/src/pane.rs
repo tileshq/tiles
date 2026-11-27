@@ -38,6 +38,9 @@ const TIP_RADIUS: f32 = 8.0;
 const TIP_GAP: f32 = 6.0;
 /// How far the tooltip's left edge sits left of the pointer.
 const TIP_LEAD: f32 = 12.0;
+/// The widest and tallest ring box a tooltip could hide whole, a point's:
+/// the tooltip leaves such a ring clear before the card's labels.
+const TIP_HIDES: f32 = 24.0;
 /// How far the ring stands off the mark (ADR-070).
 const RING_OUT: f32 = 2.0;
 /// The ring's width: one CSS pixel.
@@ -541,6 +544,13 @@ fn footprint(left: f32, top: f32, w: f32, h: f32) -> Rect {
     )
 }
 
+/// Whether `f` meets none of the boxes in `clear`.
+fn leaves_clear(clear: &[Rect], f: Rect) -> bool {
+    clear
+        .iter()
+        .all(|c| f.right <= c.left || c.right <= f.left || f.bottom <= c.top || c.bottom <= f.top)
+}
+
 /// The place in `lo..=hi` nearest `pref`, a pixel at a time, where `free`
 /// holds.
 fn nearest(lo: f32, hi: f32, pref: f32, free: impl Fn(f32) -> bool) -> Option<f32> {
@@ -596,9 +606,12 @@ fn anywhere(
 /// it, on the side with more room, inside the plot's width, from the plot's
 /// top down to the axis labels under it; else inside the mark's
 /// upper part when the mark is wide and tall enough; else the clear place
-/// in the tile nearest `pref_left` just below the mark; each only where it
-/// leaves the card's title and value labels clear. When none does, below
-/// the mark, or above it when the tile has no room below.
+/// in the tile nearest `pref_left` just below the mark, leaving the ring
+/// clear too where some place can; each only where it leaves the card's
+/// title and value labels clear. A ring no bigger than [`TIP_HIDES`], which
+/// the tooltip could hide whole, it then keeps clear before the labels.
+/// When none does, below the mark, or above it when the tile has no room
+/// below, or beside it when the tile has room for neither.
 fn place_tip(
     fonts: &Fonts,
     card: &Scene,
@@ -607,12 +620,7 @@ fn place_tip(
     pref_left: f32,
 ) -> (f32, f32) {
     let clear = keep_clear(fonts, card);
-    let free = |left: f32, top: f32| {
-        let f = footprint(left, top, w, h);
-        clear.iter().all(|c| {
-            f.right <= c.left || c.right <= f.left || f.bottom <= c.top || c.bottom <= f.top
-        })
-    };
+    let free = |left: f32, top: f32| leaves_clear(&clear, footprint(left, top, w, h));
     let reach = RING + 1.0 + TIP_GAP;
     let below = ring.bottom + reach;
     if below + h <= card.height
@@ -640,15 +648,35 @@ fn place_tip(
     {
         return inside;
     }
-    if let Some(at) = anywhere(&clear, card, (w, h), (pref_left, below), free) {
+    // Placed anywhere, the tooltip could land on the mark and its ring.
+    let ringed = [ring.with_outset((RING + 1.0, RING + 1.0))];
+    let small = ringed[0].width() <= TIP_HIDES && ringed[0].height() <= TIP_HIDES;
+    let both: Vec<Rect> = clear.iter().chain(&ringed).copied().collect();
+    let then: &[Rect] = if small { &ringed } else { &clear };
+    let search = |boxes: &[Rect]| {
+        anywhere(boxes, card, (w, h), (pref_left, below), |l, t| {
+            leaves_clear(boxes, footprint(l, t, w, h))
+        })
+    };
+    if let Some(at) = search(&both).or_else(|| search(then)) {
         return at;
     }
-    let top = if below + h <= card.height {
-        below
+    let fit = |left: f32| left.min(card.width - w).max(0.0);
+    let above = ring.top - reach - h;
+    if below + h <= card.height {
+        (fit(pref_left), below)
+    } else if above >= 0.0 {
+        (fit(pref_left), above)
     } else {
-        (ring.top - reach - h).max(0.0)
-    };
-    (pref_left.min(card.width - w).max(0.0), top)
+        // A tile shorter than the tooltip, a compact scorecard's: beside
+        // the ring, on the side with more room, so it stays in sight.
+        let left = if card.width - ring.right >= ring.left {
+            ring.right + reach
+        } else {
+            ring.left - reach - w
+        };
+        (fit(left), ring.top.min(card.height - h).max(0.0))
+    }
 }
 
 /// The overlay for `hit` on `card`, at device `scale`: the mark under a

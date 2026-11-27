@@ -815,6 +815,103 @@ fn every_pane_tooltip_leaves_the_title_and_value_labels_clear() {
     }
 }
 
+/// A big number's tooltip for its sparkline's last point never covers the
+/// point's hover ring (ADR-070): the point sits in the card's bottom right
+/// corner, where the tooltip once landed on the point and its ring when
+/// the card had no place clear of its labels.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel sizes.
+fn a_big_number_tooltip_leaves_the_hover_ring_clear() {
+    let e = engine();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
+    let board: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let mut cards = vec![fixture("big-number"), board.clone()];
+    cards.extend(board["row"].as_array().unwrap().iter().cloned());
+    let scale = 2.0;
+    for card in cards {
+        let intent = tiles_intent::parse(&card.to_string()).unwrap();
+        // Alone, and compact among others as the pane draws a scorecard
+        // row, where the card is shorter than a tooltip with a hint.
+        let aligns = [
+            tiles_engine::Align::default(),
+            tiles_engine::Align {
+                compact: true,
+                among: true,
+                ..tiles_engine::Align::default()
+            },
+        ];
+        for width in (280..=720).step_by(16).map(|w| w as f32) {
+            for (theme, align) in [dark(), light()]
+                .into_iter()
+                .flat_map(|t| aligns.map(|a| (t, a)))
+            {
+                let opts = Options {
+                    width,
+                    theme,
+                    cell_height: Some(12.5),
+                };
+                let s = e.scene_aligned(&intent, &opts, align).unwrap();
+                let last = card["data"]["rows"].as_array().unwrap().len() - 1;
+                let hits = hit_map(&s, scale);
+                // The last point's target, a small square; the target bar
+                // and the headline also carry the last row.
+                let small = |h: &&tiles_engine::hit::Hit| {
+                    (h.right - h.left) as f32 / scale <= 16.0
+                        && (h.bottom - h.top) as f32 / scale <= 16.0
+                };
+                let marks: Vec<_> = hits
+                    .iter()
+                    .filter(|h| h.row == Some(last))
+                    .filter(small)
+                    .collect();
+                assert_eq!(marks.len(), 1, "the sparkline's last point");
+                let marks = marks.into_iter();
+                // With no hint and with each hint the pane shows.
+                let hints = [None, Some("click again to clear"), Some("click to focus Q2 26")];
+                for (hit, hint) in marks.flat_map(|h| hints.map(|n| (h, n))) {
+                    let pointer = f32::midpoint(hit.left as f32, hit.right as f32) / scale;
+                    let cue = tiles_engine::pane::Cue {
+                        pointer_x: Some(pointer),
+                        hint,
+                        focused: false,
+                    };
+                    let over = e.hover(&s, hit, scale, cue);
+                    let shift = (over.ring.left as f32 / scale, over.ring.top as f32 / scale);
+                    let ring = over
+                        .ring
+                        .scene
+                        .items
+                        .iter()
+                        .filter(|i| matches!(i.shape, Shape::Line { .. }))
+                        .map(|i| i.bounds().with_offset(shift))
+                        .reduce(|a, b| {
+                            skia_safe::Rect::from_ltrb(
+                                a.left.min(b.left),
+                                a.top.min(b.top),
+                                a.right.max(b.right),
+                                a.bottom.max(b.bottom),
+                            )
+                        })
+                        .expect("a hover ring");
+                    let tip = skia_safe::Rect::from_xywh(
+                        over.tip.left as f32 / scale,
+                        over.tip.top as f32 / scale,
+                        over.tip.scene.width,
+                        over.tip.scene.height,
+                    );
+                    assert!(
+                        !skia_safe::Rect::intersects2(tip, ring),
+                        "on {:?} at {width}, the tooltip {tip:?} for {:?} covers the ring {ring:?}",
+                        s.part(Part::Title).next().and_then(Item::text),
+                        hit.tip
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// Asserts no point of a ring, moved by `offset`, falls inside `label`.
 fn assert_clear_of(points: &[(f32, f32)], offset: (f32, f32), label: skia_safe::Rect, width: f32) {
     for &(px, py) in points {
