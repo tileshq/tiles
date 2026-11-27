@@ -64,7 +64,8 @@ const FIRST_ID: u32 = 7_000_000;
 /// one's id plus [`TIP_OFFSET`].
 const OVERLAY_IDS: [u32; 2] = [6_999_990, 6_999_991];
 const TIP_OFFSET: u32 = 2;
-/// The page colour's image id: one pixel stretched over the window.
+/// The page colour's image id: three by three pixels, the middle one
+/// stretched over the window ([`kitty::fill`]).
 const PAGE_ID: u32 = 6_999_980;
 /// Stacking order of the page: below -1,073,741,824, kitty's line under
 /// which a picture goes beneath cells that have a background colour of

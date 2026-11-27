@@ -581,12 +581,7 @@ pub(crate) fn overlay(
     let shadow = tip_box
         .with_offset((0.0, SHADOW.0))
         .with_outset((SHADOW.1, SHADOW.1));
-    let ring_piece = piece(
-        card,
-        ring.with_outset((reach, reach)),
-        scale,
-        ringed,
-    );
+    let ring_piece = piece(card, ring.with_outset((reach, reach)), scale, ringed);
     let mut items = vec![
         rect(shadow, TIP_RADIUS + SHADOW.1, Rgba::black(SHADOW.2)),
         rect(

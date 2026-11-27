@@ -1122,7 +1122,11 @@ fn a_ring_rounds_only_the_corners_its_bar_rounds() {
 /// circle and gives the tooltip the dot's colour; hovering a lollipop's
 /// stem lights its head, and only a drawn dot takes the wash.
 #[test]
-#[allow(clippy::cast_precision_loss)] // Pixel offsets.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::many_single_char_names,
+    clippy::too_many_lines
+)] // Pixel offsets; one walk over every dot form's targets.
 fn a_hovered_dot_takes_a_circle_ring_and_its_own_colour() {
     let e = engine();
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
@@ -1150,10 +1154,7 @@ fn a_hovered_dot_takes_a_circle_ring_and_its_own_colour() {
             // The dot's own target, and a stem's or a value label's.
             for hit in hits.iter().filter(|h| h.row == dot.datum) {
                 let over = e.hover(&s, hit, scale, tiles_engine::pane::Cue::default());
-                let shift = (
-                    over.ring.left as f32 / scale,
-                    over.ring.top as f32 / scale,
-                );
+                let shift = (over.ring.left as f32 / scale, over.ring.top as f32 / scale);
                 let ring: Vec<(f32, f32)> = over
                     .ring
                     .scene
