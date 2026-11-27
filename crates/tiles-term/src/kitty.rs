@@ -121,16 +121,22 @@ pub fn show_rgba_zlib(id: u32, width: u32, height: u32, zlib: &[u8], at: Placeme
     )
 }
 
-/// Sends one pixel of `rgba` as image `id` and places it at the cursor
-/// stretched over `cols` by `rows` cells (`c`, `r`), at stacking order `z`
-/// (`C=1` leaves the cursor where it was): the pane's page colour behind
-/// every card for four bytes of pixels (ADR-070). Below -1,073,741,824,
-/// `z` draws under the text and under cells with a background colour.
+/// Sends three by three pixels of `rgba` as image `id` and places the
+/// middle one (`x`, `y`, `w`, `h`) at the cursor stretched over `cols` by
+/// `rows` cells (`c`, `r`), at stacking order `z` (`C=1` leaves the cursor
+/// where it was): the pane's page colour behind every card for 36 bytes of
+/// pixels (ADR-070). Kitty scales a placement with linear filtering against
+/// a transparent border, so a lone pixel stretched over the window fades
+/// out towards its edges; the middle pixel's neighbours are its own colour.
+/// Below -1,073,741,824, `z` draws under the text and under cells with a
+/// background colour.
 #[must_use]
 pub fn fill(id: u32, rgba: [u8; 4], cols: u16, rows: u16, z: i32) -> Vec<u8> {
     command(
-        &format!("a=T,f=32,t=d,q=2,C=1,i={id},p=1,s=1,v=1,c={cols},r={rows},z={z}"),
-        &rgba,
+        &format!(
+            "a=T,f=32,t=d,q=2,C=1,i={id},p=1,s=3,v=3,x=1,y=1,w=1,h=1,c={cols},r={rows},z={z}"
+        ),
+        &rgba.repeat(9),
     )
 }
 

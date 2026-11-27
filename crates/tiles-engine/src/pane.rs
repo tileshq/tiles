@@ -192,17 +192,29 @@ fn tip<'a>(fonts: &Fonts, text: &'a str, hint: Option<&'a str>, card_w: f32) -> 
     }
 }
 
-/// The mark the card draws row `row` with.
-fn mark_item(card: &Scene, row: Option<usize>) -> Option<&Item> {
-    let row = row?;
+/// The mark `hit` lights at device `scale`: the item under the pointer
+/// when it is a bar, a box or a dot (a line chart's undrawn point
+/// included), else the row's first bar, box or dot, so a lollipop's stem
+/// or a value label lights the head. Never a series line or a stem.
+fn mark_item<'a>(card: &'a Scene, hit: &Hit, scale: f32) -> Option<&'a Item> {
+    let row = hit.row?;
+    let ringed = |i: &&Item| matches!(i.shape, Shape::Rect { .. } | Shape::Circle { .. });
     card.items
         .iter()
-        .find(|i| i.part == Part::Mark && i.datum == Some(row))
+        .filter(|i| i.datum == Some(row))
+        .find(|i| crate::hit::target(i, scale).as_ref() == Some(hit))
+        .filter(ringed)
+        .or_else(|| {
+            card.items
+                .iter()
+                .filter(|i| i.part == Part::Mark && i.datum == Some(row))
+                .find(ringed)
+        })
 }
 
-/// The colour the card draws row `row` in, for the tooltip's swatch.
-fn mark_colour(card: &Scene, row: Option<usize>) -> Option<Rgba> {
-    mark_item(card, row).map(|i| i.color)
+/// The colour the card draws `hit`'s mark in, for the tooltip's swatch.
+fn mark_colour(card: &Scene, hit: &Hit, scale: f32) -> Option<Rgba> {
+    mark_item(card, hit, scale).map(|i| i.color)
 }
 
 /// The ring round `item`, [`RING_OUT`] off its edge and following its
@@ -563,7 +575,7 @@ pub(crate) fn overlay(
         card,
         ring.with_outset((reach, reach)),
         scale,
-        ring_items(fonts, pal, card, hit, ring, cue.focused),
+        ring_items(fonts, pal, card, scale, hit, ring, cue.focused),
     );
     let mut items = vec![
         rect(shadow, TIP_RADIUS + SHADOW.1, Rgba::black(SHADOW.2)),
@@ -579,7 +591,7 @@ pub(crate) fn overlay(
         pal,
         &laid,
         tip_box,
-        mark_colour(card, hit.row),
+        mark_colour(card, hit, scale),
     ));
     let bounds = Rect::from_ltrb(shadow.left, tip_box.top - 1.0, shadow.right, shadow.bottom);
     Overlay {
@@ -597,14 +609,16 @@ fn ring_items(
     fonts: &Fonts,
     pal: &crate::tokens::Palette,
     card: &Scene,
+    scale: f32,
     hit: &Hit,
     ring: Rect,
     focused: bool,
 ) -> Vec<Item> {
     let mut items = Vec::new();
-    let path = match mark_item(card, hit.row) {
+    let path = match mark_item(card, hit, scale) {
         Some(m) => {
-            if matches!(m.shape, Shape::Rect { .. } | Shape::Circle { .. }) {
+            // An undrawn point has nothing to lighten.
+            if m.part == Part::Mark {
                 let mut wash = m.clone();
                 wash.color = Rgba::white(LIGHTEN);
                 wash.part = Part::Guide;

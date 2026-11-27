@@ -1117,6 +1117,122 @@ fn a_ring_rounds_only_the_corners_its_bar_rounds() {
     }
 }
 
+/// Hovering a dot (ADR-070), a lollipop's head or a line chart's point
+/// whether the card draws it or only targets it, rings the dot with a
+/// circle and gives the tooltip the dot's colour; hovering a lollipop's
+/// stem lights its head, and only a drawn dot takes the wash.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel offsets.
+fn a_hovered_dot_takes_a_circle_ring_and_its_own_colour() {
+    let e = engine();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
+    let board: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let lines = tiles_intent::parse(&board["rows"][1][0].to_string()).unwrap();
+    let lollipop = tiles_intent::parse(&fixture("lollipop").to_string()).unwrap();
+    let scale = 2.0;
+    let off = 2.5;
+    let mut undrawn = 0;
+    for intent in [lines, lollipop] {
+        let s = e.scene(&intent, &Options::default()).unwrap();
+        let accent = e.tokens().palette(s.theme).accent;
+        let hits = hit_map(&s, scale);
+        let dots = s.items.iter().filter(|i| {
+            i.tip.is_some()
+                && matches!(i.part, Part::Mark | Part::Hit)
+                && matches!(i.shape, Shape::Circle { .. })
+        });
+        let mut seen = 0;
+        for dot in dots {
+            let Shape::Circle { cx, cy, r } = dot.shape else {
+                unreachable!()
+            };
+            // The dot's own target, and a stem's or a value label's.
+            for hit in hits.iter().filter(|h| h.row == dot.datum) {
+                let over = e.hover(&s, hit, scale, tiles_engine::pane::Cue::default());
+                let shift = (
+                    over.ring.left as f32 / scale,
+                    over.ring.top as f32 / scale,
+                );
+                let ring: Vec<(f32, f32)> = over
+                    .ring
+                    .scene
+                    .items
+                    .iter()
+                    .filter_map(|i| match &i.shape {
+                        Shape::Line { points, .. } if i.color == accent.with_opacity(0.6) => {
+                            Some(points.clone())
+                        }
+                        _ => None,
+                    })
+                    .flatten()
+                    .map(|(x, y)| (x + shift.0, y + shift.1))
+                    .collect();
+                assert!(!ring.is_empty(), "a ring round {:?}", hit.tip);
+                let biggest = s
+                    .items
+                    .iter()
+                    .filter(|i| i.datum == dot.datum)
+                    .filter_map(|i| match i.shape {
+                        Shape::Circle { cx: x, cy: y, r } if (x, y) == (cx, cy) => Some(r),
+                        _ => None,
+                    })
+                    .fold(r, f32::max);
+                assert!(
+                    ring.iter().all(|&(x, y)| {
+                        let d = (x - cx).hypot(y - cy);
+                        (d - (r + off)).abs() < 0.05 || (d - (biggest + off)).abs() < 0.05
+                    }),
+                    "the ring for {:?} is a circle round the dot at ({cx}, {cy})",
+                    hit.tip
+                );
+                let washed = over.ring.scene.items.iter().any(|i| {
+                    matches!(i.shape, Shape::Circle { .. }) && i.color == Rgba::white(0.12)
+                });
+                assert_eq!(
+                    washed,
+                    dot.part == Part::Mark,
+                    "only a drawn dot takes the wash, for {:?}",
+                    hit.tip
+                );
+                let swatch = over
+                    .tip
+                    .scene
+                    .items
+                    .iter()
+                    .find_map(|i| match i.shape {
+                        Shape::Rect { rect, .. }
+                            if (rect.width() - 9.0).abs() < 0.01
+                                && (rect.height() - 9.0).abs() < 0.01 =>
+                        {
+                            Some(i.color)
+                        }
+                        _ => None,
+                    })
+                    .expect("the tooltip's swatch");
+                let colours: Vec<Rgba> = s
+                    .items
+                    .iter()
+                    .filter(|i| i.datum == dot.datum)
+                    .filter(|i| matches!(i.shape, Shape::Circle { .. }))
+                    .map(|i| i.color)
+                    .collect();
+                assert!(
+                    colours.contains(&swatch),
+                    "the swatch for {:?} is the dot's colour, not {swatch:?}",
+                    hit.tip
+                );
+                seen += 1;
+            }
+            if dot.part == Part::Hit {
+                undrawn += 1;
+            }
+        }
+        assert!(seen > 2, "the card has dots to hover");
+    }
+    assert!(undrawn > 2, "the line chart targets undrawn points");
+}
+
 #[test]
 fn intent_rules_refuse_with_one_line_naming_the_fix() {
     let e = engine();

@@ -312,9 +312,14 @@ fn a_hover_sends_only_the_overlay_and_a_click_sends_only_the_cards_it_focuses() 
         .parse()
         .unwrap();
     assert!(bytes < 64 * 1024, "{line}");
-    // The first frame lays the page colour under everything, below the text.
+    // The first frame lays the page colour under everything, below the
+    // text: the middle of three by three pixels, so kitty's filtering
+    // fades no edge of the window.
     assert!(
-        has(&out, b"i=6999980,p=1,s=1,v=1,c=200,r=60,z=-1073741825"),
+        has(
+            &out,
+            b"i=6999980,p=1,s=3,v=3,x=1,y=1,w=1,h=1,c=200,r=60,z=-1073741825"
+        ),
         "the page"
     );
     // Clicking Germany's bar focuses Germany: the lollipop, which named
