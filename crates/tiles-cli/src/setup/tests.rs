@@ -1500,6 +1500,41 @@ Next: run tiles check, then open a new terminal tab and type pi.
 }
 
 #[test]
+fn the_closing_line_names_only_a_harness_the_shell_wired() {
+    for (name, wired, last) in [
+        (
+            "shell-close-claude",
+            vec![Harness::Claude],
+            "Next: run tiles check, then open a new terminal tab and type claude.\n",
+        ),
+        (
+            "shell-close-none",
+            Vec::new(),
+            "Next: run tiles check, then start a session with tiles run pi.\n",
+        ),
+    ] {
+        let (root, places, mut r) = zsh_machine(name);
+        r.plans = vec![
+            (Harness::Pi, Plan::Current(PathBuf::from("/usr/bin/pi"))),
+            (Harness::Claude, Plan::Current(PathBuf::from("/bin/claude"))),
+        ];
+        r.shell = crate::shell::plan(
+            &places,
+            &|k| (k == "SHELL").then(|| "/bin/zsh".into()),
+            Path::new("/opt/homebrew/bin/tiles"),
+            &crate::shell::Found {
+                harnesses: wired,
+                others: vec![Harness::Pi],
+            },
+        );
+        let (text, _, ok) = drive(Args::default(), &r, Some("y\n"));
+        assert!(ok, "{text}");
+        assert!(text.ends_with(last), "{name}: {text}");
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+#[test]
 fn a_shell_found_after_another_was_wired_is_the_one_setup_names() {
     let (root, places, r) = zsh_machine("shell-partial");
     crate::shell::apply(&r.shell.as_ref().unwrap().edits).unwrap();

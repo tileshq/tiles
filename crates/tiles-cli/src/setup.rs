@@ -1097,37 +1097,35 @@ fn closing(
         };
         format!("{what}; see the lines above.")
     } else {
-        let set_up = report
+        let set_up: Vec<Harness> = report
             .plans
             .iter()
-            .find(|(_, p)| matches!(p, Plan::Current(_) | Plan::Install(..) | Plan::Replace(..)));
+            .filter(|(_, p)| matches!(p, Plan::Current(_) | Plan::Install(..) | Plan::Replace(..)))
+            .map(|(h, _)| *h)
+            .collect();
         let next = if blocked.is_some() {
             format!("Not yet: {first}")
         } else {
             "Next: ".to_string()
         };
-        // The shell starts a harness typed at a prompt through tiles run
-        // once its edits have run (ADR-069).
-        let wired = report
+        // A harness the shell starts through tiles run once its edits have
+        // run (ADR-069): one with a function in the script.
+        let typed = report
             .shell
             .as_ref()
-            .is_some_and(|p| !p.files.is_empty() && (p.edits.is_empty() || go));
-        set_up.map_or_else(
-            || format!("{next}run tiles check."),
-            |(h, _)| {
-                if wired {
-                    format!(
-                        "{next}run tiles check, then open a new terminal tab and type {}.",
-                        h.name()
-                    )
-                } else {
-                    format!(
-                        "{next}run tiles check, then start a session with tiles run {}.",
-                        h.name()
-                    )
-                }
-            },
-        )
+            .filter(|p| !p.files.is_empty() && (p.edits.is_empty() || go))
+            .and_then(|p| set_up.iter().find(|h| p.harnesses.contains(h)));
+        match (typed, set_up.first()) {
+            (Some(h), _) => format!(
+                "{next}run tiles check, then open a new terminal tab and type {}.",
+                h.name()
+            ),
+            (None, Some(h)) => format!(
+                "{next}run tiles check, then start a session with tiles run {}.",
+                h.name()
+            ),
+            (None, None) => format!("{next}run tiles check."),
+        }
     }
 }
 
