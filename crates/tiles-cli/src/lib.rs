@@ -2,9 +2,8 @@
 //! `tiles forms` lists the chart forms and their roles, `tiles omni` reads
 //! Omni topics (ADR-008), `tiles mcp` is the MCP server, `tiles card` draws
 //! one card for an add-on, `tiles pane` shows a call's cards as an
-//! interactive dashboard in a build with debug assertions or the `pane`
-//! feature, which a release build leaves off until the pane launches
-//! (ADR-065, ADR-070), `tiles run` launches a harness with Tiles loaded,
+//! interactive dashboard in a build with debug assertions, which a release
+//! build leaves off until the pane launches (ADR-065, ADR-070), `tiles run` launches a harness with Tiles loaded,
 //! `tiles install` adds Tiles to a harness for good, `tiles setup` runs
 //! that install for every harness on `PATH` and wires the shell so a harness
 //! typed at a prompt starts through `tiles run`, after one question (`tiles
@@ -47,7 +46,7 @@ mod install;
 mod motion;
 mod omni;
 mod opencode;
-#[cfg(any(debug_assertions, feature = "pane"))]
+#[cfg(debug_assertions)]
 mod pane;
 mod proved;
 mod run;
@@ -82,7 +81,7 @@ fn usage(sources: &[&dyn Source]) -> String {
     let names: Vec<&str> = sources.iter().map(|s| s.name()).collect();
     let mut text = USAGE.replacen(run::USAGE, &run::usage(&names), 1);
     // The pane's line, in a build that has the pane (ADR-070).
-    #[cfg(any(debug_assertions, feature = "pane"))]
+    #[cfg(debug_assertions)]
     {
         text = text.replacen(
             "\n       tiles --version",
@@ -156,8 +155,8 @@ enum Command {
     /// its name.
     Source(usize, Vec<String>),
     /// The interactive dashboard pane (ADR-063, ADR-065), only in a build
-    /// with debug assertions or the `pane` feature (ADR-070).
-    #[cfg(any(debug_assertions, feature = "pane"))]
+    /// with debug assertions (ADR-070).
+    #[cfg(debug_assertions)]
     Pane(Vec<String>),
     Version,
     Licence,
@@ -200,7 +199,7 @@ fn parse(args: &[String], sources: &[&str]) -> Result<Command, String> {
         "open" if args.len() == 2 => Ok(Command::Open(args[1].clone())),
         "cache" if args.len() == 2 && args[1] == "clear" => Ok(Command::CacheClear),
         "cache" => Err(format!("usage: {}", serve::CACHE_USAGE)),
-        #[cfg(any(debug_assertions, feature = "pane"))]
+        #[cfg(debug_assertions)]
         "pane" => Ok(Command::Pane(args[1..].to_vec())),
         "doctor" | "check" | "mcp" | "card" | "theme" | "open" => {
             Err(format!("wrong arguments for {first}"))
@@ -729,7 +728,7 @@ pub fn main(sources: &[&dyn Source]) -> ExitCode {
         Ok(Command::Theme(name)) => serve::theme(name.as_deref()),
         Ok(Command::Open(id)) => serve::open(&id, sources),
         Ok(Command::CacheClear) => serve::cache_clear(),
-        #[cfg(any(debug_assertions, feature = "pane"))]
+        #[cfg(debug_assertions)]
         Ok(Command::Pane(rest)) => return pane::main(&rest, sources),
         Ok(Command::Source(i, rest)) => source_command(
             sources[i],

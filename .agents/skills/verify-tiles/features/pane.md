@@ -1,6 +1,6 @@
 # The pane
 
-`tiles pane <intent.json | card id> [--trace <file>]` takes the whole terminal and shows a chart call's cards, or a drawn card's, as separate kitty pictures, with rows the call holds or rows fetched from Omni or a warehouse and kept in memory. Hovering a mark draws its outline and tooltip over the card; clicking a mark focuses its value on every card that holds it; clicking a legend entry hides that series; `s` sorts the card under the pointer; `d` drills an Omni date card one timeframe finer and `u` goes back; `r` clears everything picked; a resize lays everything out again, and `q` gives the screen back. It is in debug builds and in release builds with the `pane` feature, and stays out of release builds until it launches (ADR-063, ADR-065, ADR-070). `--trace` writes the timings `scripts/pane-trace.py` turns into the gate table.
+`tiles pane <intent.json | card id> [--trace <file>]` takes the whole terminal and shows a chart call's cards, or a drawn card's, as separate kitty pictures, with rows the call holds or rows fetched from Omni or a warehouse and kept in memory. Hovering a mark draws its outline and tooltip over the card; clicking a mark focuses its value on every card that holds it; clicking a legend entry hides that series; `s` sorts the card under the pointer; `d` drills an Omni date card one timeframe finer and `u` goes back; `r` clears everything picked; a resize lays everything out again, and `q` gives the screen back. It is in debug builds and the `pane` profile, which keep debug assertions, and stays out of release builds until a later record turns it on at launch (ADR-063, ADR-065, ADR-070). `--trace` writes the timings `scripts/pane-trace.py` turns into the gate table.
 
 ## Sub-features
 
@@ -14,7 +14,7 @@
 - `pane-sort` steps the card under the pointer through largest first, smallest first and its own order with `s`, skipping a step that changes nothing; a bar chart, lollipop or time chart says it keeps its own order.
 - `pane-drill` asks Omni, on `d` over a period of a card drawn from an Omni date field, for the next finer timeframe and draws only that period's rows; `u` goes back up; a card with rows of its own says what a drill needs.
 - `pane-card` opens a card the chart tool drew, by its six-hex id; a missing id is refused in one line.
-- `pane-release` stays out of a release build until the pane launches: its `tiles --help` does not name `tiles pane` and `tiles pane` is an unknown command there (ADR-070); a debug build and a release build with `--features pane` have it.
+- `pane-release` stays out of a release build until the pane launches: its `tiles --help` does not name `tiles pane` and `tiles pane` is an unknown command there (ADR-070); a debug build and a `pane`-profile build have it.
 - `pane-trace` writes the trace, and `scripts/pane-trace.py` prints the table.
 
 ## How to get to it (user POV)
@@ -53,7 +53,7 @@ Preconditions:
   Use `--machine intel` on the 2017 Intel Mac. Every row says go, miss or recorded. While moving the pointer, record the screen at 60 fps (QuickTime, a screen recording of the window) and step through it frame by frame: the tooltip follows the pointer within 2 frames and no card flickers. The shell's screen comes back after `q` with the prompt where it was.
 - **Warp.** In Warp, open a split by hand (Cmd-D), run the dashboard command with `--trace /tmp/pane-warp.trace`, hover and click as above, and run the script with `--label Warp`. Record whether hover draws, whether a click replaces cards cleanly, and the hover row.
 - **Orca's terminal.** On an Orca release whose terminal draws inline images (v1.4.197 does not; the current tags do), run `orca terminal split` and then `orca terminal create --command "$PWD/target/pane/tiles pane $PWD/fixtures/pane/dashboard.json --trace /tmp/pane-orca.trace"`, and check the same things with `--label Orca`.
-- **Release** (`pane-release`). `cargo build --release -p tiles-cli && ./target/release/tiles --help` does not name `tiles pane`, `./target/release/tiles pane x` exits 1 as an unknown command, and `python3 scripts/check-release-binary.py target/release/tiles` passes. `cargo build --release -p tiles-cli --features pane` gives a binary whose help names it and whose `tiles pane x` exits 1 with `tiles pane: cannot open x: ...`.
+- **Release** (`pane-release`). `cargo build --release -p tiles-cli && ./target/release/tiles --help` does not name `tiles pane`, `./target/release/tiles pane x` exits 1 as an unknown command, and `python3 scripts/check-release-binary.py target/release/tiles` passes. `cargo build --profile pane -p tiles-cli` gives a binary whose help names it and whose `target/pane/tiles pane x` exits 1 with `tiles pane: cannot open x: ...`.
 - **Fuzz.** `cargo +nightly-2026-10-01 fuzz run pane_input <copy of fuzz/corpus/pane_input> -- -max_total_time=60` ends with `Done` and no crash ([fuzz/README.md](../../../../fuzz/README.md)).
 
 ## Gotchas
