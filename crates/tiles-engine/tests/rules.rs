@@ -868,8 +868,12 @@ fn a_big_number_tooltip_leaves_the_hover_ring_clear() {
                 assert_eq!(marks.len(), 1, "the sparkline's last point");
                 let marks = marks.into_iter();
                 // With no hint and with each hint the pane shows.
-                let hints = [None, Some("click again to clear"), Some("click to focus Q2 26")];
-                for (hit, hint) in marks.flat_map(|h| hints.map(|n| (h, n))) {
+                let feet = [
+                    None,
+                    Some("click again to clear"),
+                    Some("click to focus Q2 26"),
+                ];
+                for (hit, hint) in marks.flat_map(|h| feet.map(|n| (h, n))) {
                     let pointer = f32::midpoint(hit.left as f32, hit.right as f32) / scale;
                     let cue = tiles_engine::pane::Cue {
                         pointer_x: Some(pointer),
@@ -1623,6 +1627,19 @@ fn a_hovered_dot_takes_a_circle_ring_and_its_own_colour() {
                     .map(|(x, y)| (x + shift.0, y + shift.1))
                     .collect();
                 assert!(!ring.is_empty(), "a ring round {:?}", hit.tip);
+                // The picture holds the whole ring, a stem's hover included,
+                // whose hit box ends at the head's centre.
+                let (w, h) = (over.ring.scene.width, over.ring.scene.height);
+                assert!(
+                    ring.iter().all(|&(x, y)| {
+                        x - 0.5 >= shift.0
+                            && x + 0.5 <= shift.0 + w
+                            && y - 0.5 >= shift.1
+                            && y + 0.5 <= shift.1 + h
+                    }),
+                    "the ring piece for {:?} holds the whole ring",
+                    hit.tip
+                );
                 let biggest = s
                     .items
                     .iter()

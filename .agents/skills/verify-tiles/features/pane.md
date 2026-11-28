@@ -5,7 +5,7 @@
 ## Sub-features
 
 - `pane-first-frame` draws the page colour under everything, the dashboard's heading and eight cards, every line (the three scorecards too) spanning the window less two columns each side, and a coloured status line on the last row with the keys at the right.
-- `pane-hover` draws one small picture over the card under the pointer, the mark washed lighter in a one-pixel accent ring and a raised tooltip clear of the card's title and value labels (its name, its values and what a click does), and sends no card again; moving off every mark removes it.
+- `pane-hover` draws two small pictures over the card under the pointer, the mark washed lighter in a one-pixel accent ring and, as a picture of its own, a raised tooltip clear of the card's title and value labels (its name, its values and what a click does), and sends no card again; moving off every mark removes it.
 - `pane-click` focuses the clicked mark's region (or series) in the accent on every card that highlights by it, every card keeping all its rows, and sends only the cards that changed and the heading, which shows the value's chip; the status line names the selection and counts the cards; the tooltip stays on the mark under the pointer; clicking it again, or empty space, clears it.
 - `pane-resize` lays out and draws everything again when the window changes size.
 - `pane-stress` draws `fixtures/pane/table-stress.json`, a grid of 40 rows by 8 columns of text, one row further down per wheel step or arrow.
