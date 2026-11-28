@@ -38,7 +38,7 @@ Surfaces:
 - [tiles run, per harness](./run-harnesses.md): Claude Code, Codex, OpenCode and Pi launched with Tiles loaded, and the line naming a harness version Tiles was not proved on.
 - [Terminal routes](./terminal-routes.md): kitty placeholders, pre-cut, sixel, text, and detection.
 - [Install and doctor](./install-doctor.md): permanent installs, the report, `tiles check`, `tiles cache clear`, the installer, `tiles update`, the update check, `tiles --licence` and a build that takes a design pack.
-- [The pane](./pane.md): `tiles pane` with a call file or a card id and its fetched rows, hover, click to filter, legend toggle, sort, Omni drill, resize, the table stress scene in debug builds, every way out, and the trace behind the gate table (ADR-063, ADR-065).
+- [The pane](./pane.md): `tiles pane` with a call file or a card id and its fetched rows, hover, click to focus a value, legend toggle, sort, Omni drill, resize, the table stress scene, every way out, the trace behind the gate table, and its absence from release builds until launch (ADR-063, ADR-065, ADR-070).
 
 Chart forms, one per file:
 

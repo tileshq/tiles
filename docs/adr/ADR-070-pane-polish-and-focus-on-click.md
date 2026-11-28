@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-27
-- Amends: [ADR-065](ADR-065-pane-ships-with-fetched-rows-and-one-interaction-state.md), whose click on a mark filtered the other cards' rows
+- Amends: [ADR-065](ADR-065-pane-ships-with-fetched-rows-and-one-interaction-state.md), whose click on a mark filtered the other cards' rows and whose pane shipped in every build
 
 ## Context
 
@@ -33,6 +33,10 @@ The overlay lightens the hovered mark with a wash of white at 12% opacity in the
 ### Click
 
 A click on a mark focuses its value (`State::focus`): every card keeps all its rows, and each card whose form highlights by the selected column and holds the value highlights it in the accent, whatever the card's claim tone. The form-aware check from PR #15 decides which cards can, so a stacked bar, which highlights only by its series, keeps its own colours when a region is clicked. A second click on the focused value, on whichever card holds it, a click on empty space, or `r` clears the focus. The pane still lays out and sends only the cards whose scene changed, and the heading when its chip changes. A focused card shows its focused mark in the accent with the same one-pixel accent ring, and moves its other marks 30% of the way to the card colour (`Engine::pane_focus`). The pane applies it to every card whose highlight names the focused value, the cards that already named it by their own claim too, so a focus redraws those cards as well.
+
+### Release builds
+
+On 27 November 2026 the owner asked to keep `tiles pane` out of public release builds until the pane itself launches, since a release for the terminal cards goes out first. `tiles-cli` compiles the pane, its usage line, its `pane` command and its dispatch only under `cfg(debug_assertions)`, as ADR-063 gated the prototype. Debug and test builds and the `pane` profile, an optimized build with debug assertions on, carry it, so `cargo test`, clippy and the pane's gate runs keep it; a release build leaves it out, so `tiles --help` does not name it and `tiles pane` is an unknown command there. `scripts/check-release-binary.py` fails a release binary that holds the pane's usage line, on every pull request and every release. The README and the user docs do not mention the pane, so `docs/omni.md` drops its paragraph on it; its records, the contributor checklist in `docs/definition-of-done.md` and the `verify-tiles` feature file keep its details. When the pane launches, a later record turns it on for release builds.
 
 ## Consequences
 

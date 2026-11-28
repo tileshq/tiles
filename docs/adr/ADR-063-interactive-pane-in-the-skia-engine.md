@@ -1,6 +1,6 @@
 # ADR-063: The interactive dashboard pane is built in Tiles' own Skia engine, in the terminal first, behind a one-week prototype that decides go or no-go
 
-- Status: Accepted; the Ghostty run passed every timed gate, and [ADR-065](ADR-065-pane-ships-with-fetched-rows-and-one-interaction-state.md) ships the pane in every build with fetched rows and one interaction state, amending the prototype's absence from release builds and its refusal of data sources
+- Status: Accepted; the Ghostty run passed every timed gate, and [ADR-065](ADR-065-pane-ships-with-fetched-rows-and-one-interaction-state.md) ships the pane in every build with fetched rows and one interaction state, amending the prototype's absence from release builds and its refusal of data sources; [ADR-070](ADR-070-pane-polish-and-focus-on-click.md) leaves the pane out of release builds again, through `debug_assertions`, until a later record turns it on at launch
 - Date: 2026-11-26
 
 ## Context

@@ -615,6 +615,12 @@ class ReleaseBinary(unittest.TestCase):
     def test_finds_a_path_passed_with_forbid(self):
         self.assertTrue(self.scan(b"/opt/build/tiles/out", ["/opt/build/tiles/"]))
 
+    def test_finds_the_unreleased_pane_command(self):
+        usage = b"       tiles pane <intent.json | card id> [--trace <file>]"
+        problems = self.scan(usage)
+        self.assertTrue(any(p.startswith("unreleased command") for p in problems), problems)
+        self.assertEqual(self.scan(b"tiles card <intent.json|->"), [])
+
     def test_finds_plain_tokens_and_forms(self):
         assets = self.ROOT / "crates/tiles-engine/assets"
         tokens = assets / "plain/tokens.json"
