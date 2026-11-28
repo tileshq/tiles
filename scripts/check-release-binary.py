@@ -16,6 +16,8 @@ the binary, which finds everything `strings` would, for:
             every asset key written as a JSON
             key ("key":), less the few the add-ons `tiles` embeds also use
             (crates/tiles-cli/src/addons.rs)
+    unreleased  the usage line of a command a release build leaves out
+            until it launches: `tiles pane` (ADR-070)
 
 The assets are the source tree's plain tokens (`assets/plain/tokens.json`,
 ADR-037) and forms, or, for a build that took a design pack
@@ -36,6 +38,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PATHS = (b"/Users/", b"/home/", b".cargo/registry", b"crates/tiles-")
+# Commands a release build leaves out until they launch (ADR-070), by their
+# usage line.
+UNRELEASED = (b"tiles pane <intent.json",)
 # Bytes x86 code holds anyway: `jmp` (0x23 operand) then 0x66 NOP prefixes.
 CODE_SPELLED = {"#ffffff"}
 TEXT_MIN = 16
@@ -194,6 +199,9 @@ def scan(binary: bytes, root: Path, forbid: list[str], pack: Path | None = None)
     for name, pattern in needles(root, pack):
         if pattern.search(binary):
             problems.append(f"asset {name} is readable")
+    for command in UNRELEASED:
+        if command in binary:
+            problems.append(f"unreleased command {command.decode()!r} is in the binary")
     return problems
 
 

@@ -1435,7 +1435,14 @@ mod tests {
 
     #[test]
     fn the_usage_text_names_the_pane() {
-        assert!(crate::USAGE.contains(USAGE));
+        // A build with the pane (this one, with debug assertions) adds its
+        // line before `--version`; the fixed text leaves it out (ADR-070).
+        let text = crate::usage(&[]);
+        assert!(
+            text.contains(&format!("{USAGE}\n       tiles --version")),
+            "{text}"
+        );
+        assert!(!crate::USAGE.contains(USAGE));
     }
 
     /// A column card of Lumen Coffee's orders by month, from Omni.

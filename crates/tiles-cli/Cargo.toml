@@ -32,6 +32,13 @@ toml = { version = "1.1.8", default-features = false, features = ["parse", "serd
 vt100 = "0.16.2"
 
 
+[features]
+# `tiles pane` in a release build. Debug, test and `pane`-profile builds
+# carry it anyway (debug assertions); a release build leaves it out until
+# the pane launches (ADR-070). `cargo build --release --features pane`
+# builds a release binary with it.
+pane = []
+
 [dev-dependencies]
 tiles-omni = { workspace = true, features = ["replay"] }
 
