@@ -1574,6 +1574,86 @@ fn marks_of_a_row_that_sit_apart_keep_a_ring_each() {
     }
 }
 
+/// Hovering a small-multiples panel's last point (ADR-070), drawn over the
+/// undrawn point that answers hover there, washes and rings the drawn dot.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel offsets.
+fn a_drawn_point_over_an_undrawn_one_takes_the_wash() {
+    let e = engine();
+    let s = scene("small-multiples");
+    let scale = 2.0;
+    let off = 2.5;
+    let accent = e.tokens().palette(s.theme).accent;
+    let hits = hit_map(&s, scale);
+    let drawn: Vec<&Item> = s
+        .items
+        .iter()
+        .filter(|i| i.part == Part::Mark && i.tip.is_some())
+        .filter(|i| matches!(i.shape, Shape::Circle { .. }))
+        .collect();
+    assert!(
+        !drawn.is_empty(),
+        "small multiples draw each panel's last point"
+    );
+    for dot in drawn {
+        let Shape::Circle { cx, cy, r } = dot.shape else {
+            unreachable!()
+        };
+        assert!(
+            s.items.iter().any(|i| i.part == Part::Hit
+                && i.datum == dot.datum
+                && i.tip == dot.tip
+                && i.shape == dot.shape),
+            "an undrawn point lies under {:?}",
+            dot.tip
+        );
+        let hit = hits
+            .iter()
+            .find(|h| h.row == dot.datum && Some(&h.tip) == dot.tip.as_ref())
+            .expect("the point's target");
+        let over = e.hover(&s, hit, scale, tiles_engine::pane::Cue::default());
+        let shift = (over.ring.left as f32 / scale, over.ring.top as f32 / scale);
+        let washes: Vec<skia_safe::Rect> = over
+            .ring
+            .scene
+            .items
+            .iter()
+            .filter(|i| i.color == Rgba::white(0.12))
+            .map(|i| i.bounds().with_offset(shift))
+            .collect();
+        let b = dot.bounds();
+        assert!(
+            matches!(washes.as_slice(), [w] if (w.left - b.left).abs() < 0.01
+                && (w.top - b.top).abs() < 0.01
+                && (w.right - b.right).abs() < 0.01
+                && (w.bottom - b.bottom).abs() < 0.01),
+            "hovering {:?} washes the drawn dot once, got {washes:?} for {b:?}",
+            dot.tip
+        );
+        let ring: Vec<(f32, f32)> = over
+            .ring
+            .scene
+            .items
+            .iter()
+            .filter_map(|i| match &i.shape {
+                Shape::Line { points, .. } if i.color == accent.with_opacity(0.6) => {
+                    Some(points.clone())
+                }
+                _ => None,
+            })
+            .flatten()
+            .map(|(x, y)| (x + shift.0, y + shift.1))
+            .collect();
+        assert!(!ring.is_empty(), "a ring round {:?}", dot.tip);
+        assert!(
+            ring.iter()
+                .all(|&(x, y)| ((x - cx).hypot(y - cy) - (r + off)).abs() < 0.05),
+            "the ring for {:?} is a circle round the drawn dot",
+            dot.tip
+        );
+    }
+}
+
 /// Hovering a dot (ADR-070), a lollipop's head or a line chart's point
 /// whether the card draws it or only targets it, rings the dot with a
 /// circle and gives the tooltip the dot's colour; hovering a lollipop's

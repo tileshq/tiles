@@ -298,17 +298,21 @@ fn ring_mark(group: &[&Item]) -> Item {
 
 /// The mark `hit` lights at device `scale`: the [`ring_mark`] of the
 /// [`cluster`] round the item under the pointer when it is a bar, a box or
-/// a dot (a line chart's undrawn point included), else round the row's
-/// first bar, box or dot, so a lollipop's stem or a value label lights the
-/// head. Never a series line or a stem.
+/// a dot (a drawn one before an undrawn one at the same place, so a line
+/// chart's undrawn point is ringed only where nothing is drawn), else round
+/// the row's first bar, box or dot, so a lollipop's stem or a value label
+/// lights the head. Never a series line or a stem.
 fn mark_item(card: &Scene, hit: &Hit, scale: f32) -> Option<Item> {
     let row = hit.row?;
-    let seed = card
-        .items
-        .iter()
-        .filter(|i| i.datum == Some(row))
-        .find(|i| crate::hit::target(i, scale).as_ref() == Some(hit))
-        .filter(|i| ringed(i))
+    let under = || {
+        card.items
+            .iter()
+            .filter(move |i| i.datum == Some(row))
+            .filter(move |i| crate::hit::target(i, scale).as_ref() == Some(hit))
+    };
+    let seed = under()
+        .find(|i| i.part == Part::Mark && ringed(i))
+        .or_else(|| under().next().filter(|i| ringed(i)))
         .or_else(|| {
             card.items
                 .iter()
