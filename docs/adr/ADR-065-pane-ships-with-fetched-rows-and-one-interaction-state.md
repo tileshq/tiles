@@ -1,6 +1,6 @@
 # ADR-065: `tiles pane` ships in every build, draws the chart tool's calls with their fetched rows, and keeps what the user picks as one state: cross-filter, legend toggle, sort and an Omni timeframe drill
 
-- Status: Accepted
+- Status: Accepted; the cross-filter, a click on a mark narrowing the other cards to its value, is superseded by [ADR-070](ADR-070-pane-polish-and-focus-on-click.md), where a click focuses its value and every card keeps its rows
 - Date: 2026-11-26
 - Amends: [ADR-063](ADR-063-interactive-pane-in-the-skia-engine.md), whose prototype had no `pane` command in a release build and refused any call naming a data source; [ADR-001](ADR-001-product-scope.md)'s interactivity non-goal, a second time
 

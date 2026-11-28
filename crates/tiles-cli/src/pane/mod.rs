@@ -6,11 +6,13 @@
 //! (ADR-027).
 //!
 //! It takes the whole terminal in the alternate screen and raw mode, lays
-//! the cards out with the dashboard planner at the pane's width and sends
-//! each card as its own kitty picture. Hovering a mark sends one small
+//! the cards out with the dashboard planner over the pane's whole width,
+//! every line on the same edges, on a page of the theme's colour, and
+//! sends each card as its own kitty picture. Hovering a mark sends one small
 //! picture over its card, the mark's outline and its tooltip. What the user
 //! picks is one [`state::State`] every card is laid out from: a click on a
-//! mark filters the other cards' rows in memory, a click on a legend entry
+//! mark focuses its value on every card that holds it, in the accent and
+//! named in the heading (ADR-070), a click on a legend entry
 //! hides its series, `s` sorts the card under the pointer, `d` drills into
 //! the period under it by asking Omni for the next finer timeframe, `u`
 //! goes back up and `r` clears it all; each sends only the cards whose
@@ -28,7 +30,6 @@ mod screen;
 mod state;
 mod trace;
 
-use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -59,11 +60,38 @@ const STRESS_MAX_COLS: usize = 8;
 /// First kitty image id the pane uses; each card has two, swapped on
 /// every redraw so the old picture goes only once the new one is placed.
 const FIRST_ID: u32 = 7_000_000;
-/// The hover overlay's two image ids.
+/// The hover overlay's two image ids for the ring; its tooltip takes each
+/// one's id plus [`TIP_OFFSET`].
 const OVERLAY_IDS: [u32; 2] = [6_999_990, 6_999_991];
-/// Stacking order of cards and of the overlay above them.
+const TIP_OFFSET: u32 = 2;
+/// The page colour's image id: three by three pixels, the middle one
+/// stretched over the window ([`kitty::fill`]).
+const PAGE_ID: u32 = 6_999_980;
+/// Stacking order of the page: below -1,073,741,824, kitty's line under
+/// which a picture goes beneath cells that have a background colour of
+/// their own, so the status line's key caps show over it.
+const Z_PAGE: i32 = -1_073_741_825;
 const Z_CARD: i32 = 1;
 const Z_OVERLAY: i32 = 2;
+/// The status line's hint before anything is picked, and its short form
+/// for a narrow pane.
+const HINT: &str = "   click a mark to focus it · click a legend entry to hide it";
+const SHORT_HINT: &str = "   click to focus";
+/// The keys at the right of the status line, and for a narrow pane with
+/// tighter gaps and without `u`, which only a drilled card answers.
+const KEYS: [(&str, &str); 5] = [
+    (" q ", " quit  "),
+    (" r ", " reset  "),
+    (" s ", " sort  "),
+    (" d ", " drill  "),
+    (" u ", " up"),
+];
+const KEYS_NARROW: [(&str, &str); 4] = [
+    (" q ", " quit "),
+    (" r ", " reset "),
+    (" s ", " sort "),
+    (" d ", " drill"),
+];
 /// How long the start-up probe waits for the terminal's replies.
 const PROBE_WAIT: Duration = Duration::from_millis(500);
 /// How often `--trace` samples memory and CPU time.
@@ -263,21 +291,30 @@ impl App<'_> {
         self.look = look;
         let scale = look.scale;
         self.slots = match &self.content {
-            Content::Dashboard { call, shown, .. } => {
+            Content::Dashboard {
+                call, shown, state, ..
+            } => {
                 let (laid, order) = call
-                    .lay_out(shown, &self.painter, &look)
+                    .lay_out_pane(shown, &self.painter, &look)
                     .map_err(|e| e.to_string())?;
                 let mut order = order.into_iter();
                 laid.cards
                     .into_iter()
-                    .map(|c| Slot {
-                        intent: c.align.and_then(|_| order.next()),
-                        align: c.align,
-                        at: c.at,
-                        cells: c.cells,
-                        hits: tiles_engine::hit::hit_map(&c.scene, scale),
-                        legend: self.painter.engine().legend(&c.scene, scale),
-                        scene: c.scene,
+                    .map(|c| {
+                        let intent = c.align.and_then(|_| order.next());
+                        let scene = match intent {
+                            Some(k) => self.treat(&shown[k], c.scene, state.focus.as_ref()),
+                            None => c.scene,
+                        };
+                        Slot {
+                            intent,
+                            align: c.align,
+                            at: c.at,
+                            cells: c.cells,
+                            hits: tiles_engine::hit::hit_map(&scene, scale),
+                            legend: self.painter.engine().legend(&scene, scale),
+                            scene,
+                        }
                     })
                     .collect()
             }
@@ -299,7 +336,54 @@ impl App<'_> {
             .map(|i| FIRST_ID + 2 * u32::try_from(i).unwrap_or(0))
             .collect();
         self.overlay = None;
+        if let Some(scene) = self.heading_scene() {
+            self.slots[0].scene = scene;
+        }
         Ok(())
+    }
+
+    /// The heading slot's scene for the state as it stands, the focused
+    /// value's chip on it (ADR-070); `None` when the pane has no heading.
+    fn heading_scene(&self) -> Option<Scene> {
+        let Content::Dashboard { call, state, .. } = &self.content else {
+            return None;
+        };
+        let heading = call.heading.as_ref()?;
+        let slot = self
+            .slots
+            .first()
+            .filter(|s| s.intent.is_none() && s.align.is_none())?;
+        let opts = tiles_engine::Options {
+            width: self
+                .look
+                .width_css(slot.cells.0)
+                .clamp(tiles_engine::MIN_WIDTH, tiles_engine::MAX_WIDTH),
+            theme: self.look.theme,
+            cell_height: Some(self.look.cell_height_css().clamp(1.0, 200.0)),
+        };
+        let chip = state.focus.as_ref().map(|f| tiles_engine::pane::Chip {
+            column: &f.column,
+            value: &f.value,
+        });
+        Some(
+            self.engine()
+                .pane_heading(&heading.title, heading.note.as_deref(), chip, &opts),
+        )
+    }
+
+    /// The page: the theme's page colour stretched over the whole window
+    /// under the text and the cards ([`kitty::fill`]).
+    fn page_bytes(&self) -> Vec<u8> {
+        let c = self.engine().tokens().palette(self.look.theme).page();
+        let mut out = pane::move_to(0, 0).into_bytes();
+        out.extend(kitty::fill(
+            PAGE_ID,
+            [c.r, c.g, c.b, 255],
+            self.size.1.max(1),
+            self.size.0.max(1),
+            Z_PAGE,
+        ));
+        out
     }
 
     fn stress_scene(&self) -> Result<Scene, String> {
@@ -364,16 +448,26 @@ impl App<'_> {
         Ok(out)
     }
 
+    /// The status line (ADR-070): the pane and what it shows, what the
+    /// user picked or a hint, any note, and the keys at the right, in the
+    /// theme's colours.
     fn status_bytes(&self) -> Vec<u8> {
-        let mut text = format!("tiles pane · {} · q quits", self.name);
+        let pal = self.engine().tokens().palette(self.look.theme);
+        let rgb = |c: tiles_engine::color::Rgba| [c.r, c.g, c.b];
+        let (ink, muted) = (rgb(pal.ink), rgb(pal.muted));
+        let picked = rgb(pal.accent.mix(pal.ink, 0.45));
+        let mut texts: Vec<(String, [u8; 3])> = vec![(format!(" · {}", self.name), muted)];
         match &self.content {
-            Content::Dashboard { state, .. } if !state.is_empty() => {
-                if let Some(s) = &state.filter {
-                    let _ = write!(text, " · {} = {}", s.column, s.value);
+            Content::Dashboard { state, shown, .. } if !state.is_empty() => {
+                if let Some(s) = &state.focus {
+                    texts.push((format!("   {} = {}", s.column, s.value), picked));
+                    let n = board::focused(shown, &s.value);
+                    let cards = if n == 1 { "card" } else { "cards" };
+                    texts.push((format!("  {n} {cards} focused"), muted));
                 }
                 let levels: usize = state.drills.values().map(Vec::len).sum();
                 if levels > 0 {
-                    let _ = write!(text, " · drilled {levels}, u goes up");
+                    texts.push((format!("  drilled {levels}"), muted));
                 }
                 let hidden: usize = state
                     .hidden
@@ -381,30 +475,73 @@ impl App<'_> {
                     .map(std::collections::BTreeSet::len)
                     .sum();
                 if hidden > 0 {
-                    let _ = write!(text, " · {hidden} hidden");
+                    texts.push((format!("  {hidden} hidden"), muted));
                 }
                 if !state.sorts.is_empty() {
-                    let _ = write!(text, " · {} sorted", state.sorts.len());
+                    texts.push((format!("  {} sorted", state.sorts.len()), muted));
                 }
-                text.push_str(" · r clears");
             }
             Content::Stress { offset, rows, .. } => {
-                let _ = write!(
-                    text,
-                    " · rows {}–{} of {}, wheel scrolls",
-                    offset + 1,
-                    (offset + STRESS_ROWS.min(rows.len()) - 1) % rows.len() + 1,
-                    rows.len()
-                );
+                texts.push((
+                    format!(
+                        "   rows {}–{} of {}, wheel scrolls",
+                        offset + 1,
+                        (offset + STRESS_ROWS.min(rows.len()) - 1) % rows.len() + 1,
+                        rows.len()
+                    ),
+                    muted,
+                ));
             }
-            Content::Dashboard { .. } => text
-                .push_str(" · click a mark to filter, a legend entry to hide · s sorts · d drills"),
+            Content::Dashboard { .. } => texts.push((HINT.into(), muted)),
         }
         if let Some(note) = &self.note {
-            text.push_str(" · ");
-            text.push_str(note);
+            texts.push((format!("   {note}"), ink));
         }
-        pane::status(self.size.0.saturating_sub(1), self.size.1, &text).into_bytes()
+        let inset = " ".repeat(usize::from(tiles_mcp::card::PANE_MARGIN));
+        let mut left = vec![
+            pane::Span::new(&inset, muted),
+            pane::Span {
+                bold: true,
+                ..pane::Span::new("tiles pane", ink)
+            },
+        ];
+        left.extend(texts.iter().map(|(t, c)| pane::Span::new(t, *c)));
+        let keys = |wide: bool| -> &[(&str, &str)] {
+            match (&self.content, wide) {
+                (Content::Dashboard { .. }, true) => &KEYS,
+                (Content::Dashboard { .. }, false) => &KEYS_NARROW,
+                (Content::Stress { .. }, _) => &KEYS[..1],
+            }
+        };
+        let key_spans = |wide: bool| {
+            let mut right = Vec::new();
+            for (key, label) in keys(wide) {
+                right.push(pane::Span {
+                    bg: Some(rgb(pal.grid)),
+                    ..pane::Span::new(key, ink)
+                });
+                right.push(pane::Span::new(label, muted));
+            }
+            right.push(pane::Span::new(&inset, muted));
+            right
+        };
+        // A narrow pane shortens the hint, then the gaps between the keys,
+        // before it gives up the keys.
+        let chars =
+            |spans: &[pane::Span<'_>]| spans.iter().map(|s| s.text.chars().count()).sum::<usize>();
+        let fits = |l: &[pane::Span<'_>], r: &[pane::Span<'_>]| {
+            chars(l) + 2 + chars(r) < usize::from(self.size.1)
+        };
+        let mut right = key_spans(true);
+        if !fits(&left, &right)
+            && let Some(hint) = left.iter_mut().find(|s| s.text == HINT)
+        {
+            hint.text = SHORT_HINT;
+        }
+        if !fits(&left, &right) {
+            right = key_spans(false);
+        }
+        pane::status_spans(self.size.0.saturating_sub(1), self.size.1, &left, &right).into_bytes()
     }
 
     fn begin(&mut self, kind: &str) -> u64 {
@@ -419,6 +556,7 @@ impl App<'_> {
         let update = self.update;
         let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
         bytes.extend(pane::CLEAR.as_bytes());
+        bytes.extend(self.page_bytes());
         for i in 0..self.slots.len() {
             bytes.extend(self.card_bytes(i, self.ids[i])?);
             self.trace
@@ -480,6 +618,7 @@ impl App<'_> {
         }
         if let Some(old) = old {
             bytes.extend(kitty::delete(old));
+            bytes.extend(kitty::delete(old + TIP_OFFSET));
         }
         Ok(())
     }
@@ -507,18 +646,46 @@ impl App<'_> {
     ) -> Result<Option<Vec<u8>>, String> {
         let slot = &self.slots[s];
         let scale = self.look.scale;
-        let overlay = self.engine().hover(&slot.scene, &slot.hits[h], scale);
-        let frame = self
-            .engine()
-            .frame_at(&overlay.scene, scale, Moment::FINAL)
-            .map_err(|e| e.to_string())?;
+        let (hint, focused) = self.hint(slot, &slot.hits[h]);
+        let pointer_x = self.pointer.map(|(x, _)| {
+            #[allow(clippy::cast_precision_loss)] // Pixel coordinates far below 2^24.
+            let dx = x as f32 - f32::from(slot.at.0) * f32::from(self.cell.0);
+            dx / scale
+        });
+        let cue = tiles_engine::pane::Cue {
+            pointer_x,
+            hint: hint.as_deref(),
+            focused,
+        };
+        let overlay = self.engine().hover(&slot.scene, &slot.hits[h], scale, cue);
+        let ring = self.piece_bytes(slot, &overlay.ring, id)?;
+        let tip = self.piece_bytes(slot, &overlay.tip, id + TIP_OFFSET)?;
         self.trace.line(
             "draw",
             format_args!("update={} kind={kind} card=overlay", self.update),
         );
+        let Some(mut out) = ring else {
+            return Ok(None);
+        };
+        out.extend(tip.unwrap_or_default());
+        Ok(Some(out))
+    }
+
+    /// One picture of an overlay placed over `slot` as image `id`, or
+    /// `None` when it starts on the status line or off the screen.
+    fn piece_bytes(
+        &self,
+        slot: &Slot,
+        piece: &tiles_engine::pane::Piece,
+        id: u32,
+    ) -> Result<Option<Vec<u8>>, String> {
+        let frame = self
+            .engine()
+            .frame_at(&piece.scene, self.look.scale, Moment::FINAL)
+            .map_err(|e| e.to_string())?;
         let (cw, ch) = (i64::from(self.cell.0), i64::from(self.cell.1));
-        let x = i64::from(slot.at.0) * cw + i64::from(overlay.left);
-        let y = i64::from(slot.at.1) * ch + i64::from(overlay.top);
+        let x = i64::from(slot.at.0) * cw + i64::from(piece.left);
+        let y = i64::from(slot.at.1) * ch + i64::from(piece.top);
         let (col, row) = (x.div_euclid(cw), y.div_euclid(ch));
         let (Ok(col), Ok(row)) = (u16::try_from(col), u16::try_from(row)) else {
             return Ok(None);
@@ -540,6 +707,24 @@ impl App<'_> {
             },
         ));
         Ok(Some(out))
+    }
+
+    /// What a click on `hit` in `slot` would do, for the tooltip's foot:
+    /// focus its value, or clear the focus when that value is focused; and
+    /// whether it is, which rings the mark in the full accent.
+    fn hint(&self, slot: &Slot, hit: &tiles_engine::hit::Hit) -> (Option<String>, bool) {
+        let Content::Dashboard { shown, state, .. } = &self.content else {
+            return (None, false);
+        };
+        let picked = slot
+            .intent
+            .zip(hit.row)
+            .and_then(|(card, row)| board::pick(shown, card, row, self.engine().forms()));
+        match picked {
+            Some(p) if state.focuses(&p) => (Some("click again to clear".to_string()), true),
+            Some(p) => (Some(format!("click to focus {}", p.value)), false),
+            None => (None, false),
+        }
     }
 
     /// The card under device pixel `x`, `y`, as its intent's index.
@@ -572,8 +757,8 @@ impl App<'_> {
     }
 
     /// A left click at `x`, `y`: on a legend entry, hide or show its series;
-    /// on a mark, select its value and filter the other cards, or clear the
-    /// selection when it is selected already or the click hit no mark.
+    /// on a mark, focus its value on every card, or clear the focus when it
+    /// is focused already or the click hit no mark.
     fn click(&mut self, x: u32, y: u32) -> Result<Option<Update>, String> {
         let Content::Dashboard {
             call, shown, state, ..
@@ -591,14 +776,11 @@ impl App<'_> {
         let picked = self
             .mark_at(x, y)
             .and_then(|(card, row)| board::pick(shown, card, row, self.engine().forms()));
-        if picked == state.filter {
-            if picked.is_none() {
-                return Ok(None);
-            }
-            next.filter = None;
-        } else {
-            next.filter = picked;
-        }
+        next.focus = match picked {
+            Some(p) if !state.focuses(&p) => Some(p),
+            _ if state.focus.is_none() => return Ok(None),
+            _ => None,
+        };
         self.restate(next, "click", None).map(Some)
     }
 
@@ -740,23 +922,31 @@ impl App<'_> {
         kind: &str,
         note: Option<String>,
     ) -> Result<Update, String> {
-        let Content::Dashboard { call, .. } = &self.content else {
+        let Content::Dashboard { call, state, .. } = &self.content else {
             return Err("not a dashboard".into());
         };
         let wanted = next.apply(&call.intents, self.engine().forms());
+        let refocus = next.focus != state.focus;
         self.begin(kind);
         let mut bytes = pane::BEGIN_UPDATE.as_bytes().to_vec();
-        let (intents, cards, refused) = self.relay(wanted, &mut bytes)?;
+        let focus = next.focus.clone();
+        let (intents, mut cards, refused) =
+            self.relay(wanted, focus.as_ref(), refocus, &mut bytes)?;
         if self.note.is_none() {
             self.note = note;
         }
-        let target = self.pointer.and_then(|(x, y)| self.target(x, y));
-        self.set_overlay(target, kind, &mut bytes)?;
         if let Content::Dashboard { shown, state, .. } = &mut self.content {
             next.keep(state, &refused);
             *shown = intents;
             *state = next;
         }
+        if let Some(scene) = self.heading_scene().filter(|h| *h != self.slots[0].scene) {
+            self.slots[0].scene = scene;
+            self.replace(0, kind, &mut bytes)?;
+            cards += 1;
+        }
+        let target = self.pointer.and_then(|(x, y)| self.target(x, y));
+        self.set_overlay(target, kind, &mut bytes)?;
         bytes.extend(self.status_bytes());
         bytes.extend(pane::END_UPDATE.as_bytes());
         Ok(Update { bytes, cards })
@@ -778,14 +968,28 @@ impl App<'_> {
         self.painter.lay_card(&tile, &look, align).ok()
     }
 
-    /// Lays out again each card whose intent `intents` changes, in its own
-    /// slot, and sends those whose scene changed. A card that refuses its
-    /// filtered rows keeps its picture and its intent, and names itself on
-    /// the status line. Returns the intents the cards now show, how many
+    /// `scene`, drawn from `intent`, with the focus treatment (a ring round
+    /// the focused mark, the other marks dimmed) when `focus` is the value
+    /// its highlight names (ADR-070).
+    fn treat(&self, intent: &Intent, scene: Scene, focus: Option<&board::Selection>) -> Scene {
+        if focus.is_some_and(|f| intent.highlight.len() == 1 && intent.highlight[0] == f.value) {
+            self.engine().pane_focus(&scene)
+        } else {
+            scene
+        }
+    }
+
+    /// Lays out again each card whose intent `intents` changes, or every
+    /// card when `refocus` says the focus changed, in its own
+    /// slot, and sends those whose scene changed. A card that cannot be
+    /// drawn with its focus, hidden series, sort or drill keeps its picture
+    /// and its intent, and names itself on the status line. Returns the intents the cards now show, how many
     /// cards it sent, and the cards that refused.
     fn relay(
         &mut self,
         mut intents: Vec<Intent>,
+        focus: Option<&board::Selection>,
+        refocus: bool,
         bytes: &mut Vec<u8>,
     ) -> Result<(Vec<Intent>, usize, Vec<usize>), String> {
         let Content::Dashboard { shown, .. } = &self.content else {
@@ -798,10 +1002,13 @@ impl App<'_> {
             let (Some(k), Some(_)) = (slot.intent, slot.align) else {
                 continue;
             };
-            if intents[k] == shown[k] {
+            if intents[k] == shown[k] && !refocus {
                 continue;
             }
-            match self.lay(slot, &intents[k]) {
+            match self
+                .lay(slot, &intents[k])
+                .map(|s| self.treat(&intents[k], s, focus))
+            {
                 Some(scene) if scene != slot.scene => changed.push((i, scene)),
                 Some(_) => {}
                 None => refused.push(k),
@@ -1351,7 +1558,7 @@ mod tests {
             .unwrap();
 
         let clicked = State {
-            filter: board::pick(&call.intents, 0, august, forms),
+            focus: board::pick(&call.intents, 0, august, forms),
             ..State::default()
         };
         let shown = clicked.apply(&call.intents, forms);
@@ -1380,7 +1587,7 @@ mod tests {
             "the drilled card draws with the click kept"
         );
         let deeper = redrill(&call, &clicked, next.clone(), 0, forms, draws).unwrap();
-        assert_eq!(deeper.filter, None, "the drilled period is the whole card");
+        assert_eq!(deeper.focus, None, "the drilled period is the whole card");
         assert_eq!(deeper.drills[&0].len(), 1);
         assert_eq!(
             deeper.apply(&call.intents, forms),
@@ -1388,10 +1595,10 @@ mod tests {
         );
 
         let mut undrilled = State {
-            filter: board::pick(&deeper.apply(&call.intents, forms), 0, 1, forms),
+            focus: board::pick(&deeper.apply(&call.intents, forms), 0, 1, forms),
             ..deeper.clone()
         };
-        assert!(undrilled.filter.is_some());
+        assert!(undrilled.focus.is_some());
         let picked = undrilled.clone();
         undrilled.drills.clear();
         let up = redrill(&call, &picked, undrilled, 0, forms, draws).unwrap();

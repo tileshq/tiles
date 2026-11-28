@@ -588,8 +588,37 @@ impl Engine {
     /// outlined and its tooltip, as one small scene placed over the card
     /// (ADR-063). Draw it with [`Engine::frame_at`] at the same scale.
     #[must_use]
-    pub fn hover(&self, scene: &Scene, hit: &hit::Hit, scale: f32) -> pane::Overlay {
-        pane::overlay(&self.tokens, &self.fonts, scene, hit, scale)
+    pub fn hover(
+        &self,
+        scene: &Scene,
+        hit: &hit::Hit,
+        scale: f32,
+        cue: pane::Cue<'_>,
+    ) -> pane::Overlay {
+        pane::overlay(&self.tokens, &self.fonts, scene, hit, scale, cue)
+    }
+
+    /// `scene` with a value focused on the interactive pane (ADR-070): a
+    /// one-pixel accent ring round each highlighted mark and the other
+    /// marks dimmed a little; unchanged when no mark is highlighted.
+    #[must_use]
+    pub fn pane_focus(&self, scene: &Scene) -> Scene {
+        pane::focus(&self.tokens, &self.fonts, scene)
+    }
+
+    /// The interactive pane's heading (ADR-070): [`Engine::heading`], its
+    /// title wrapped short of room for a chip, with the chip of a value a
+    /// click selected at the right of its title. A chip never makes it
+    /// taller.
+    #[must_use]
+    pub fn pane_heading(
+        &self,
+        title: &str,
+        note: Option<&str>,
+        chip: Option<pane::Chip<'_>>,
+        opts: &Options,
+    ) -> Scene {
+        pane::heading(&self.tokens, &self.fonts, title, note, chip, opts)
     }
 
     /// The legend entries of `scene` at device `scale`, each with its label

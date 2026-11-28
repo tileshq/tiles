@@ -228,6 +228,32 @@ impl EnginePainter {
         heading: Option<&Heading>,
         look: &Look,
     ) -> Result<Laid, Refusal> {
+        self.place(rows, heading, look, false)
+    }
+
+    /// [`EnginePainter::lay_out`] for the interactive pane, its heading
+    /// laid out as the pane draws it, with room for a focused value's chip
+    /// (ADR-070).
+    ///
+    /// # Errors
+    ///
+    /// An intent breaks a form rule.
+    pub fn lay_out_pane(
+        &self,
+        rows: &[Vec<Tile<'_>>],
+        heading: Option<&Heading>,
+        look: &Look,
+    ) -> Result<Laid, Refusal> {
+        self.place(rows, heading, look, true)
+    }
+
+    fn place(
+        &self,
+        rows: &[Vec<Tile<'_>>],
+        heading: Option<&Heading>,
+        look: &Look,
+        pane: bool,
+    ) -> Result<Laid, Refusal> {
         let cell = (look.width_css(1), look.cell_height_css());
         let theme = look.theme;
         let mut cards = Vec::new();
@@ -254,7 +280,12 @@ impl EnginePainter {
                 theme,
                 cell_height: Some(look.cell_height_css().clamp(1.0, 200.0)),
             };
-            let scene = self.engine.heading(&h.title, h.note.as_deref(), &opts);
+            let scene = if pane {
+                self.engine
+                    .pane_heading(&h.title, h.note.as_deref(), None, &opts)
+            } else {
+                self.engine.heading(&h.title, h.note.as_deref(), &opts)
+            };
             sizes.push(vec![(cols, cell_rows(scene.height))]);
             cards.push((scene, None, None));
         }

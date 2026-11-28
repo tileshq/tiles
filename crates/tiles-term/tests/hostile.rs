@@ -73,6 +73,42 @@ fn the_pane_status_line_holds_only_its_own_moves() {
     }
 }
 
+/// Whether every escape in `s` is one of the coloured status line's own: a
+/// cursor move, an erase or a colour (`CSI` digits and `;`, then `H`, `K` or
+/// `m`), and the rest is plain.
+fn only_own_sequences(s: &str) -> bool {
+    let mut rest = s;
+    let mut text = String::new();
+    while let Some(at) = rest.find('\x1b') {
+        text.push_str(&rest[..at]);
+        let seq = &rest[at + 1..];
+        let Some(body) = seq.strip_prefix('[') else {
+            return false;
+        };
+        let end = body.find(|c: char| !(c.is_ascii_digit() || c == ';'));
+        let Some(end) = end.filter(|&e| matches!(body.as_bytes()[e], b'H' | b'K' | b'm')) else {
+            return false;
+        };
+        rest = &body[end + 1..];
+    }
+    text.push_str(rest);
+    plain(&text)
+}
+
+#[test]
+fn the_coloured_pane_status_line_holds_only_its_own_sequences() {
+    for e in corpus() {
+        let span = pane::Span {
+            bg: Some([1, 2, 3]),
+            bold: true,
+            ..pane::Span::new(&e, [4, 5, 6])
+        };
+        let line = pane::status_spans(23, 80, &[span, span], &[span]);
+        assert!(only_own_sequences(&line), "{e:?}");
+        assert!(plain(&sanitize::run(&e, 200)), "{e:?}");
+    }
+}
+
 #[test]
 fn a_hostile_override_is_refused_in_plain_words() {
     for e in corpus() {

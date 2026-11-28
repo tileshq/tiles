@@ -2,7 +2,7 @@
 //! text, read from the scene (ADR-002), so a terminal surface can show a
 //! tooltip for the cell under the pointer without drawing anything again.
 
-use crate::scene::{Part, Scene, Shape};
+use crate::scene::{Item, Part, Scene, Shape};
 
 /// Thin marks (points, lines) get at least this much target, in CSS pixels.
 const MIN_TARGET: f32 = 8.0;
@@ -38,40 +38,42 @@ impl Hit {
 
 /// The hit map of a settled scene at a device scale.
 #[must_use]
-#[allow(clippy::cast_possible_truncation)] // Card coordinates are far below i32::MAX.
 pub fn hit_map(scene: &Scene, scale: f32) -> Vec<Hit> {
-    let mut out = Vec::new();
-    for item in &scene.items {
-        let Some(tip) = &item.tip else { continue };
-        if !matches!(item.part, Part::Mark | Part::Value | Part::Hit) {
-            continue;
-        }
-        if matches!(item.shape, Shape::Area { .. }) {
-            continue;
-        }
-        let mut b = item.bounds();
-        if let Shape::Text { .. } = item.shape {
-            continue;
-        }
-        let grow = |lo: &mut f32, hi: &mut f32| {
-            if *hi - *lo < MIN_TARGET {
-                let mid = f32::midpoint(*lo, *hi);
-                *lo = mid - MIN_TARGET / 2.0;
-                *hi = mid + MIN_TARGET / 2.0;
-            }
-        };
-        grow(&mut b.left, &mut b.right);
-        grow(&mut b.top, &mut b.bottom);
-        out.push(Hit {
-            left: (b.left * scale).floor() as i32,
-            top: (b.top * scale).floor() as i32,
-            right: (b.right * scale).ceil() as i32,
-            bottom: (b.bottom * scale).ceil() as i32,
-            row: item.datum,
-            tip: tip.clone(),
-        });
+    scene
+        .items
+        .iter()
+        .filter_map(|i| target(i, scale))
+        .collect()
+}
+
+/// The hover target `item` makes at a device scale, if it makes one.
+#[allow(clippy::cast_possible_truncation)] // Card coordinates are far below i32::MAX.
+pub(crate) fn target(item: &Item, scale: f32) -> Option<Hit> {
+    let tip = item.tip.as_ref()?;
+    if !matches!(item.part, Part::Mark | Part::Value | Part::Hit) {
+        return None;
     }
-    out
+    if matches!(item.shape, Shape::Area { .. } | Shape::Text { .. }) {
+        return None;
+    }
+    let mut b = item.bounds();
+    let grow = |lo: &mut f32, hi: &mut f32| {
+        if *hi - *lo < MIN_TARGET {
+            let mid = f32::midpoint(*lo, *hi);
+            *lo = mid - MIN_TARGET / 2.0;
+            *hi = mid + MIN_TARGET / 2.0;
+        }
+    };
+    grow(&mut b.left, &mut b.right);
+    grow(&mut b.top, &mut b.bottom);
+    Some(Hit {
+        left: (b.left * scale).floor() as i32,
+        top: (b.top * scale).floor() as i32,
+        right: (b.right * scale).ceil() as i32,
+        bottom: (b.bottom * scale).ceil() as i32,
+        row: item.datum,
+        tip: tip.clone(),
+    })
 }
 
 /// The target under a device pixel: the smallest box that contains it, so

@@ -347,6 +347,28 @@ pub(crate) fn heading(
     note: Option<&str>,
     opts: &Options,
 ) -> Scene {
+    let left = tokens.card.margin_x + tokens.card.border;
+    heading_in(
+        tokens,
+        fonts,
+        title,
+        note,
+        (opts.width - 2.0 * left, 0.0),
+        opts,
+    )
+}
+
+/// [`heading`] with the title wrapped at `title_width` CSS pixels, a line
+/// no word break fits cut with an ellipsis, then `after_title` CSS pixels
+/// left empty, and the note at the full width.
+pub(crate) fn heading_in(
+    tokens: &Tokens,
+    fonts: &Fonts,
+    title: &str,
+    note: Option<&str>,
+    (title_width, after_title): (f32, f32),
+    opts: &Options,
+) -> Scene {
     let t = tokens;
     let pal = t.palette(opts.theme);
     let left = t.card.margin_x + t.card.border;
@@ -359,8 +381,13 @@ pub(crate) fn heading(
     };
     let mut items = Vec::new();
     let mut y = t.card.margin_top;
-    for text in fonts.wrap_balanced(title, title_style, width) {
+    for text in fonts.wrap_balanced(title, title_style, title_width) {
         let baseline = y + fonts.baseline_in_line(size, line);
+        let text = if title_width < width {
+            crate::pane::fit(fonts, &text, title_style, title_width)
+        } else {
+            text
+        };
         items.push(text_item(
             Part::Title,
             text,
@@ -373,6 +400,7 @@ pub(crate) fn heading(
         ));
         y += line;
     }
+    y += after_title;
     let note_style = Style::new(t.text.subtitle_size, 400);
     let note_lines = note.map_or_else(Vec::new, |n| fonts.wrap_balanced(n, note_style, width));
     if !note_lines.is_empty() {

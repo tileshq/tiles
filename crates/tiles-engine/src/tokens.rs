@@ -141,6 +141,12 @@ pub struct Palette {
     /// What the theme looks like, for the theme list.
     pub about: String,
     pub card: Rgba,
+    /// The page behind the cards on a surface that fills a window, the
+    /// interactive pane (ADR-070); a theme without one takes
+    /// [`Palette::page`]'s fallback, so a design pack written before it
+    /// still loads.
+    #[serde(default)]
+    pub page: Option<Rgba>,
     pub line: Rgba,
     pub ink: Rgba,
     pub muted: Rgba,
@@ -163,6 +169,36 @@ pub struct Palette {
     /// unused.
     #[serde(skip)]
     pub series: usize,
+}
+
+impl Palette {
+    /// The page behind the cards: the theme's own, or the card colour
+    /// moved a third of the way to black on a dark theme and a twentieth
+    /// on a light one.
+    #[must_use]
+    pub fn page(&self) -> Rgba {
+        self.page.unwrap_or_else(|| {
+            let t = if self.card.is_light() {
+                0.05
+            } else {
+                1.0 / 3.0
+            };
+            self.card.mix(Rgba::black(1.0), t)
+        })
+    }
+
+    /// A surface raised over the card, such as a tooltip: the card a
+    /// little towards the ink.
+    #[must_use]
+    pub fn raised(&self) -> Rgba {
+        self.card.mix(self.ink, 0.04)
+    }
+
+    /// The hairline round a raised surface.
+    #[must_use]
+    pub fn raised_line(&self) -> Rgba {
+        self.card.mix(self.ink, 0.13)
+    }
 }
 
 /// One shadow layer under the card.

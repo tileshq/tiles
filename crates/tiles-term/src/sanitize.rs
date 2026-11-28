@@ -11,6 +11,14 @@ pub fn line(text: &str, max: usize) -> String {
     sanitize_truncated(text.trim(), max)
 }
 
+/// `text` as one printable run of at most `max` characters, its spaces
+/// kept: a piece of a line built from several, such as one coloured run
+/// of the pane's status line.
+#[must_use]
+pub fn run(text: &str, max: usize) -> String {
+    sanitize_truncated(&text.replace(['\n', '\r', '\t'], " "), max)
+}
+
 /// `text` as printable lines: each line is sanitized on its own, so line
 /// breaks survive and nothing else does.
 #[must_use]
@@ -20,12 +28,19 @@ pub fn lines(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{line, lines};
+    use super::{line, lines, run};
 
     #[test]
     fn line_strips_escapes_and_cuts() {
         assert_eq!(line("  a\x1b]52;c;eA==\x07b  ", 10), "a]52;c;eA…");
         assert_eq!(line("a\u{202e}b", 10), "ab");
+    }
+
+    #[test]
+    fn run_keeps_its_spaces_and_cuts() {
+        assert_eq!(run(" a\x1b[2J b ", 20), " a[2J b ");
+        assert_eq!(run("one\ntwo", 20), "one two");
+        assert_eq!(run("abcdef", 4), "abc…");
     }
 
     #[test]

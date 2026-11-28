@@ -650,6 +650,1141 @@ fn a_spotlit_line_answers_hover_on_every_point_it_does_not_draw() {
 }
 
 #[test]
+fn a_pane_heading_keeps_its_title_whole_and_a_focus_adds_no_reflow() {
+    let e = engine();
+    let title = "Payments by region and method, second quarter 2026 (EUR)";
+    let note = "Read from the dev build of the payments model, built two hours ago";
+    let chip = tiles_engine::pane::Chip {
+        column: "payments_by_region_and_settlement_country",
+        value: "Bosnia and Herzegovina, Federation entity",
+    };
+    // Left, top, right, bottom of a text or a rectangle.
+    let extent = |i: &Item| {
+        if let Shape::Text {
+            text, x, y, style, ..
+        } = &i.shape
+        {
+            (*x, y - style.size, x + e.text_width(text, *style), *y)
+        } else {
+            let b = i.bounds();
+            (b.left, b.top, b.right, b.bottom)
+        }
+    };
+    for (width, inline) in [
+        (280.0, false),
+        (320.0, false),
+        (470.0, false),
+        (1600.0, true),
+    ] {
+        let opts = Options {
+            width,
+            theme: light(),
+            cell_height: Some(19.0),
+        };
+        let plain = e.pane_heading(title, Some(note), None, &opts);
+        let with = e.pane_heading(title, Some(note), Some(chip), &opts);
+        let lines = texts(&plain, Part::Title);
+        assert_eq!(with.height, plain.height, "a focus reflows at {width}");
+        assert_eq!(texts(&with, Part::Title), lines, "at {width}");
+        assert_eq!(
+            lines,
+            texts(&e.heading(title, Some(note), &opts), Part::Title),
+            "the title keeps its own lines at {width}"
+        );
+        for line in &lines {
+            assert!(!line.ends_with('…'), "{line:?} is cut at {width}");
+            assert!(line.contains(' '), "{line:?} stands alone at {width}");
+        }
+        assert_eq!(
+            texts(&plain, Part::Subtitle),
+            texts(&e.heading(title, Some(note), &opts), Part::Subtitle),
+            "the note keeps the full width at {width}"
+        );
+        let chip_box = with
+            .items
+            .iter()
+            .filter(|i| !plain.items.contains(i))
+            .map(&extent)
+            .fold(
+                (
+                    f32::INFINITY,
+                    f32::INFINITY,
+                    f32::NEG_INFINITY,
+                    f32::NEG_INFINITY,
+                ),
+                |a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)),
+            );
+        assert!(chip_box.0 > 0.0 && chip_box.2 <= width, "at {width}");
+        assert!(chip_box.3 <= with.height, "at {width}");
+        for item in with.part(Part::Title).chain(with.part(Part::Subtitle)) {
+            let t = extent(item);
+            let apart =
+                t.2 < chip_box.0 || chip_box.2 < t.0 || t.3 <= chip_box.1 || chip_box.3 <= t.1;
+            assert!(apart, "{:?} meets the chip at {width}", item.text());
+        }
+        let first = extent(with.part(Part::Title).next().unwrap());
+        let last = extent(with.part(Part::Title).last().unwrap());
+        if inline {
+            assert!(
+                chip_box.1 < first.3,
+                "the chip sits on the title line at {width}"
+            );
+        } else {
+            assert!(
+                chip_box.1 >= last.3,
+                "the chip sits under the title at {width}"
+            );
+        }
+    }
+}
+
+#[test]
+#[allow(clippy::cast_precision_loss, clippy::similar_names)] // Pixel sizes and hit maps.
+fn every_pane_tooltip_leaves_the_title_and_value_labels_clear() {
+    let e = engine();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
+    let board: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let column = &board["rows"][0][1];
+    assert_eq!(column["form"], "column");
+    let column = tiles_intent::parse(&column.to_string()).unwrap();
+    let s = e.scene(&column, &Options::default()).unwrap();
+    assert!(
+        s.part(Part::Value).any(|v| v.text() == Some("6,900")),
+        "the Germany column has its value label"
+    );
+    // Every card on the board as the pane draws it in kitty windows from
+    // about 50 to 205 columns, with 7 by 12.5 CSS pixel cells, at scale 2:
+    // the column card at 700 px is a 205-column window's half, at 357 px a
+    // 107-column window's, where the bar and lollipop tooltips once fell
+    // back over other rows' value labels.
+    let scale = 2.0;
+    let cards = board["rows"].as_array().unwrap().iter().flat_map(|r| {
+        r.as_array()
+            .unwrap()
+            .iter()
+            .map(|c| tiles_intent::parse(&c.to_string()).unwrap())
+    });
+    for intent in cards.collect::<Vec<_>>() {
+        let widths = (280..=720).step_by(8).map(|w| w as f32).chain([357.0]);
+        for (theme, width) in widths.flat_map(|w| [(dark(), w), (light(), w)]) {
+            let opts = Options {
+                width,
+                theme,
+                cell_height: Some(12.5),
+            };
+            let s = e.scene(&intent, &opts).unwrap();
+            let hits = hit_map(&s, scale);
+            let mut clear: Vec<_> = s.part(Part::Title).map(|t| text_box(&e, t)).collect();
+            clear.extend(s.part(Part::Value).map(|v| text_box(&e, v)));
+            // Every mark, with no hint and with each hint the pane shows.
+            let hints = [
+                None,
+                Some("click again to clear"),
+                Some("click to focus Netherlands"),
+            ];
+            let marks = hits.iter().filter(|h| h.row.is_some());
+            for (hit, hint) in marks.flat_map(|h| hints.map(|n| (h, n))) {
+                let pointer = f32::midpoint(hit.left as f32, hit.right as f32) / scale;
+                let cue = tiles_engine::pane::Cue {
+                    pointer_x: Some(pointer),
+                    hint,
+                    focused: false,
+                };
+                let tip = e.hover(&s, hit, scale, cue).tip;
+                let tip_box = skia_safe::Rect::from_xywh(
+                    tip.left as f32 / scale,
+                    tip.top as f32 / scale,
+                    tip.scene.width,
+                    tip.scene.height,
+                );
+                assert!(
+                    tip_box.right <= s.width && tip_box.bottom <= s.height,
+                    "{tip_box:?} stays in the tile"
+                );
+                for r in &clear {
+                    assert!(
+                        !skia_safe::Rect::intersects2(tip_box, r),
+                        "on {:?} at {width}, the tooltip {tip_box:?} for {:?} covers {r:?}",
+                        s.part(Part::Title).next().and_then(Item::text),
+                        hit.tip
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// A big number's tooltip for its sparkline's last point never covers the
+/// point's hover ring (ADR-070): the point sits in the card's bottom right
+/// corner, where the tooltip once landed on the point and its ring when
+/// the card had no place clear of its labels.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel sizes.
+fn a_big_number_tooltip_leaves_the_hover_ring_clear() {
+    let e = engine();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
+    let board: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let mut cards = vec![fixture("big-number"), board.clone()];
+    cards.extend(board["row"].as_array().unwrap().iter().cloned());
+    let scale = 2.0;
+    for card in cards {
+        let intent = tiles_intent::parse(&card.to_string()).unwrap();
+        // Alone, and compact among others as the pane draws a scorecard
+        // row, where the card is shorter than a tooltip with a hint.
+        let aligns = [
+            tiles_engine::Align::default(),
+            tiles_engine::Align {
+                compact: true,
+                among: true,
+                ..tiles_engine::Align::default()
+            },
+        ];
+        for width in (280..=720).step_by(16).map(|w| w as f32) {
+            for (theme, align) in [dark(), light()]
+                .into_iter()
+                .flat_map(|t| aligns.map(|a| (t, a)))
+            {
+                let opts = Options {
+                    width,
+                    theme,
+                    cell_height: Some(12.5),
+                };
+                let s = e.scene_aligned(&intent, &opts, align).unwrap();
+                let last = card["data"]["rows"].as_array().unwrap().len() - 1;
+                let hits = hit_map(&s, scale);
+                // The last point's target, a small square; the target bar
+                // and the headline also carry the last row.
+                let small = |h: &&tiles_engine::hit::Hit| {
+                    (h.right - h.left) as f32 / scale <= 16.0
+                        && (h.bottom - h.top) as f32 / scale <= 16.0
+                };
+                let marks: Vec<_> = hits
+                    .iter()
+                    .filter(|h| h.row == Some(last))
+                    .filter(small)
+                    .collect();
+                assert_eq!(marks.len(), 1, "the sparkline's last point");
+                let marks = marks.into_iter();
+                // With no hint and with each hint the pane shows.
+                let feet = [
+                    None,
+                    Some("click again to clear"),
+                    Some("click to focus Q2 26"),
+                ];
+                for (hit, hint) in marks.flat_map(|h| feet.map(|n| (h, n))) {
+                    let pointer = f32::midpoint(hit.left as f32, hit.right as f32) / scale;
+                    let cue = tiles_engine::pane::Cue {
+                        pointer_x: Some(pointer),
+                        hint,
+                        focused: false,
+                    };
+                    let over = e.hover(&s, hit, scale, cue);
+                    let shift = (over.ring.left as f32 / scale, over.ring.top as f32 / scale);
+                    let ring = over
+                        .ring
+                        .scene
+                        .items
+                        .iter()
+                        .filter(|i| matches!(i.shape, Shape::Line { .. }))
+                        .map(|i| i.bounds().with_offset(shift))
+                        .reduce(|a, b| {
+                            skia_safe::Rect::from_ltrb(
+                                a.left.min(b.left),
+                                a.top.min(b.top),
+                                a.right.max(b.right),
+                                a.bottom.max(b.bottom),
+                            )
+                        })
+                        .expect("a hover ring");
+                    let tip = skia_safe::Rect::from_xywh(
+                        over.tip.left as f32 / scale,
+                        over.tip.top as f32 / scale,
+                        over.tip.scene.width,
+                        over.tip.scene.height,
+                    );
+                    assert!(
+                        !skia_safe::Rect::intersects2(tip, ring),
+                        "on {:?} at {width}, the tooltip {tip:?} for {:?} covers the ring {ring:?}",
+                        s.part(Part::Title).next().and_then(Item::text),
+                        hit.tip
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Asserts no point of a ring, moved by `offset`, falls inside `label`.
+fn assert_clear_of(points: &[(f32, f32)], offset: (f32, f32), label: skia_safe::Rect, width: f32) {
+    for &(px, py) in points {
+        let (px, py) = (px + offset.0, py + offset.1);
+        assert!(
+            !(px >= label.left - 0.5
+                && px <= label.right + 0.5
+                && py >= label.top - 0.5
+                && py <= label.bottom + 0.5),
+            "at {width} the ring passes ({px}, {py}) inside the label {label:?}"
+        );
+    }
+}
+
+/// The pane's ring round the Germany column of the pane fixture's column
+/// card, hovered and focused (ADR-070): one CSS pixel in the accent, at
+/// 60% on hover and in full on a focused mark, no stroke in the ink, and
+/// neither the ring nor the tooltip on the 6,900 label.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel offsets.
+fn the_pane_ring_is_one_accent_pixel_and_leaves_the_value_label_whole() {
+    let e = engine();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
+    let board: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let column = tiles_intent::parse(&board["rows"][0][1].to_string()).unwrap();
+    let scale = 2.0;
+    for (theme, width) in [(dark(), 700.0), (dark(), 357.0), (light(), 700.0)] {
+        let opts = Options {
+            width,
+            theme,
+            cell_height: Some(12.5),
+        };
+        let plain = e.scene(&column, &opts).unwrap();
+        let focused = e.pane_focus(&plain);
+        let pal = e.tokens().palette(theme);
+        let label = plain
+            .part(Part::Value)
+            .find(|v| v.text() == Some("6,900"))
+            .map(|v| text_box(&e, v))
+            .expect("the Germany column's value label");
+        // Focus rings the highlighted Germany column and dims the others.
+        let rings: Vec<&Item> = focused
+            .items
+            .iter()
+            .filter(|i| i.part == Part::Guide && matches!(i.shape, Shape::Line { .. }))
+            .collect();
+        assert!(!rings.is_empty(), "a ring round Germany");
+        for ring in &rings {
+            assert_eq!(ring.color, pal.accent);
+            let Shape::Line { points, .. } = &ring.shape else {
+                unreachable!()
+            };
+            assert_clear_of(points, (0.0, 0.0), label, width);
+        }
+        assert!(
+            focused
+                .items
+                .iter()
+                .filter(|i| i.part == Part::Mark && !i.highlighted)
+                .all(|m| plain
+                    .items
+                    .iter()
+                    .any(|p| p.datum == m.datum && p.part == Part::Mark && p.color != m.color))
+        );
+        for (scene, full) in [(&plain, false), (&focused, true)] {
+            let hit = hit_map(scene, scale)
+                .into_iter()
+                .find(|h| h.row == Some(0))
+                .expect("Germany's column");
+            let cue = tiles_engine::pane::Cue {
+                focused: full,
+                ..tiles_engine::pane::Cue::default()
+            };
+            let overlay = e.hover(scene, &hit, scale, cue);
+            let (dx, dy) = (
+                overlay.ring.left as f32 / scale,
+                overlay.ring.top as f32 / scale,
+            );
+            let mut drew_ring = false;
+            for item in &overlay.ring.scene.items {
+                let Shape::Line { points, width } = &item.shape else {
+                    continue;
+                };
+                drew_ring = true;
+                assert!((width - 1.0).abs() < f32::EPSILON, "a one-pixel ring");
+                assert_ne!(item.color, pal.ink, "no stroke in the ink");
+                let want = if full {
+                    pal.accent
+                } else {
+                    pal.accent.with_opacity(0.6)
+                };
+                assert_eq!(item.color, want);
+                assert_clear_of(points, (dx, dy), label, scene.width);
+            }
+            assert!(drew_ring);
+            let tip = skia_safe::Rect::from_xywh(
+                overlay.tip.left as f32 / scale,
+                overlay.tip.top as f32 / scale,
+                overlay.tip.scene.width,
+                overlay.tip.scene.height,
+            );
+            assert!(
+                !skia_safe::Rect::intersects2(tip, label),
+                "at {width} the tooltip {tip:?} covers the label {label:?}"
+            );
+        }
+    }
+}
+
+/// The device pixel of `frame` at CSS (`x`, `y`) over a piece placed at
+/// device (`left`, `top`).
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // Pixels inside the frame.
+fn pixel_at(
+    frame: &tiles_engine::Frame,
+    (left, top): (i32, i32),
+    (x, y): (f32, f32),
+    scale: f32,
+) -> Rgba {
+    let px = (x * scale).floor() as i32 - left;
+    let py = (y * scale).floor() as i32 - top;
+    assert!(
+        px >= 0 && py >= 0 && px < frame.width && py < frame.height,
+        "({x}, {y}) is in the piece"
+    );
+    let at = ((py * frame.width + px) * 4) as usize;
+    Rgba {
+        r: frame.rgba[at],
+        g: frame.rgba[at + 1],
+        b: frame.rgba[at + 2],
+        a: frame.rgba[at + 3],
+    }
+}
+
+/// `top`, an unpremultiplied pixel, over the opaque pixel `under`.
+fn over(top: Rgba, under: Rgba) -> Rgba {
+    let a = f32::from(top.a) / 255.0;
+    under.mix(Rgba { a: 255, ..top }, a)
+}
+
+/// Hovering a box on the box plot (ADR-070) washes the box in white on
+/// every theme, and the median the card draws over the box shows through
+/// the wash in the card colour.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel offsets.
+fn a_hovered_box_lightens_and_keeps_its_median() {
+    let e = engine();
+    let intent = tiles_intent::parse(&fixture("box-plot").to_string()).unwrap();
+    let scale = 2.0;
+    for theme in [light(), dark()] {
+        let opts = Options {
+            theme,
+            ..Options::default()
+        };
+        let s = e.scene(&intent, &opts).unwrap();
+        let pal = e.tokens().palette(theme);
+        let at = s
+            .items
+            .iter()
+            .position(|i| i.part == Part::Mark && i.highlighted)
+            .expect("the highlighted box");
+        let mark = &s.items[at];
+        let boxed = rect(mark);
+        let (mx, cy) = s.items[at + 1..]
+            .iter()
+            .find_map(|i| match &i.shape {
+                Shape::Line { points, .. } if i.part == Part::Guide && i.color == pal.card => {
+                    Some((points[0].0, f32::midpoint(points[0].1, points[1].1)))
+                }
+                _ => None,
+            })
+            .expect("the median over the box");
+        let hit = hit_map(&s, scale)
+            .into_iter()
+            .find(|h| h.row == mark.datum)
+            .expect("the box's hit");
+        let ring = e
+            .hover(&s, &hit, scale, tiles_engine::pane::Cue::default())
+            .ring;
+        let card = e.frame_at(&s, scale, Moment::FINAL).unwrap();
+        let frame = e.frame_at(&ring.scene, scale, Moment::FINAL).unwrap();
+        let seen = |at: (f32, f32)| {
+            let under = pixel_at(&card, (0, 0), at, scale);
+            (
+                under,
+                over(pixel_at(&frame, (ring.left, ring.top), at, scale), under),
+            )
+        };
+        let (_, median) = seen((mx, cy));
+        let washed = pal.card.mix(Rgba::white(1.0), 0.12);
+        let near = |a: u8, b: u8| a.abs_diff(b) <= 3;
+        assert!(
+            near(median.r, washed.r) && near(median.g, washed.g) && near(median.b, washed.b),
+            "the median {median:?} shows through the wash as {washed:?}"
+        );
+        let inside = if mx - boxed.left > boxed.right - mx {
+            f32::midpoint(boxed.left, mx)
+        } else {
+            f32::midpoint(mx, boxed.right)
+        };
+        let (plain, lit) = seen((inside, cy));
+        let sum = |c: Rgba| u32::from(c.r) + u32::from(c.g) + u32::from(c.b);
+        assert!(
+            lit.r >= plain.r && lit.g >= plain.g && lit.b >= plain.b,
+            "{lit:?} is no darker than {plain:?}"
+        );
+        assert!(sum(lit) > sum(plain), "the hovered box is lighter");
+    }
+}
+
+/// The hover ring and the focus ring round a column (ADR-070) round only
+/// the corners the column rounds: the column's top corners grown by the
+/// gap, its baseline corners by the gap alone.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel offsets.
+fn a_ring_rounds_only_the_corners_its_bar_rounds() {
+    let e = engine();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
+    let board: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let column = tiles_intent::parse(&board["rows"][0][1].to_string()).unwrap();
+    let scale = 2.0;
+    let plain = e.scene(&column, &Options::default()).unwrap();
+    let focused = e.pane_focus(&plain);
+    let mark = plain
+        .items
+        .iter()
+        .find(|i| i.part == Part::Mark && i.datum == Some(0))
+        .expect("the Germany column");
+    let Shape::Rect {
+        rect: bar,
+        radius,
+        corners: Corners::Top,
+    } = mark.shape
+    else {
+        panic!("a column rounds its top: {:?}", mark.shape)
+    };
+    let off = 2.5;
+    let round = radius.min(bar.width() / 2.0).min(bar.height() / 2.0);
+    assert!(round > 0.0, "the column has rounded corners");
+    let out = bar.with_outset((off, off));
+    let nearest = |points: &[(f32, f32)], (cx, cy): (f32, f32)| {
+        points
+            .iter()
+            .map(|&(x, y)| (x - cx).hypot(y - cy))
+            .fold(f32::MAX, f32::min)
+    };
+    let hit = hit_map(&plain, scale)
+        .into_iter()
+        .find(|h| h.row == Some(0))
+        .expect("Germany's column");
+    let accent = e.tokens().palette(plain.theme).accent;
+    let hover = e
+        .hover(&plain, &hit, scale, tiles_engine::pane::Cue::default())
+        .ring;
+    let shift = (hover.left as f32 / scale, hover.top as f32 / scale);
+    let rings: Vec<(Vec<(f32, f32)>, &str)> = hover
+        .scene
+        .items
+        .iter()
+        .filter_map(|i| match &i.shape {
+            Shape::Line { points, .. } if i.color == accent.with_opacity(0.6) => Some((
+                points
+                    .iter()
+                    .map(|&(x, y)| (x + shift.0, y + shift.1))
+                    .collect(),
+                "hover",
+            )),
+            _ => None,
+        })
+        .chain(focused.items.iter().filter_map(|i| match &i.shape {
+            Shape::Line { points, .. } if i.part == Part::Guide && i.color == accent => {
+                Some((points.clone(), "focus"))
+            }
+            _ => None,
+        }))
+        .collect();
+    let corner_gap = std::f32::consts::SQRT_2 - 1.0;
+    for kind in ["hover", "focus"] {
+        let points: Vec<(f32, f32)> = rings
+            .iter()
+            .filter(|(_, k)| *k == kind)
+            .flat_map(|(p, _)| p.iter().copied())
+            .collect();
+        assert!(!points.is_empty(), "a {kind} ring");
+        for base in [(out.left, out.bottom), (out.right, out.bottom)] {
+            let d = nearest(&points, base);
+            assert!(
+                (d - off * corner_gap).abs() < 0.05,
+                "the {kind} ring's baseline corner at {base:?} takes the gap's radius alone, {d} off"
+            );
+        }
+        for top in [(out.left, out.top), (out.right, out.top)] {
+            let d = nearest(&points, top);
+            assert!(
+                d >= (round + off) * corner_gap - 0.05,
+                "the {kind} ring's top corner at {top:?} keeps the column's rounding, {d} off"
+            );
+        }
+    }
+}
+
+/// How far `(x, y)` lies outside the box `b` rounded all round by `r`;
+/// negative inside it.
+fn edge_distance(b: skia_safe::Rect, r: f32, (x, y): (f32, f32)) -> f32 {
+    let r = r.min(b.width() / 2.0).min(b.height() / 2.0);
+    let qx = (x - b.center_x()).abs() - (b.width() / 2.0 - r);
+    let qy = (y - b.center_y()).abs() - (b.height() / 2.0 - r);
+    qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - r
+}
+
+/// The shape one ring goes round for the first of a row's `marks` and
+/// those whose boxes meet it, directly or through one another, as a box
+/// and its radius: the largest dot when every one is a dot, else the box
+/// round them all, rounded by the largest radius among them.
+fn row_shape(marks: &[&Item]) -> (skia_safe::Rect, f32) {
+    let meets = |a: skia_safe::Rect, b: skia_safe::Rect| {
+        a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom
+    };
+    let mut group = vec![marks[0]];
+    let mut k = 0;
+    while k < group.len() {
+        let b = group[k].bounds();
+        for m in marks {
+            if !group.iter().any(|g| std::ptr::eq(*g, *m)) && meets(b, m.bounds()) {
+                group.push(m);
+            }
+        }
+        k += 1;
+    }
+    let marks = group;
+    let area = |i: &&Item| i.bounds().width() * i.bounds().height();
+    let radius = |i: &Item| match i.shape {
+        Shape::Circle { r, .. } => r,
+        Shape::Rect {
+            rect,
+            radius,
+            corners: Corners::All,
+        } => radius.min(rect.width() / 2.0).min(rect.height() / 2.0),
+        _ => panic!("a dot or a mark rounded all round: {:?}", i.shape),
+    };
+    if marks
+        .iter()
+        .all(|i| matches!(i.shape, Shape::Circle { .. }))
+    {
+        let dot = marks
+            .iter()
+            .max_by(|a, b| area(a).total_cmp(&area(b)))
+            .unwrap();
+        return (dot.bounds(), radius(dot));
+    }
+    let b = marks.iter().fold(marks[0].bounds(), |u, i| {
+        let b = i.bounds();
+        skia_safe::Rect::from_ltrb(
+            u.left.min(b.left),
+            u.top.min(b.top),
+            u.right.max(b.right),
+            u.bottom.max(b.bottom),
+        )
+    });
+    (b, marks.iter().map(|i| radius(i)).fold(0.0, f32::max))
+}
+
+/// A row the card draws with several marks, a line card's named point (a
+/// larger dot laid over its dot) or a range band (an inner band and a
+/// middle dot on the outer band, a narrow inner band widened to a pill
+/// that sticks out of it included), gets one ring round them all when
+/// focused and when any of its targets is hovered, and the hover's wash
+/// takes that ring's shape (ADR-070).
+#[test]
+#[allow(clippy::cast_precision_loss, clippy::too_many_lines)] // Pixel offsets; focus and every hover target.
+fn a_row_drawn_as_several_marks_gets_one_ring_round_them_all() {
+    let e = engine();
+    let scale = 2.0;
+    let off = 2.5;
+    let mut narrow = fixture("range-bands");
+    let row = |m: &str, v: [f64; 5]| serde_json::json!({"method": m, "p5": v[0], "p25": v[1], "p50": v[2], "p75": v[3], "p95": v[4]});
+    narrow["data"]["rows"] = serde_json::json!([
+        row("Wide", [0.0, 10.0, 50.0, 90.0, 100.0]),
+        row("Stuck", [0.0, 0.1, 0.2, 0.5, 60.0]),
+        row("Narrow", [50.0, 50.0, 50.5, 51.0, 52.0]),
+    ]);
+    narrow["highlight"] = serde_json::json!(["Stuck", "Narrow"]);
+    let narrow = scene_of(&narrow).unwrap();
+    for (form, s) in [
+        ("area", scene("area")),
+        ("range-bands", scene("range-bands")),
+        ("narrow range-bands", narrow),
+    ] {
+        let accent = e.tokens().palette(s.theme).accent;
+        let focused = e.pane_focus(&s);
+        let focus_ring: Vec<(f32, f32)> = focused
+            .items
+            .iter()
+            .filter_map(|i| match &i.shape {
+                Shape::Line { points, .. } if i.part == Part::Guide && i.color == accent => {
+                    Some(points.clone())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let mut rows: Vec<usize> = s
+            .items
+            .iter()
+            .filter(|i| i.part == Part::Mark && i.highlighted)
+            .filter_map(|i| i.datum)
+            .collect();
+        rows.sort_unstable();
+        rows.dedup();
+        assert!(!rows.is_empty(), "{form} highlights a row");
+        for row in rows {
+            let marks: Vec<&Item> = s
+                .items
+                .iter()
+                .filter(|i| i.part == Part::Mark && i.datum == Some(row))
+                .filter(|i| matches!(i.shape, Shape::Rect { .. } | Shape::Circle { .. }))
+                .collect();
+            assert!(marks.len() > 1, "{form} draws row {row} with several marks");
+            let (want, radius) = row_shape(&marks);
+            if form.starts_with("narrow") {
+                let widest = marks
+                    .iter()
+                    .map(|i| i.bounds())
+                    .max_by(|a, b| (a.width() * a.height()).total_cmp(&(b.width() * b.height())))
+                    .unwrap();
+                assert!(
+                    marks.iter().any(|i| {
+                        let b = i.bounds();
+                        b.left < widest.left - 0.5 || b.right > widest.right + 0.5
+                    }),
+                    "{form} row {row} has a mark sticking out of its largest"
+                );
+            }
+            let near = want.with_outset((off + 1.0, off + 1.0));
+            let ring: Vec<(f32, f32)> = focus_ring
+                .iter()
+                .copied()
+                .filter(|&(x, y)| {
+                    x >= near.left && x <= near.right && y >= near.top && y <= near.bottom
+                })
+                .collect();
+            assert!(!ring.is_empty(), "{form} row {row} has a focus ring");
+            for p in ring {
+                let d = edge_distance(want, radius, p);
+                assert!(
+                    (d - off).abs() < 0.1,
+                    "{form} row {row}: every focus ring point is {off} off the row's marks, {p:?} is {d}"
+                );
+            }
+            for hit in hit_map(&s, scale).iter().filter(|h| h.row == Some(row)) {
+                let over = e.hover(&s, hit, scale, tiles_engine::pane::Cue::default());
+                let shift = (over.ring.left as f32 / scale, over.ring.top as f32 / scale);
+                let ring: Vec<(f32, f32)> = over
+                    .ring
+                    .scene
+                    .items
+                    .iter()
+                    .filter_map(|i| match &i.shape {
+                        Shape::Line { points, .. } if i.color == accent.with_opacity(0.6) => {
+                            Some(points.clone())
+                        }
+                        _ => None,
+                    })
+                    .flatten()
+                    .map(|(x, y)| (x + shift.0, y + shift.1))
+                    .collect();
+                assert!(!ring.is_empty(), "{form}: a hover ring for {:?}", hit.tip);
+                for p in ring {
+                    let d = edge_distance(want, radius, p);
+                    assert!(
+                        (d - off).abs() < 0.1,
+                        "{form}: hovering {:?}, every ring point is {off} off the row's marks, {p:?} is {d}",
+                        hit.tip
+                    );
+                }
+                let washes: Vec<skia_safe::Rect> = over
+                    .ring
+                    .scene
+                    .items
+                    .iter()
+                    .filter(|i| i.color == Rgba::white(0.12))
+                    .map(|i| i.bounds().with_offset(shift))
+                    .collect();
+                assert!(
+                    matches!(washes.as_slice(), [w] if (w.left - want.left).abs() < 0.01
+                        && (w.top - want.top).abs() < 0.01
+                        && (w.right - want.right).abs() < 0.01
+                        && (w.bottom - want.bottom).abs() < 0.01),
+                    "{form}: hovering {:?} washes the ring's shape alone, got {washes:?}",
+                    hit.tip
+                );
+            }
+        }
+    }
+}
+
+/// A row's marks that sit apart keep a ring each (ADR-070): hovering a
+/// big number's target bar or its sparkline's last point, a box or its low
+/// outlier washes and rings that mark alone, the outlier's tooltip swatch
+/// takes the outlier's own colour, and focusing a dumbbell row rings each
+/// of its end dots.
+#[test]
+#[allow(clippy::cast_precision_loss, clippy::too_many_lines)] // Pixel offsets; hover and focus on three forms.
+fn marks_of_a_row_that_sit_apart_keep_a_ring_each() {
+    let e = engine();
+    let scale = 2.0;
+    let off = 2.5;
+    let mut low = fixture("box-plot");
+    let days = |segment: &str, values: &[f64]| -> Vec<serde_json::Value> {
+        values
+            .iter()
+            .map(|d| serde_json::json!({"segment": segment, "days": d}))
+            .collect()
+    };
+    let mut rows = days("Slow", &[1.0, 50.0, 51.0, 52.0, 53.0, 54.0, 55.0, 56.0]);
+    rows.extend(days("Fast", &[10.0, 12.0, 14.0, 16.0, 18.0]));
+    low["data"]["rows"] = serde_json::Value::Array(rows);
+    low["highlight"] = serde_json::json!(["Slow"]);
+    let meets = |a: skia_safe::Rect, b: skia_safe::Rect| {
+        a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom
+    };
+    for (form, s) in [
+        ("big-number", scene("big-number")),
+        ("box-plot with a low outlier", scene_of(&low).unwrap()),
+        ("dumbbell", scene("dumbbell")),
+    ] {
+        let accent = e.tokens().palette(s.theme).accent;
+        let marks: Vec<&Item> = s
+            .items
+            .iter()
+            .filter(|i| i.part == Part::Mark && i.datum.is_some())
+            .filter(|i| matches!(i.shape, Shape::Rect { .. } | Shape::Circle { .. }))
+            .collect();
+        let apart: Vec<&Item> = marks
+            .iter()
+            .copied()
+            .filter(|m| {
+                marks.iter().any(|o| {
+                    !std::ptr::eq(*o, *m) && o.datum == m.datum && !meets(o.bounds(), m.bounds())
+                })
+            })
+            .collect();
+        assert!(!apart.is_empty(), "{form} draws a row's marks apart");
+        let hits = hit_map(&s, scale);
+        for mark in &apart {
+            let b = mark.bounds();
+            let hit = hits
+                .iter()
+                .filter(|h| h.row == mark.datum)
+                .min_by(|x, y| {
+                    let d = |h: &&tiles_engine::hit::Hit| {
+                        let cx = (h.left + h.right) as f32 / 2.0 / scale;
+                        let cy = (h.top + h.bottom) as f32 / 2.0 / scale;
+                        (cx - b.center_x()).hypot(cy - b.center_y())
+                    };
+                    d(x).total_cmp(&d(y))
+                })
+                .expect("the mark's target");
+            let over = e.hover(&s, hit, scale, tiles_engine::pane::Cue::default());
+            let shift = (over.ring.left as f32 / scale, over.ring.top as f32 / scale);
+            let washes: Vec<skia_safe::Rect> = over
+                .ring
+                .scene
+                .items
+                .iter()
+                .filter(|i| i.color == Rgba::white(0.12))
+                .map(|i| i.bounds().with_offset(shift))
+                .collect();
+            assert!(
+                matches!(washes.as_slice(), [w] if (w.left - b.left).abs() < 0.01
+                    && (w.top - b.top).abs() < 0.01
+                    && (w.right - b.right).abs() < 0.01
+                    && (w.bottom - b.bottom).abs() < 0.01),
+                "{form}: hovering {:?} washes its own mark alone, got {washes:?} for {b:?}",
+                hit.tip
+            );
+            let slim = b.with_outset((off + 0.1, off + 0.1));
+            let ring: Vec<(f32, f32)> = over
+                .ring
+                .scene
+                .items
+                .iter()
+                .filter_map(|i| match &i.shape {
+                    Shape::Line { points, .. } if i.color == accent.with_opacity(0.6) => {
+                        Some(points.clone())
+                    }
+                    _ => None,
+                })
+                .flatten()
+                .map(|(x, y)| (x + shift.0, y + shift.1))
+                .collect();
+            assert!(!ring.is_empty(), "{form}: a hover ring for {:?}", hit.tip);
+            assert!(
+                ring.iter().all(|&(x, y)| x >= slim.left
+                    && x <= slim.right
+                    && y >= slim.top
+                    && y <= slim.bottom),
+                "{form}: hovering {:?} rings its own mark alone",
+                hit.tip
+            );
+            let swatch = over
+                .tip
+                .scene
+                .items
+                .iter()
+                .find_map(|i| match i.shape {
+                    Shape::Rect { rect, .. }
+                        if (rect.width() - 9.0).abs() < 0.01
+                            && (rect.height() - 9.0).abs() < 0.01 =>
+                    {
+                        Some(i.color)
+                    }
+                    _ => None,
+                })
+                .expect("the tooltip's swatch");
+            assert_eq!(
+                swatch, mark.color,
+                "{form}: hovering {:?} gives the swatch its own mark's colour",
+                hit.tip
+            );
+        }
+        let focused = e.pane_focus(&s);
+        let focus_ring: Vec<(f32, f32)> = focused
+            .items
+            .iter()
+            .filter_map(|i| match &i.shape {
+                Shape::Line { points, .. } if i.part == Part::Guide && i.color == accent => {
+                    Some(points.clone())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let lit: Vec<&&Item> = apart.iter().filter(|m| m.highlighted).collect();
+        if form == "dumbbell" {
+            assert!(lit.len() > 1, "the dumbbell highlights a row's two dots");
+        }
+        let slim = |m: &Item| m.bounds().with_outset((off + 0.1, off + 0.1));
+        let inside = |r: skia_safe::Rect, (x, y): (f32, f32)| {
+            x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+        };
+        for mark in &lit {
+            assert!(
+                focus_ring.iter().any(|&p| inside(slim(mark), p)),
+                "{form}: focusing rings the mark at {:?}",
+                mark.bounds()
+            );
+        }
+        for &p in &focus_ring {
+            assert!(
+                marks.iter().any(|m| m.highlighted && inside(slim(m), p)),
+                "{form}: every focus ring point sits by its own mark, {p:?} does not"
+            );
+        }
+    }
+}
+
+/// Hovering a small-multiples panel's last point (ADR-070), drawn over the
+/// undrawn point that answers hover there, washes and rings the drawn dot.
+#[test]
+#[allow(clippy::cast_precision_loss)] // Pixel offsets.
+fn a_drawn_point_over_an_undrawn_one_takes_the_wash() {
+    let e = engine();
+    let s = scene("small-multiples");
+    let scale = 2.0;
+    let off = 2.5;
+    let accent = e.tokens().palette(s.theme).accent;
+    let hits = hit_map(&s, scale);
+    let drawn: Vec<&Item> = s
+        .items
+        .iter()
+        .filter(|i| i.part == Part::Mark && i.tip.is_some())
+        .filter(|i| matches!(i.shape, Shape::Circle { .. }))
+        .collect();
+    assert!(
+        !drawn.is_empty(),
+        "small multiples draw each panel's last point"
+    );
+    for dot in drawn {
+        let Shape::Circle { cx, cy, r } = dot.shape else {
+            unreachable!()
+        };
+        assert!(
+            s.items.iter().any(|i| i.part == Part::Hit
+                && i.datum == dot.datum
+                && i.tip == dot.tip
+                && i.shape == dot.shape),
+            "an undrawn point lies under {:?}",
+            dot.tip
+        );
+        let hit = hits
+            .iter()
+            .find(|h| h.row == dot.datum && Some(&h.tip) == dot.tip.as_ref())
+            .expect("the point's target");
+        let over = e.hover(&s, hit, scale, tiles_engine::pane::Cue::default());
+        let shift = (over.ring.left as f32 / scale, over.ring.top as f32 / scale);
+        let washes: Vec<skia_safe::Rect> = over
+            .ring
+            .scene
+            .items
+            .iter()
+            .filter(|i| i.color == Rgba::white(0.12))
+            .map(|i| i.bounds().with_offset(shift))
+            .collect();
+        let b = dot.bounds();
+        assert!(
+            matches!(washes.as_slice(), [w] if (w.left - b.left).abs() < 0.01
+                && (w.top - b.top).abs() < 0.01
+                && (w.right - b.right).abs() < 0.01
+                && (w.bottom - b.bottom).abs() < 0.01),
+            "hovering {:?} washes the drawn dot once, got {washes:?} for {b:?}",
+            dot.tip
+        );
+        let ring: Vec<(f32, f32)> = over
+            .ring
+            .scene
+            .items
+            .iter()
+            .filter_map(|i| match &i.shape {
+                Shape::Line { points, .. } if i.color == accent.with_opacity(0.6) => {
+                    Some(points.clone())
+                }
+                _ => None,
+            })
+            .flatten()
+            .map(|(x, y)| (x + shift.0, y + shift.1))
+            .collect();
+        assert!(!ring.is_empty(), "a ring round {:?}", dot.tip);
+        assert!(
+            ring.iter()
+                .all(|&(x, y)| ((x - cx).hypot(y - cy) - (r + off)).abs() < 0.05),
+            "the ring for {:?} is a circle round the drawn dot",
+            dot.tip
+        );
+    }
+}
+
+/// Hovering a dot (ADR-070), a lollipop's head or a line chart's point
+/// whether the card draws it or only targets it, rings the dot with a
+/// circle and gives the tooltip the dot's colour; hovering a lollipop's
+/// stem lights its head, and only a drawn dot takes the wash.
+#[test]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::many_single_char_names,
+    clippy::too_many_lines
+)] // Pixel offsets; one walk over every dot form's targets.
+fn a_hovered_dot_takes_a_circle_ring_and_its_own_colour() {
+    let e = engine();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/pane/dashboard.json");
+    let board: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let lines = tiles_intent::parse(&board["rows"][1][0].to_string()).unwrap();
+    let lollipop = tiles_intent::parse(&fixture("lollipop").to_string()).unwrap();
+    let scale = 2.0;
+    let off = 2.5;
+    let mut undrawn = 0;
+    for intent in [lines, lollipop] {
+        let s = e.scene(&intent, &Options::default()).unwrap();
+        let accent = e.tokens().palette(s.theme).accent;
+        let hits = hit_map(&s, scale);
+        let dots = s.items.iter().filter(|i| {
+            i.tip.is_some()
+                && matches!(i.part, Part::Mark | Part::Hit)
+                && matches!(i.shape, Shape::Circle { .. })
+        });
+        let mut seen = 0;
+        for dot in dots {
+            let Shape::Circle { cx, cy, r } = dot.shape else {
+                unreachable!()
+            };
+            // The dot's own target, and a stem's or a value label's.
+            for hit in hits.iter().filter(|h| h.row == dot.datum) {
+                let over = e.hover(&s, hit, scale, tiles_engine::pane::Cue::default());
+                let shift = (over.ring.left as f32 / scale, over.ring.top as f32 / scale);
+                let ring: Vec<(f32, f32)> = over
+                    .ring
+                    .scene
+                    .items
+                    .iter()
+                    .filter_map(|i| match &i.shape {
+                        Shape::Line { points, .. } if i.color == accent.with_opacity(0.6) => {
+                            Some(points.clone())
+                        }
+                        _ => None,
+                    })
+                    .flatten()
+                    .map(|(x, y)| (x + shift.0, y + shift.1))
+                    .collect();
+                assert!(!ring.is_empty(), "a ring round {:?}", hit.tip);
+                // The picture holds the whole ring, a stem's hover included,
+                // whose hit box ends at the head's centre.
+                let (w, h) = (over.ring.scene.width, over.ring.scene.height);
+                assert!(
+                    ring.iter().all(|&(x, y)| {
+                        x - 0.5 >= shift.0
+                            && x + 0.5 <= shift.0 + w
+                            && y - 0.5 >= shift.1
+                            && y + 0.5 <= shift.1 + h
+                    }),
+                    "the ring piece for {:?} holds the whole ring",
+                    hit.tip
+                );
+                let biggest = s
+                    .items
+                    .iter()
+                    .filter(|i| i.datum == dot.datum)
+                    .filter_map(|i| match i.shape {
+                        Shape::Circle { cx: x, cy: y, r } if (x, y) == (cx, cy) => Some(r),
+                        _ => None,
+                    })
+                    .fold(r, f32::max);
+                assert!(
+                    ring.iter().all(|&(x, y)| {
+                        let d = (x - cx).hypot(y - cy);
+                        (d - (r + off)).abs() < 0.05 || (d - (biggest + off)).abs() < 0.05
+                    }),
+                    "the ring for {:?} is a circle round the dot at ({cx}, {cy})",
+                    hit.tip
+                );
+                let washed = over.ring.scene.items.iter().any(|i| {
+                    matches!(i.shape, Shape::Circle { .. }) && i.color == Rgba::white(0.12)
+                });
+                assert_eq!(
+                    washed,
+                    dot.part == Part::Mark,
+                    "only a drawn dot takes the wash, for {:?}",
+                    hit.tip
+                );
+                let swatch = over
+                    .tip
+                    .scene
+                    .items
+                    .iter()
+                    .find_map(|i| match i.shape {
+                        Shape::Rect { rect, .. }
+                            if (rect.width() - 9.0).abs() < 0.01
+                                && (rect.height() - 9.0).abs() < 0.01 =>
+                        {
+                            Some(i.color)
+                        }
+                        _ => None,
+                    })
+                    .expect("the tooltip's swatch");
+                let colours: Vec<Rgba> = s
+                    .items
+                    .iter()
+                    .filter(|i| i.datum == dot.datum)
+                    .filter(|i| matches!(i.shape, Shape::Circle { .. }))
+                    .map(|i| i.color)
+                    .collect();
+                assert!(
+                    colours.contains(&swatch),
+                    "the swatch for {:?} is the dot's colour, not {swatch:?}",
+                    hit.tip
+                );
+                seen += 1;
+            }
+            if dot.part == Part::Hit {
+                undrawn += 1;
+            }
+        }
+        assert!(seen > 2, "the card has dots to hover");
+    }
+    assert!(undrawn > 2, "the line chart targets undrawn points");
+}
+
+#[test]
 fn intent_rules_refuse_with_one_line_naming_the_fix() {
     let e = engine();
     let mut v = fixture("column");
