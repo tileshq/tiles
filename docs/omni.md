@@ -38,8 +38,6 @@ The harness's tool approval is the control. Tiles keeps Omni values out of the t
 
 Sessions started without `tiles run` get none of these rules. The cache keeps the newest 300 cards; `tiles cache clear` removes every card with its call and entrance frames, and prints how many cards went. Rows a running session fetched were never on disk and leave with that session. Call files written by a Tiles release before [ADR-027](adr/ADR-027-omni-rows-stay-in-memory.md) keep their rows until their card is pruned, so run `tiles cache clear` once after upgrading.
 
-`tiles pane <id>` opens a card drawn from Omni as an interactive dashboard: it reads the card's saved query, asks Omni for the rows again with your configuration, and keeps them in its own memory. Pressing `d` over a period of a card drawn from a date field asks Omni once more, for the same topic one timeframe finer, and keeps only that period's rows ([ADR-065](adr/ADR-065-pane-ships-with-fetched-rows-and-one-interaction-state.md)). The pane writes no row to disk and sends nothing to the model.
-
 ## Set the key
 
 Use a personal access token: it sees only what your Omni user can see. An organization API key works too ([Omni's authentication docs](https://docs.omni.co/api/authentication.md)).
